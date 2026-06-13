@@ -69,7 +69,6 @@ termux_step_get_source() {
 		echo "Skipped downloading of AOSP source from '$TERMUX_PKG_SRCURL'"
 	fi
 
-<<<<<<< HEAD
 	termux_download https://storage.googleapis.com/git-repo-downloads/repo "${TERMUX_PKG_CACHEDIR}/repo" SKIP_CHECKSUM
 	chmod +x "${TERMUX_PKG_CACHEDIR}/repo"
 
@@ -93,48 +92,6 @@ termux_step_get_source() {
 		"${TERMUX_PKG_CACHEDIR}"/repo sync -c -j${_NUM_JOBS} ||
 		"${TERMUX_PKG_CACHEDIR}"/repo sync -c -j${_NUM_JOBS} ||
 		termux_error_exit "Repo sync failed"
-=======
-	rm -rf "$TERMUX_PKG_SRCDIR"
-	cp -Rf "$TMP_CHECKOUT" "$TERMUX_PKG_SRCDIR"
-}
-
-termux_step_host_build() {
-	# Correctly-functioning Python 2 seems to be a mandatory build dependency,
-	# but using the prebuilt Python 2 from AOSP seemed to result in this error,
-	# in AOSP 9.0.0 but not in AOSP 8.0.0 or 8.1.0:
-	# /home/builder/.termux-build/termux-aosp/src/prebuilts/python/linux-x86/2.7.5/bin/python2:
-	# can't decompress data; zlib not available
-	# which only went away when I recompiled Python 2.
-	PYTHON2_WORKDIR="${TERMUX_PKG_TMPDIR}/python2"
-	PYTHON2_INSTALLDIR="${TERMUX_PKG_HOSTBUILD_DIR}/python2"
-	mkdir -p "${PYTHON2_WORKDIR}" "${PYTHON2_INSTALLDIR}"
-	termux_download https://www.python.org/ftp/python/2.7.18/Python-2.7.18.tar.xz \
-		"${TERMUX_PKG_CACHEDIR}/python2.tar.xz" \
-		b62c0e7937551d0cc02b8fd5cb0f544f9405bafc9a54d3808ed4594812edef43
-	tar xf "${TERMUX_PKG_CACHEDIR}/python2.tar.xz" --strip-components=1 -C "${PYTHON2_WORKDIR}"
-	pushd "${PYTHON2_WORKDIR}"
-	./configure --prefix="${PYTHON2_INSTALLDIR}"
-	make install
-	popd
-	export PATH="${PYTHON2_INSTALLDIR}/bin:${PATH}"
-	python2 -m ensurepip
-	pip2 install --upgrade setuptools pip
-}
-
-termux_step_configure() {
-	case "${TERMUX_ARCH}" in
-		i686)    _AOSP_ARCH=x86    ;;
-		x86_64)  _AOSP_ARCH=x86_64 ;;
-		arm)     _AOSP_ARCH=arm    ;;
-		aarch64) _AOSP_ARCH=arm64  ;;
-		*) termux_error_exit "Unsupported arch: $TERMUX_ARCH"
-	esac
-
-	# for adding python 2 to $PATH on subsequent builds when termux_step_host_build() has already run
-	export PATH="${TERMUX_PKG_HOSTBUILD_DIR}/python2/bin:${PATH}"
-
-	export LD_LIBRARY_PATH="${TERMUX_PKG_SRCDIR}/prefix/lib/x86_64-linux-gnu:${TERMUX_PKG_SRCDIR}/prefix/usr/lib/x86_64-linux-gnu"
->>>>>>> upstream/master
 }
 
 termux_step_make() {
