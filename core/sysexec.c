@@ -8,6 +8,7 @@
 #include <stdlib.h>
 #include <stdio.h>
 #include <errno.h>
+#include <stdbool.h>
 
 static ssize_t termux_read_exact(int fd, char *buf, size_t buflen) {
   size_t total = 0;
@@ -71,24 +72,49 @@ ssize_t termux_append_file(const char *path, const char *buf, size_t buflen) {
 
 int termux_execve_capture(const char *path, char *const argv[], char *const envp[],
                          char *output_buf, size_t output_size, size_t *output_len) {
-  (void)output_buf;
-  (void)output_size;
+  if (!output_buf || output_size == 0) {
+    return -1;
+  }
+
+  int pipefd[2];
+  if (pipe(pipefd) < 0) {
+    return -1;
+  }
 
   pid_t pid = fork();
   if (pid < 0) {
+    close(pipefd[0]);
+    close(pipefd[1]);
     return -1;
   }
 
   if (pid == 0) {
-    int fd = open("/dev/null", O_WRONLY);
-    if (fd >= 0) {
-      dup2(fd, STDOUT_FILENO);
-      dup2(fd, STDERR_FILENO);
-      close(fd);
-    }
+    close(pipefd[0]);
+    dup2(pipefd[1], STDOUT_FILENO);
+    dup2(pipefd[1], STDERR_FILENO);
+    close(pipefd[1]);
     execve(path, argv, envp);
     exit(127);
   }
+
+  close(pipefd[1]);
+
+  size_t bytes_read = 0;
+  while (bytes_read < output_size - 1) {
+    ssize_t ret = read(pipefd[0], output_buf + bytes_read, output_size - 1 - bytes_read);
+    if (ret < 0) {
+      close(pipefd[0]);
+      waitpid(pid, NULL, 0);
+      return -1;
+    }
+    if (ret == 0) {
+      break;
+    }
+    bytes_read += ret;
+  }
+
+  output_buf[bytes_read] = '\0';
+  close(pipefd[0]);
 
   int status = 0;
   if (waitpid(pid, &status, 0) < 0) {
@@ -96,7 +122,7 @@ int termux_execve_capture(const char *path, char *const argv[], char *const envp
   }
 
   if (output_len) {
-    *output_len = 0;
+    *output_len = bytes_read;
   }
 
   return WIFEXITED(status) ? WEXITSTATUS(status) : -1;
