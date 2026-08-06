@@ -177,7 +177,10 @@ int termux_collect_artifacts(const char *prefix_dir,
            abs_output, pkg_name, version, arch_name);
 
   snprintf(tar_cmd, sizeof(tar_cmd),
-           "export PATH=/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin && cd '%s' && tar -czf '%s' . 2>&1",
+           "export PATH=/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin && "
+           "export SOURCE_DATE_EPOCH=1000000000 && "
+           "cd '%s' && tar --sort=name --owner=0 --group=0 --numeric-owner "
+           "--mtime='2001-09-09 00:00:00' -czf '%s' . 2>&1",
            abs_prefix, tar_path);
 
   const char *bash_path = termux_find_bash();

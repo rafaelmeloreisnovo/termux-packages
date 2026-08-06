@@ -355,6 +355,7 @@ static int termux_phase_package(struct termux_build_context *ctx) {
   char prefix_dir[512];
   char output_path[512];
   const char *arch_name = "unknown";
+  struct stat st;
 
   switch (ctx->pkg.arch) {
     case TERMUX_ARCH_AARCH64: arch_name = "aarch64"; break;
@@ -379,7 +380,20 @@ static int termux_phase_package(struct termux_build_context *ctx) {
     return -1;
   }
 
-  snprintf(buf, sizeof(buf), "[SUCCESS] Tarball created: %s\n", output_path);
+  // Validate artifact existence and size
+  if (stat(output_path, &st) != 0) {
+    snprintf(buf, sizeof(buf), "[ERROR] Artifact file not created: %s\n", output_path);
+    termux_append_output(ctx, buf);
+    return -1;
+  }
+
+  if (st.st_size == 0) {
+    snprintf(buf, sizeof(buf), "[ERROR] Artifact is empty: %s (size=0)\n", output_path);
+    termux_append_output(ctx, buf);
+    return -1;
+  }
+
+  snprintf(buf, sizeof(buf), "[SUCCESS] Tarball created: %s (%ld bytes)\n", output_path, st.st_size);
   termux_append_output(ctx, buf);
 
   return 0;
