@@ -115,9 +115,53 @@ static int termux_phase_setup_vars(struct termux_build_context *ctx) {
 
 static int termux_phase_get_source(struct termux_build_context *ctx) {
   char buf[512];
+  char fixture_path[512];
+  char build_path[512];
+  char copy_cmd[1024];
 
   snprintf(buf, sizeof(buf), "[get-source] Fetching %s-%s\n",
            ctx->pkg.pkg_name, ctx->pkg.version);
+  termux_append_output(ctx, buf);
+
+  // Try to load from repository fixture first
+  snprintf(fixture_path, sizeof(fixture_path), "fixtures/%s", ctx->pkg.pkg_name);
+  snprintf(build_path, sizeof(build_path), "%s/build-%s", ctx->output_dir, ctx->pkg.pkg_name);
+
+  // Check if fixture exists
+  struct stat fixture_stat;
+  if (stat(fixture_path, &fixture_stat) == 0) {
+    snprintf(buf, sizeof(buf), "[get-source] Using fixture from %s\n", fixture_path);
+    termux_append_output(ctx, buf);
+
+    // Create build directory if it doesn't exist
+    if (termux_dir_create(build_path) != 0) {
+      snprintf(buf, sizeof(buf), "[ERROR] Failed to create build directory: %s\n", build_path);
+      termux_append_output(ctx, buf);
+      return -1;
+    }
+
+    // Copy fixture to build directory
+    snprintf(copy_cmd, sizeof(copy_cmd),
+             "cp -r '%s'/* '%s/' 2>&1",
+             fixture_path, build_path);
+
+    char *argv[] = { "/bin/bash", "-c", copy_cmd, NULL };
+    char output[4096];
+    size_t output_len = 0;
+    int ret = termux_execve_capture("/bin/bash", argv, NULL, output, sizeof(output), &output_len);
+
+    if (ret == 0 && output_len > 0) {
+      if (ctx->output_pos + output_len < ctx->output_size) {
+        memcpy(ctx->build_output + ctx->output_pos, output, output_len);
+        ctx->output_pos += output_len;
+      }
+    }
+
+    return ret;
+  }
+
+  // If no fixture, just log (backward compatible with simulator mode)
+  snprintf(buf, sizeof(buf), "[get-source] No fixture found, skipping source fetch\n");
   termux_append_output(ctx, buf);
 
   return 0;
