@@ -1,0 +1,62 @@
+name: manifest-fail-closed
+
+on:
+  pull_request:
+    paths:
+      - 'core/**'
+      - '.github/workflows/manifest-fail-closed.yml'
+  push:
+    branches:
+      - main
+    paths:
+      - 'core/**'
+      - '.github/workflows/manifest-fail-closed.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: manifest-fail-closed-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  structural-gate:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - name: Checkout pinned revision
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+
+      - name: Record toolchain
+        run: |
+          set -eu
+          cc --version | head -n 1
+          make --version | head -n 1
+          python3 --version
+
+      - name: Compile and execute fail-closed manifest tests
+        working-directory: core
+        run: |
+          set -eux
+          make test
+
+      - name: Enforce clean rebuild
+        working-directory: core
+        run: |
+          set -eux
+          make clean
+          test ! -e manifest.bin
+          make all
+          test -x termux-build-core
+          test -x test-manifest
+          test -x manifest-dumper
+
+      - name: Emit gate receipt
+        run: |
+          printf '%s\n' \
+            'MANIFEST_CI_GATE=PASS' \
+            'CASES=5' \
+            'CLEAN_REBUILD=PASS' \
+            'CLAIM_ALLOWED=false' \
+            "COMMIT=${GITHUB_SHA}"
