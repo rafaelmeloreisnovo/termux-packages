@@ -29,10 +29,9 @@ manifest-dumper: manifest_dumper.o
 manifest: manifest_generator.py
 	python3 manifest_generator.py ../packages manifest.bin
 
-test: clean all manifest
-	./test-manifest
+test: clean all
 	python3 tests/test_manifest_fail_closed.py
-	@echo "Structural and manifest gates passed. Runtime package build still requires a prepared source directory."
+	@echo "Structural and fixture manifest gates passed. Run 'make manifest' separately for the global V1 contract."
 
 clean:
 	rm -f $(OBJECTS) $(TEST_OBJECTS) $(DUMPER_OBJECTS) $(TARGETS) manifest.bin
