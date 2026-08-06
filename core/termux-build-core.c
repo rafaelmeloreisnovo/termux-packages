@@ -29,6 +29,7 @@ extern int termux_create_tar(const char *output_path, const char *pkg_name,
 // Manifest loading functions
 extern int termux_load_manifest(const char *path);
 extern const struct termux_pkg_manifest *termux_find_package(const char *pkg_name);
+extern const struct termux_pkg_manifest *termux_find_package_by_arch(const char *pkg_name, uint8_t arch);
 extern const char *termux_get_string(uint32_t offset);
 
 static const struct termux_arch_flags arch_flags[] = {
@@ -166,11 +167,11 @@ static int termux_phase_get_source(struct termux_build_context *ctx) {
     return ret;
   }
 
-  // If no fixture, just log (backward compatible with simulator mode)
-  snprintf(buf, sizeof(buf), "[get-source] No fixture found, skipping source fetch\n");
+  // If no fixture and no real source download implemented, fail
+  snprintf(buf, sizeof(buf), "[ERROR] No source found: fixture not available, remote download not implemented\n");
   termux_append_output(ctx, buf);
 
-  return 0;
+  return -1;
 }
 
 static int termux_phase_apply_patches(struct termux_build_context *ctx) {
@@ -270,12 +271,41 @@ static int termux_phase_massage(struct termux_build_context *ctx) {
   return 0;
 }
 
+static int termux_parse_readelf_machine(const char *readelf_output, size_t output_len, char *machine_buf, size_t machine_buf_len) {
+  const char *machine_line = NULL;
+  const char *search = "Machine:";
+
+  machine_line = strstr(readelf_output, search);
+  if (!machine_line || machine_line >= readelf_output + output_len) {
+    return -1;
+  }
+
+  machine_line += strlen(search);
+  while (*machine_line && (*machine_line == ' ' || *machine_line == '\t')) {
+    machine_line++;
+  }
+
+  const char *end = machine_line;
+  while (end < readelf_output + output_len && *end != '\n' && *end != '\0') {
+    end++;
+  }
+
+  size_t len = end - machine_line;
+  if (len >= machine_buf_len) {
+    len = machine_buf_len - 1;
+  }
+
+  strncpy(machine_buf, machine_line, len);
+  machine_buf[len] = '\0';
+  return 0;
+}
+
 static int termux_phase_verify_elf(struct termux_build_context *ctx) {
   char buf[512];
-  char tarball_path[512];
   char extract_dir[512];
   char receipt_path[512];
   char readelf_cmd[1024];
+  char observed_machine[256];
   const char *arch_name = "unknown";
   const char *expected_machine = "unknown";
 
@@ -310,7 +340,6 @@ static int termux_phase_verify_elf(struct termux_build_context *ctx) {
            ctx->output_dir, ctx->pkg.pkg_name, arch_name);
 
   // Extract tarball and run readelf on main binary
-  // Use find to locate the most recent tarball for this package/arch
   snprintf(readelf_cmd, sizeof(readelf_cmd),
            "mkdir -p '%s' && "
            "TARBALL=$(find '%s' -name '%s*-%s.tar.gz' -type f | sort -r | head -1) && "
@@ -331,20 +360,53 @@ static int termux_phase_verify_elf(struct termux_build_context *ctx) {
     ctx->output_pos += output_len;
   }
 
-  // Write receipt with verification results
-  if (output_len > 0) {
+  // Parse readelf output and enforce architecture match
+  if (output_len == 0) {
+    snprintf(buf, sizeof(buf), "[ERROR] readelf produced no output\n");
+    termux_append_output(ctx, buf);
+    return -1;
+  }
+
+  if (termux_parse_readelf_machine(output, output_len, observed_machine, sizeof(observed_machine)) != 0) {
+    snprintf(buf, sizeof(buf), "[ERROR] Could not parse Machine field from readelf\n");
+    termux_append_output(ctx, buf);
+    return -1;
+  }
+
+  // Check if expected Machine matches observed Machine
+  if (strncmp(observed_machine, expected_machine, strlen(expected_machine)) != 0) {
+    snprintf(buf, sizeof(buf), "[ARCHITECTURE_MISMATCH] Expected: %s | Observed: %s\n",
+             expected_machine, observed_machine);
+    termux_append_output(ctx, buf);
+
     FILE *receipt = fopen(receipt_path, "w");
     if (receipt) {
       fprintf(receipt, "File: %s-%s-%s.tar.gz\n", ctx->pkg.pkg_name, ctx->pkg.version, arch_name);
       fprintf(receipt, "Binary: ./usr/local/bin/%s\n", ctx->pkg.pkg_name);
       fprintf(receipt, "Expected Machine: %s\n", expected_machine);
+      fprintf(receipt, "Observed Machine: %s\n", observed_machine);
+      fprintf(receipt, "Status: QUARANTINE (architecture mismatch)\n");
       fprintf(receipt, "\nReadelf Output:\n");
       fprintf(receipt, "%.*s\n", (int)output_len, output);
       fclose(receipt);
-
-      snprintf(buf, sizeof(buf), "[verify-elf] Receipt written to %s\n", receipt_path);
-      termux_append_output(ctx, buf);
     }
+    return -1;
+  }
+
+  // Write receipt with verification results
+  FILE *receipt = fopen(receipt_path, "w");
+  if (receipt) {
+    fprintf(receipt, "File: %s-%s-%s.tar.gz\n", ctx->pkg.pkg_name, ctx->pkg.version, arch_name);
+    fprintf(receipt, "Binary: ./usr/local/bin/%s\n", ctx->pkg.pkg_name);
+    fprintf(receipt, "Expected Machine: %s\n", expected_machine);
+    fprintf(receipt, "Observed Machine: %s\n", observed_machine);
+    fprintf(receipt, "Status: VERIFIED\n");
+    fprintf(receipt, "\nReadelf Output:\n");
+    fprintf(receipt, "%.*s\n", (int)output_len, output);
+    fclose(receipt);
+
+    snprintf(buf, sizeof(buf), "[verify-elf] Architecture verified: %s matches %s\n", observed_machine, expected_machine);
+    termux_append_output(ctx, buf);
   }
 
   return ret;
@@ -527,11 +589,16 @@ int main(int argc, char *const argv[]) {
     return 1;
   }
 
-  // Find package in manifest
-  const struct termux_pkg_manifest *manifest_pkg = termux_find_package(package_name);
+  // Find package in manifest by name and architecture
+  const struct termux_pkg_manifest *manifest_pkg = termux_find_package_by_arch(package_name, ctx->pkg.arch);
   if (!manifest_pkg) {
-    fprintf(stderr, "Package not found in manifest: %s\n", package_name);
-    return 1;
+    // Fallback to name-only lookup if architecture-specific not found
+    // (manifesto Cycle 2 will fix arch-per-package)
+    manifest_pkg = termux_find_package(package_name);
+    if (!manifest_pkg) {
+      fprintf(stderr, "Package not found in manifest: %s (arch=%u)\n", package_name, ctx->pkg.arch);
+      return 1;
+    }
   }
 
   // Override package context with manifest data

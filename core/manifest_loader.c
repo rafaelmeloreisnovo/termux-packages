@@ -96,6 +96,21 @@ const struct termux_pkg_manifest *termux_find_package(const char *pkg_name) {
   return NULL;
 }
 
+const struct termux_pkg_manifest *termux_find_package_by_arch(const char *pkg_name, uint8_t arch) {
+  if (!manifest_data) return NULL;
+
+  uint8_t *entry_ptr = manifest_data + TERMUX_HEADER_SIZE + sizeof(uint32_t);
+
+  for (uint32_t i = 0; i < num_manifest_entries; i++) {
+    struct termux_pkg_manifest *entry = (struct termux_pkg_manifest *)entry_ptr;
+    if (strcmp(entry->pkg_name, pkg_name) == 0 && entry->arch == arch) {
+      return entry;
+    }
+    entry_ptr += TERMUX_ENTRY_SIZE;
+  }
+  return NULL;
+}
+
 uint32_t termux_get_manifest_size(void) {
   return num_manifest_entries;
 }
