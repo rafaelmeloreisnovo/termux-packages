@@ -3,7 +3,7 @@ CFLAGS := -Wall -Wextra -Wshadow -g -O0
 LDFLAGS :=
 
 TARGETS := termux-build-core test-manifest manifest-dumper
-SOURCES := termux-build-core.c sysexec.c package_writer.c elf_writer.c friction_analyzer.c checkpoint.c parallel_jobs.c
+SOURCES := termux-build-core.c sysexec.c package_writer.c elf_writer.c friction_analyzer.c checkpoint.c parallel_jobs.c build_exec.c
 TEST_SOURCES := test_manifest.c manifest_loader.c
 DUMPER_SOURCES := manifest_dumper.c
 OBJECTS := $(SOURCES:.c=.o)
@@ -14,7 +14,7 @@ DUMPER_OBJECTS := $(DUMPER_SOURCES:.c=.o)
 
 all: $(TARGETS)
 
-termux-build-core: termux-build-core.o sysexec.o package_writer.o elf_writer.o friction_analyzer.o checkpoint.o parallel_jobs.o
+termux-build-core: termux-build-core.o sysexec.o package_writer.o elf_writer.o friction_analyzer.o checkpoint.o parallel_jobs.o build_exec.o
 	$(CC) $(CFLAGS) $(LDFLAGS) -o $@ $^
 
 test-manifest: test_manifest.o manifest_loader.o

@@ -2,6 +2,7 @@
 #include "friction_analyzer.h"
 #include "checkpoint.h"
 #include "parallel_jobs.h"
+#include "build_exec.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -134,21 +135,80 @@ static int termux_phase_apply_patches(struct termux_build_context *ctx) {
 
 static int termux_phase_configure(struct termux_build_context *ctx) {
   char buf[512];
+  char build_dir[512];
+
+  snprintf(build_dir, sizeof(build_dir), "%s/build-%s", ctx->output_dir, ctx->pkg.pkg_name);
 
   snprintf(buf, sizeof(buf), "[configure] Configuring %s-%s\n",
            ctx->pkg.pkg_name, ctx->pkg.version);
   termux_append_output(ctx, buf);
 
+  if (termux_dir_create(build_dir) != 0) {
+    snprintf(buf, sizeof(buf), "[ERROR] Failed to create build directory: %s\n", build_dir);
+    termux_append_output(ctx, buf);
+    return -1;
+  }
+
+  int ret = termux_exec_configure(ctx, build_dir, build_dir);
+  if (ret != 0) {
+    snprintf(buf, sizeof(buf), "[ERROR] configure failed with code %d\n", ret);
+    termux_append_output(ctx, buf);
+    return ret;
+  }
+
+  snprintf(buf, sizeof(buf), "[OK] configure succeeded\n");
+  termux_append_output(ctx, buf);
   return 0;
 }
 
 static int termux_phase_make(struct termux_build_context *ctx) {
   char buf[512];
+  char build_dir[512];
+
+  snprintf(build_dir, sizeof(build_dir), "%s/build-%s", ctx->output_dir, ctx->pkg.pkg_name);
 
   snprintf(buf, sizeof(buf), "[make] Building %s\n", ctx->pkg.pkg_name);
   termux_append_output(ctx, buf);
 
+  int ret = termux_exec_make(ctx, build_dir, 4);
+  if (ret != 0) {
+    snprintf(buf, sizeof(buf), "[ERROR] make failed with code %d\n", ret);
+    termux_append_output(ctx, buf);
+    return ret;
+  }
+
+  snprintf(buf, sizeof(buf), "[OK] make succeeded\n");
+  termux_append_output(ctx, buf);
   return 0;
+}
+
+static int termux_phase_install(struct termux_build_context *ctx) {
+  char buf[512];
+  char build_dir[512];
+  char prefix_dir[512];
+
+  snprintf(build_dir, sizeof(build_dir), "%s/build-%s", ctx->output_dir, ctx->pkg.pkg_name);
+  snprintf(prefix_dir, sizeof(prefix_dir), "%s/prefix-%s", ctx->output_dir, ctx->pkg.pkg_name);
+
+  snprintf(buf, sizeof(buf), "[install] Installing %s to %s\n", ctx->pkg.pkg_name, prefix_dir);
+  termux_append_output(ctx, buf);
+
+  if (termux_dir_create(prefix_dir) != 0) {
+    snprintf(buf, sizeof(buf), "[ERROR] Failed to create prefix directory: %s\n", prefix_dir);
+    termux_append_output(ctx, buf);
+    return -1;
+  }
+
+  int ret = termux_exec_make_install(ctx, build_dir, prefix_dir);
+  if (ret != 0) {
+    snprintf(buf, sizeof(buf), "[ERROR] make install failed with code %d\n", ret);
+    termux_append_output(ctx, buf);
+  } else {
+    snprintf(buf, sizeof(buf), "[OK] make install succeeded\n");
+    termux_append_output(ctx, buf);
+  }
+
+  return ret;
 }
 
 static int termux_phase_massage(struct termux_build_context *ctx) {
@@ -162,6 +222,7 @@ static int termux_phase_massage(struct termux_build_context *ctx) {
 
 static int termux_phase_package(struct termux_build_context *ctx) {
   char buf[512];
+  char prefix_dir[512];
   char output_path[512];
   const char *arch_name = "unknown";
 
@@ -172,15 +233,17 @@ static int termux_phase_package(struct termux_build_context *ctx) {
     case TERMUX_ARCH_I686: arch_name = "i686"; break;
   }
 
-  snprintf(buf, sizeof(buf), "[package] Creating tarball for %s-%s\n",
-           ctx->pkg.pkg_name, ctx->pkg.version);
+  snprintf(prefix_dir, sizeof(prefix_dir), "%s/prefix-%s", ctx->output_dir, ctx->pkg.pkg_name);
+  snprintf(buf, sizeof(buf), "[package] Creating tarball for %s-%s from %s\n",
+           ctx->pkg.pkg_name, ctx->pkg.version, prefix_dir);
   termux_append_output(ctx, buf);
 
-  snprintf(output_path, sizeof(output_path), "%s/%s-%s-%s.tar",
+  snprintf(output_path, sizeof(output_path), "%s/%s-%s-%s.tar.gz",
            ctx->output_dir, ctx->pkg.pkg_name, ctx->pkg.version, arch_name);
 
-  if (termux_create_tar(output_path, ctx->pkg.pkg_name, ctx->pkg.version,
-                        arch_name, ctx->build_output) != 0) {
+  int ret = termux_collect_artifacts(prefix_dir, ctx->output_dir,
+                                      ctx->pkg.pkg_name, ctx->pkg.version, arch_name);
+  if (ret != 0) {
     snprintf(buf, sizeof(buf), "[ERROR] Failed to create tarball: %s\n", output_path);
     termux_append_output(ctx, buf);
     return -1;
@@ -198,6 +261,7 @@ static const struct termux_phase_dispatch phase_table[] = {
   { "apply-patches", termux_phase_apply_patches },
   { "configure", termux_phase_configure },
   { "make", termux_phase_make },
+  { "install", termux_phase_install },
   { "massage", termux_phase_massage },
   { "package", termux_phase_package },
   { NULL, NULL },
