@@ -22,4 +22,6 @@ int termux_collect_artifacts(const char *prefix_dir,
                              const char *version,
                              const char *arch_name);
 
+const char *termux_find_bash(void);
+
 #endif

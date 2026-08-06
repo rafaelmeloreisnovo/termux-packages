@@ -14,6 +14,34 @@ extern ssize_t termux_read_file(const char *path, char *buf, size_t buflen);
 extern int termux_execve_capture(const char *path, char *const argv[], char *const envp[],
                                   char *output_buf, size_t output_size, size_t *output_len);
 
+const char *termux_find_bash(void) {
+  // Try $PREFIX/bin/bash first (Termux environment)
+  const char *prefix = getenv("PREFIX");
+  if (prefix) {
+    static char bash_path[512];
+    snprintf(bash_path, sizeof(bash_path), "%s/bin/bash", prefix);
+    if (access(bash_path, X_OK) == 0) {
+      return bash_path;
+    }
+  }
+
+  // Fallback to system locations
+  static const char *candidates[] = {
+    "/data/data/com.termux/files/usr/bin/bash",  // Termux standard path
+    "/bin/bash",                                   // Linux standard
+    "/usr/bin/bash",                               // Some systems
+  };
+
+  for (size_t i = 0; i < sizeof(candidates) / sizeof(candidates[0]); i++) {
+    if (access(candidates[i], X_OK) == 0) {
+      return candidates[i];
+    }
+  }
+
+  // Last resort: assume /bin/bash exists (or will fail with clear error)
+  return "/bin/bash";
+}
+
 static void termux_make_absolute_path(const char *path, char *abs_path, size_t max_len) {
   if (path[0] == '/') {
     strncpy(abs_path, path, max_len - 1);
@@ -46,10 +74,11 @@ int termux_exec_configure(struct termux_build_context *ctx,
            "cd '%s' && if [ -x ./configure ]; then ./configure --prefix='%s' 2>&1; else echo 'No configure script'; fi",
            abs_source, abs_build);
 
-  char *argv[] = { "/bin/bash", "-c", configure_cmd, NULL };
+  const char *bash_path = termux_find_bash();
+  char *argv[] = { (char *)bash_path, "-c", configure_cmd, NULL };
   char output[8192];
   size_t output_len = 0;
-  int ret = termux_execve_capture("/bin/bash", argv, NULL, output, sizeof(output), &output_len);
+  int ret = termux_execve_capture(bash_path, argv, NULL, output, sizeof(output), &output_len);
 
   if (output_len > 0 && ctx->output_pos + output_len + 32 < ctx->output_size) {
     char buf[512];
@@ -82,10 +111,11 @@ int termux_exec_make(struct termux_build_context *ctx,
            "cd '%s' && export PATH=/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin && make -j%u 2>&1",
            abs_build, num_jobs);
 
-  char *argv[] = { "/bin/bash", "-c", make_cmd, NULL };
+  const char *bash_path = termux_find_bash();
+  char *argv[] = { (char *)bash_path, "-c", make_cmd, NULL };
   char output[16384];
   size_t output_len = 0;
-  int ret = termux_execve_capture("/bin/bash", argv, NULL, output, sizeof(output), &output_len);
+  int ret = termux_execve_capture(bash_path, argv, NULL, output, sizeof(output), &output_len);
 
   if (output_len > 0 && ctx->output_pos + output_len < ctx->output_size) {
     memcpy(ctx->build_output + ctx->output_pos, output, output_len);
@@ -112,10 +142,11 @@ int termux_exec_make_install(struct termux_build_context *ctx,
            "cd '%s' && export PATH=/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin && make install DESTDIR='%s' 2>&1",
            abs_build, abs_prefix);
 
-  char *argv[] = { "/bin/bash", "-c", install_cmd, NULL };
+  const char *bash_path = termux_find_bash();
+  char *argv[] = { (char *)bash_path, "-c", install_cmd, NULL };
   char output[16384];
   size_t output_len = 0;
-  int ret = termux_execve_capture("/bin/bash", argv, NULL, output, sizeof(output), &output_len);
+  int ret = termux_execve_capture(bash_path, argv, NULL, output, sizeof(output), &output_len);
 
   if (output_len > 0 && ctx->output_pos + output_len < ctx->output_size) {
     memcpy(ctx->build_output + ctx->output_pos, output, output_len);
@@ -149,9 +180,10 @@ int termux_collect_artifacts(const char *prefix_dir,
            "export PATH=/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin && cd '%s' && tar -czf '%s' . 2>&1",
            abs_prefix, tar_path);
 
-  char *argv[] = { "/bin/bash", "-c", tar_cmd, NULL };
+  const char *bash_path = termux_find_bash();
+  char *argv[] = { (char *)bash_path, "-c", tar_cmd, NULL };
   char output[4096];
   size_t output_len = 0;
 
-  return termux_execve_capture("/bin/bash", argv, NULL, output, sizeof(output), &output_len);
+  return termux_execve_capture(bash_path, argv, NULL, output, sizeof(output), &output_len);
 }

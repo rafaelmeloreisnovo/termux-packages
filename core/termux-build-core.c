@@ -150,10 +150,11 @@ static int termux_phase_get_source(struct termux_build_context *ctx) {
              "cp -r '%s'/* '%s/' 2>&1",
              fixture_path, build_path);
 
-    char *argv[] = { "/bin/bash", "-c", copy_cmd, NULL };
+    const char *bash_path = termux_find_bash();
+    char *argv[] = { (char *)bash_path, "-c", copy_cmd, NULL };
     char output[4096];
     size_t output_len = 0;
-    int ret = termux_execve_capture("/bin/bash", argv, NULL, output, sizeof(output), &output_len);
+    int ret = termux_execve_capture(bash_path, argv, NULL, output, sizeof(output), &output_len);
 
     if (ret == 0 && output_len > 0) {
       if (ctx->output_pos + output_len < ctx->output_size) {
@@ -319,10 +320,11 @@ static int termux_phase_verify_elf(struct termux_build_context *ctx) {
            extract_dir, ctx->output_dir, ctx->pkg.pkg_name, arch_name,
            extract_dir, extract_dir);
 
-  char *argv[] = { "/bin/bash", "-c", readelf_cmd, NULL };
+  const char *bash_path = termux_find_bash();
+  char *argv[] = { (char *)bash_path, "-c", readelf_cmd, NULL };
   char output[4096];
   size_t output_len = 0;
-  int ret = termux_execve_capture("/bin/bash", argv, NULL, output, sizeof(output), &output_len);
+  int ret = termux_execve_capture(bash_path, argv, NULL, output, sizeof(output), &output_len);
 
   if (output_len > 0 && ctx->output_pos + output_len < ctx->output_size) {
     memcpy(ctx->build_output + ctx->output_pos, output, output_len);
