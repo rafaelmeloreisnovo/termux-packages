@@ -1,0 +1,6 @@
+*.o
+*.a
+*.so
+termux-build-core
+manifest.bin
+build/
