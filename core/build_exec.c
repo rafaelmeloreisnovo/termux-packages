@@ -22,7 +22,7 @@ int termux_exec_configure(struct termux_build_context *ctx,
 
   char configure_cmd[1024];
   snprintf(configure_cmd, sizeof(configure_cmd),
-           "cd '%s' && ./configure --prefix='%s' 2>&1",
+           "cd '%s' && [ -x ./configure ] && ./configure --prefix='%s' 2>&1 || echo 'No configure script'",
            source_dir, build_dir);
 
   char *argv[] = { "/bin/bash", "-c", configure_cmd, NULL };
@@ -30,15 +30,13 @@ int termux_exec_configure(struct termux_build_context *ctx,
   size_t output_len = 0;
   int ret = termux_execve_capture("/bin/bash", argv, NULL, output, sizeof(output), &output_len);
 
-  if (output_len > 0) {
+  if (output_len > 0 && ctx->output_pos + output_len + 32 < ctx->output_size) {
     char buf[512];
     snprintf(buf, sizeof(buf), "[configure] Output (%zu bytes):\n", output_len);
-    if (ctx->output_pos + output_len + 32 < ctx->output_size) {
-      memcpy(ctx->build_output + ctx->output_pos, buf, strlen(buf));
-      ctx->output_pos += strlen(buf);
-      memcpy(ctx->build_output + ctx->output_pos, output, output_len);
-      ctx->output_pos += output_len;
-    }
+    memcpy(ctx->build_output + ctx->output_pos, buf, strlen(buf));
+    ctx->output_pos += strlen(buf);
+    memcpy(ctx->build_output + ctx->output_pos, output, output_len);
+    ctx->output_pos += output_len;
   }
 
   return ret;
@@ -56,7 +54,9 @@ int termux_exec_make(struct termux_build_context *ctx,
   }
 
   char make_cmd[512];
-  snprintf(make_cmd, sizeof(make_cmd), "cd '%s' && make -j%u 2>&1", build_dir, num_jobs);
+  snprintf(make_cmd, sizeof(make_cmd),
+           "cd '%s' && export PATH=/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin && make -j%u 2>&1",
+           build_dir, num_jobs);
 
   char *argv[] = { "/bin/bash", "-c", make_cmd, NULL };
   char output[16384];
@@ -80,7 +80,7 @@ int termux_exec_make_install(struct termux_build_context *ctx,
 
   char install_cmd[1024];
   snprintf(install_cmd, sizeof(install_cmd),
-           "cd '%s' && make install DESTDIR='%s' 2>&1",
+           "cd '%s' && export PATH=/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin && make install DESTDIR='%s' 2>&1",
            build_dir, prefix_dir);
 
   char *argv[] = { "/bin/bash", "-c", install_cmd, NULL };
@@ -105,18 +105,9 @@ int termux_collect_artifacts(const char *prefix_dir,
     return -1;
   }
 
-  char artifacts_dir[512];
-  snprintf(artifacts_dir, sizeof(artifacts_dir), "%s/artifacts", output_dir);
-
-  if (mkdir(artifacts_dir, 0755) != 0) {
-    if (errno != EEXIST) {
-      return -1;
-    }
-  }
-
   char tar_cmd[1024];
   snprintf(tar_cmd, sizeof(tar_cmd),
-           "cd '%s' && tar -czf '%s/%s-%s-%s.tar.gz' . 2>&1",
+           "export PATH=/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin && cd '%s' && tar -czf '%s/%s-%s-%s.tar.gz' . 2>&1",
            prefix_dir, output_dir, pkg_name, version, arch_name);
 
   char *argv[] = { "/bin/bash", "-c", tar_cmd, NULL };
