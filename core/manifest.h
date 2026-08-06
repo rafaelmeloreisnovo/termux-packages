@@ -89,6 +89,7 @@ struct termux_phase_dispatch {
 int termux_load_manifest(const char *path);
 void termux_unload_manifest(void);
 const struct termux_pkg_manifest *termux_find_package(const char *pkg_name);
+const struct termux_pkg_manifest *termux_find_package_by_arch(const char *pkg_name, uint8_t arch);
 uint32_t termux_get_manifest_size(void);
 const struct termux_pkg_manifest *termux_get_manifest_entry(uint32_t index);
 const char *termux_get_string(uint32_t offset);
