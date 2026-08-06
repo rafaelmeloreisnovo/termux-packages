@@ -8,10 +8,26 @@
 #include <fcntl.h>
 #include <dirent.h>
 #include <errno.h>
+#include <limits.h>
 
 extern ssize_t termux_read_file(const char *path, char *buf, size_t buflen);
 extern int termux_execve_capture(const char *path, char *const argv[], char *const envp[],
                                   char *output_buf, size_t output_size, size_t *output_len);
+
+static void termux_make_absolute_path(const char *path, char *abs_path, size_t max_len) {
+  if (path[0] == '/') {
+    strncpy(abs_path, path, max_len - 1);
+    abs_path[max_len - 1] = '\0';
+  } else {
+    char cwd[1024];
+    if (getcwd(cwd, sizeof(cwd)) == NULL) {
+      strncpy(abs_path, path, max_len - 1);
+      abs_path[max_len - 1] = '\0';
+      return;
+    }
+    snprintf(abs_path, max_len, "%s/%s", cwd, path);
+  }
+}
 
 int termux_exec_configure(struct termux_build_context *ctx,
                           const char *source_dir,
@@ -20,10 +36,15 @@ int termux_exec_configure(struct termux_build_context *ctx,
     return -1;
   }
 
+  char abs_source[512];
+  char abs_build[512];
+  termux_make_absolute_path(source_dir, abs_source, sizeof(abs_source));
+  termux_make_absolute_path(build_dir, abs_build, sizeof(abs_build));
+
   char configure_cmd[1024];
   snprintf(configure_cmd, sizeof(configure_cmd),
            "cd '%s' && [ -x ./configure ] && ./configure --prefix='%s' 2>&1 || echo 'No configure script'",
-           source_dir, build_dir);
+           abs_source, abs_build);
 
   char *argv[] = { "/bin/bash", "-c", configure_cmd, NULL };
   char output[8192];
@@ -53,10 +74,13 @@ int termux_exec_make(struct termux_build_context *ctx,
     num_jobs = 1;
   }
 
+  char abs_build[512];
+  termux_make_absolute_path(build_dir, abs_build, sizeof(abs_build));
+
   char make_cmd[512];
   snprintf(make_cmd, sizeof(make_cmd),
            "cd '%s' && export PATH=/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin && make -j%u 2>&1",
-           build_dir, num_jobs);
+           abs_build, num_jobs);
 
   char *argv[] = { "/bin/bash", "-c", make_cmd, NULL };
   char output[16384];
@@ -78,10 +102,15 @@ int termux_exec_make_install(struct termux_build_context *ctx,
     return -1;
   }
 
+  char abs_build[512];
+  char abs_prefix[512];
+  termux_make_absolute_path(build_dir, abs_build, sizeof(abs_build));
+  termux_make_absolute_path(prefix_dir, abs_prefix, sizeof(abs_prefix));
+
   char install_cmd[1024];
   snprintf(install_cmd, sizeof(install_cmd),
            "cd '%s' && export PATH=/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin && make install DESTDIR='%s' 2>&1",
-           build_dir, prefix_dir);
+           abs_build, abs_prefix);
 
   char *argv[] = { "/bin/bash", "-c", install_cmd, NULL };
   char output[16384];
@@ -105,10 +134,20 @@ int termux_collect_artifacts(const char *prefix_dir,
     return -1;
   }
 
-  char tar_cmd[1024];
+  char abs_prefix[512];
+  char abs_output[512];
+  termux_make_absolute_path(prefix_dir, abs_prefix, sizeof(abs_prefix));
+  termux_make_absolute_path(output_dir, abs_output, sizeof(abs_output));
+
+  char tar_path[1024];
+  char tar_cmd[2048];
+
+  snprintf(tar_path, sizeof(tar_path), "%s/%s-%s-%s.tar.gz",
+           abs_output, pkg_name, version, arch_name);
+
   snprintf(tar_cmd, sizeof(tar_cmd),
-           "export PATH=/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin && cd '%s' && tar -czf '%s/%s-%s-%s.tar.gz' . 2>&1",
-           prefix_dir, output_dir, pkg_name, version, arch_name);
+           "export PATH=/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin && cd '%s' && tar -czf '%s' . 2>&1",
+           abs_prefix, tar_path);
 
   char *argv[] = { "/bin/bash", "-c", tar_cmd, NULL };
   char output[4096];
