@@ -217,10 +217,10 @@ static int termux_phase_make(struct termux_build_context *ctx) {
 
   snprintf(build_dir, sizeof(build_dir), "%s/build-%s", ctx->output_dir, ctx->pkg.pkg_name);
 
-  snprintf(buf, sizeof(buf), "[make] Building %s\n", ctx->pkg.pkg_name);
+  snprintf(buf, sizeof(buf), "[make] Building %s (jobs=%u)\n", ctx->pkg.pkg_name, ctx->max_jobs);
   termux_append_output(ctx, buf);
 
-  int ret = termux_exec_make(ctx, build_dir, 4);
+  int ret = termux_exec_make(ctx, build_dir, ctx->max_jobs);
   if (ret != 0) {
     snprintf(buf, sizeof(buf), "[ERROR] make failed with code %d\n", ret);
     termux_append_output(ctx, buf);
@@ -523,7 +523,22 @@ int main(int argc, char *const argv[]) {
   // Override package context with manifest data
   memcpy(&ctx->pkg, manifest_pkg, sizeof(struct termux_pkg_manifest));
 
-  printf("Building %s for %s (API %u)\n", ctx->pkg.pkg_name, arch_name, ctx->pkg.api_level);
+  // Apply bounded jobs policy per architecture
+  // ARM32: conservative limits (high probability of OOM/thermal issues)
+  // ARM64: moderate limits
+  // x86: higher limits (usually runs on desktop)
+  if (ctx->pkg.arch == TERMUX_ARCH_ARM) {
+    // ARM32: start with 1 job, allow up to 2
+    ctx->max_jobs = (max_jobs == 1) ? 1 : (max_jobs > 2 ? 2 : max_jobs);
+  } else if (ctx->pkg.arch == TERMUX_ARCH_AARCH64) {
+    // ARM64: start with 2 jobs, allow up to 4
+    ctx->max_jobs = (max_jobs < 2) ? 2 : (max_jobs > 4 ? 4 : max_jobs);
+  } else {
+    // x86_64, i686: respect user request (up to max)
+    ctx->max_jobs = max_jobs;
+  }
+
+  printf("Building %s for %s (API %u) with max %u jobs\n", ctx->pkg.pkg_name, arch_name, ctx->pkg.api_level, ctx->max_jobs);
   printf("Manifest: %s\n", manifest_path);
   printf("Output: %s\n\n", output_dir);
 
