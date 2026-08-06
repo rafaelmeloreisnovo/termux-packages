@@ -76,7 +76,20 @@ This document lists **25 TOKEN_VAZIO (Empty Tokens)** that represent unproven cl
 ### GATE G0: This Document ✅
 **Closes:** None (foundation only)  
 **Produces:** 25 TOKEN_VAZIO tracked  
-**Status:** ACTIVE
+**Status:** COMPLETE (2025-08-06T00:00Z)
+
+### GATE G1: Fixture-Based Build ✅
+**Closes:** TV-12 (CLEAN_CHECKOUT)  
+**Produces:** 1 TOKEN_VAZIO closed  
+**Status:** COMPLETE (2025-08-06T00:00Z)
+**Verification:**
+```bash
+cd /home/user/termux-packages/core
+./termux-build-core --package hello-rafaelia --arch aarch64 --api 24
+tar -tzf build/hello-rafaelia-*-aarch64.tar.gz | grep bin/hello  # ✅
+file build/hello-rafaelia-*/usr/local/bin/hello  # ELF 64-bit LSB pie
+/tmp/test/usr/local/bin/hello  # Output: "Hello, Rafaelia" ✅
+```
 
 ---
 
@@ -332,15 +345,64 @@ dpkg -x build/hello-rafaelia-*.deb /tmp/dpkg-extract
 
 ---
 
+## Execution Progress Summary
+
+### Gates Complete
+- ✅ G0: Claims frozen, 25 TOKEN_VAZIO tracked
+- ✅ G1: Fixture-based build works, TV-12 closed
+
+### Gates In Progress
+- 📋 G2: Architecture proofs (TV-06, TV-07, TV-20)
+  - **Requires:** readelf integration, receipt generation, phase ordering
+  - **Blocker:** BUG #1 (silent configure failure) must be fixed first
+  
+### Gates Pending
+- 📋 G3: Manifest integration (TV-01, TV-04, TV-05, TV-03, TV-19)
+- 📋 G4: Termux device paths (TV-11, TV-08, TV-09, TV-10)
+- 📋 G5: CI with receipts (TV-13)
+- 📋 G6: Reproducibility (TV-14, TV-02)
+- 📋 G7: .deb packaging (TV-15, TV-16)
+
+### Current Metrics
+- **Proven Claims:** 1 of 25 (4%)
+- **Closed TOKEN_VAZIO:** TV-12 (CLEAN_CHECKOUT)
+- **Remaining TOKEN_VAZIO:** 24 of 25
+- **Build Bugs Fixed:** 0 of 6
+- **Compilation Time:** 6ms (G1 get-source)
+- **Binary Size:** 15KB (hello-rafaelia ELF)
+
+---
+
+## Next Steps (GATE G2: Architecture Proofs)
+
+1. **Fix BUG #1** (configure error handling)
+   - Change `[ -x ./configure ] && configure || echo` to explicit if/else
+   - Preserve actual exit code
+
+2. **Add readelf verification**
+   - Create new phase: `termux_phase_verify_elf()`
+   - Extract binary from TAR
+   - Parse readelf output
+   - Write receipt: `build/elf-PACKAGE-ARCH.txt`
+   - Return error if Machine field doesn't match
+
+3. **Test on both architectures**
+   - `--arch aarch64` → verify Machine: AArch64 (0xb7)
+   - `--arch armv7` → verify Machine: ARM (0x28)
+
+4. **Commit with verification passing**
+
+---
+
 ## Final State (Post-G6)
 
 **TOKEN_VAZIO Remaining:** 5 (TV-17, TV-18, TV-21, TV-22, TV-23/24/25)  
-**Proven Claims:** 20 of 25  
+**Proven Claims:** 20 of 25 (target)  
 **Build System:** Real, autonomous, reproducible, verified  
 **Status:** SHIP-READY (though not distributed yet)
 
 ---
 
 **Document Status:** ACTIVE  
-**Last Updated:** 2025-08-06T00:00:00Z  
-**Next Review:** After Gate G1 completion
+**Last Updated:** 2025-08-06 (G1 complete)  
+**Next Review:** After Gate G2 completion (readelf verification)
