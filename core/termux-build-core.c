@@ -1,4 +1,7 @@
 #include "manifest.h"
+#include "friction_analyzer.h"
+#include "checkpoint.h"
+#include "parallel_jobs.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -208,10 +211,15 @@ int termux_execute_build(struct termux_build_context *ctx) {
 
   for (size_t i = 0; phase_table[i].phase_name; i++) {
     char msg[256];
+
+    termux_metric_phase_start(phase_table[i].phase_name);
+
     snprintf(msg, sizeof(msg), "=== %s ===\n", phase_table[i].phase_name);
     termux_append_output(ctx, msg);
 
     int ret = phase_table[i].handler(ctx);
+    termux_metric_phase_end(phase_table[i].phase_name, ret);
+
     if (ret != 0) {
       snprintf(msg, sizeof(msg), "ERROR: %s failed with code %d\n",
                phase_table[i].phase_name, ret);
@@ -227,9 +235,18 @@ int termux_execute_build(struct termux_build_context *ctx) {
 }
 
 static void print_usage(const char *prog) {
-  fprintf(stderr, "Usage: %s --manifest <manifest.bin> --package <name> --arch <arch> --api <level> [--output <dir>]\n", prog);
-  fprintf(stderr, "Architectures: aarch64, arm, x86_64, i686\n");
-  fprintf(stderr, "API levels: 21-34\n");
+  fprintf(stderr, "Usage: %s --manifest <manifest.bin> --package <name> --arch <arch> --api <level> [options]\n", prog);
+  fprintf(stderr, "Required:\n");
+  fprintf(stderr, "  --manifest <path>     Binary manifest file\n");
+  fprintf(stderr, "  --package <name>      Package name\n");
+  fprintf(stderr, "  --arch <arch>         Architecture: aarch64, arm, x86_64, i686\n");
+  fprintf(stderr, "  --api <level>         API level: 21-34\n");
+  fprintf(stderr, "Options:\n");
+  fprintf(stderr, "  --output <dir>        Output directory (default: ./build)\n");
+  fprintf(stderr, "  --metrics <file>      Save friction analysis report\n");
+  fprintf(stderr, "  --checkpoint <file>   Save checkpoint for resumable builds\n");
+  fprintf(stderr, "  --resume <file>       Resume from checkpoint file\n");
+  fprintf(stderr, "  --jobs <num>          Parallel jobs (1-8, default: 1)\n");
 }
 
 int main(int argc, char *const argv[]) {
@@ -242,6 +259,10 @@ int main(int argc, char *const argv[]) {
   const char *package_name = NULL;
   const char *arch_name = NULL;
   const char *output_dir = "./build";
+  const char *metrics_file = NULL;
+  const char *checkpoint_file = NULL;
+  const char *resume_file = NULL;
+  uint8_t max_jobs = 1;
 
   for (int i = 1; i < argc; i++) {
     if (strcmp(argv[i], "--manifest") == 0 && i + 1 < argc) {
@@ -254,6 +275,15 @@ int main(int argc, char *const argv[]) {
       ctx->pkg.api_level = (uint8_t)atoi(argv[++i]);
     } else if (strcmp(argv[i], "--output") == 0 && i + 1 < argc) {
       output_dir = argv[++i];
+    } else if (strcmp(argv[i], "--metrics") == 0 && i + 1 < argc) {
+      metrics_file = argv[++i];
+    } else if (strcmp(argv[i], "--checkpoint") == 0 && i + 1 < argc) {
+      checkpoint_file = argv[++i];
+    } else if (strcmp(argv[i], "--resume") == 0 && i + 1 < argc) {
+      resume_file = argv[++i];
+    } else if (strcmp(argv[i], "--jobs") == 0 && i + 1 < argc) {
+      int jobs = atoi(argv[++i]);
+      max_jobs = jobs > TERMUX_MAX_JOBS ? TERMUX_MAX_JOBS : (uint8_t)jobs;
     }
   }
 
@@ -301,6 +331,20 @@ int main(int argc, char *const argv[]) {
     printf("\n[SUCCESS] Build completed\n");
   } else {
     printf("\n[FAILED] Build failed with code %d\n", ret);
+  }
+
+  termux_print_metrics_summary();
+
+  if (metrics_file) {
+    if (termux_write_metrics_report(metrics_file) == 0) {
+      printf("Friction metrics saved to: %s\n", metrics_file);
+    }
+  }
+
+  if (checkpoint_file && ret == 0) {
+    if (termux_checkpoint_save(checkpoint_file, ctx, TERMUX_MAX_PHASES - 1) == 0) {
+      printf("Checkpoint saved to: %s\n", checkpoint_file);
+    }
   }
 
   return ret;
