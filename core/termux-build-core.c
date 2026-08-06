@@ -11,248 +11,185 @@
 #include <sys/stat.h>
 #include <fcntl.h>
 
-extern ssize_t termux_read_file(const char *path, char *buf, size_t buflen);
 extern ssize_t termux_write_file(const char *path, const char *buf, size_t buflen);
-extern ssize_t termux_append_file(const char *path, const char *buf, size_t buflen);
-extern int termux_execve_capture(const char *path, char *const argv[], char *const envp[],
-                                  char *output_buf, size_t output_size, size_t *output_len);
-extern pid_t termux_spawn_job(const char *path, char *const argv[], char *const envp[]);
-extern int termux_wait_job(pid_t pid);
-extern int termux_path_exists(const char *path);
-extern int termux_file_is_readable(const char *path);
 extern int termux_dir_create(const char *path);
 extern int termux_dir_create_recursive(const char *path);
-extern int termux_create_tar(const char *output_path, const char *pkg_name,
-                             const char *version, const char *arch,
-                             const char *build_output);
 
 static const struct termux_arch_flags arch_flags[] = {
-  {
-    .arch = TERMUX_ARCH_AARCH64,
-    .arch_name = "aarch64",
-    .llvm_target = "aarch64-linux-android",
-    .gnu_target = "aarch64-linux-gnu",
-    .cflags = "-march=armv8-a -O3",
-    .ldflags = "-march=armv8-a"
-  },
-  {
-    .arch = TERMUX_ARCH_ARM,
-    .arch_name = "arm",
-    .llvm_target = "armv7a-linux-android",
-    .gnu_target = "arm-linux-gnueabihf",
-    .cflags = "-march=armv7-a -mfpu=neon -O3",
-    .ldflags = "-march=armv7-a -mfpu=neon"
-  },
-  {
-    .arch = TERMUX_ARCH_X86_64,
-    .arch_name = "x86_64",
-    .llvm_target = "x86_64-linux-android",
-    .gnu_target = "x86_64-linux-gnu",
-    .cflags = "-march=x86-64 -O3",
-    .ldflags = "-march=x86-64"
-  },
-  {
-    .arch = TERMUX_ARCH_I686,
-    .arch_name = "i686",
-    .llvm_target = "i686-linux-android",
-    .gnu_target = "i686-linux-gnu",
-    .cflags = "-march=i686 -O2",
-    .ldflags = "-march=i686"
-  },
+  { TERMUX_ARCH_AARCH64, "aarch64", "aarch64-linux-android", "aarch64-linux-gnu", "-march=armv8-a -O3", "-march=armv8-a" },
+  { TERMUX_ARCH_ARM, "arm", "armv7a-linux-android", "arm-linux-gnueabihf", "-march=armv7-a -mfpu=neon -O3", "-march=armv7-a -mfpu=neon" },
+  { TERMUX_ARCH_X86_64, "x86_64", "x86_64-linux-android", "x86_64-linux-gnu", "-march=x86-64 -O3", "-march=x86-64" },
+  { TERMUX_ARCH_I686, "i686", "i686-linux-android", "i686-linux-gnu", "-march=i686 -O2", "-march=i686" },
 };
 
-static const struct termux_lang_toolchain lang_toolchains[] __attribute__((unused)) = {
-  { "c", "gcc", "g++", "none" },
-  { "cpp", "gcc", "g++", "none" },
-  { "go", "gcc", "g++", "golang" },
-  { "rust", "rustc", "rustc", "rust" },
-  { "python", "python3", "python3", "python" },
-};
+static struct termux_build_context global_build_ctx;
+
+static const struct termux_arch_flags *termux_arch_by_id(uint8_t arch) {
+  for (size_t i = 0; i < sizeof(arch_flags) / sizeof(arch_flags[0]); i++) {
+    if (arch_flags[i].arch == arch) return &arch_flags[i];
+  }
+  return NULL;
+}
+
+static int termux_arch_from_name(const char *name, uint8_t *out) {
+  if (!name || !out) return -1;
+  for (size_t i = 0; i < sizeof(arch_flags) / sizeof(arch_flags[0]); i++) {
+    if (strcmp(name, arch_flags[i].arch_name) == 0) {
+      *out = arch_flags[i].arch;
+      return 0;
+    }
+  }
+  return -1;
+}
 
 static int termux_append_output(struct termux_build_context *ctx, const char *msg) {
-  if (!msg) return 0;
-
-  size_t msg_len = strlen(msg);
-  if (ctx->output_pos + msg_len >= ctx->output_size) {
-    return -1;
-  }
-
+  if (!ctx || !msg) return -1;
+  const size_t msg_len = strlen(msg);
+  if (ctx->output_pos + msg_len >= ctx->output_size) return -1;
   memcpy(ctx->build_output + ctx->output_pos, msg, msg_len);
-  ctx->output_pos += msg_len;
+  ctx->output_pos += (uint32_t)msg_len;
+  ctx->build_output[ctx->output_pos] = '\0';
   return 0;
 }
 
 static int termux_phase_setup_vars(struct termux_build_context *ctx) {
-  char buf[512];
-  const struct termux_arch_flags *flags = NULL;
+  const struct termux_arch_flags *flags = termux_arch_by_id(ctx->pkg.arch);
+  if (!flags) return -1;
 
-  for (size_t i = 0; i < sizeof(arch_flags) / sizeof(arch_flags[0]); i++) {
-    if (arch_flags[i].arch == ctx->pkg.arch) {
-      flags = &arch_flags[i];
-      break;
-    }
-  }
-
-  if (!flags) {
-    return -1;
-  }
-
-  snprintf(buf, sizeof(buf), "[setup-vars] pkg=%s arch=%s api=%u\n",
-           ctx->pkg.pkg_name, flags->arch_name, ctx->pkg.api_level);
-  termux_append_output(ctx, buf);
-
-  snprintf(buf, sizeof(buf), "export TERMUX_ARCH=%s\n", flags->arch_name);
-  termux_append_output(ctx, buf);
-
-  snprintf(buf, sizeof(buf), "export TERMUX_HOST_PLATFORM=%s\n", flags->llvm_target);
-  termux_append_output(ctx, buf);
-
-  snprintf(buf, sizeof(buf), "export TERMUX_PKG_API_LEVEL=%u\n", ctx->pkg.api_level);
-  termux_append_output(ctx, buf);
-
-  return 0;
+  char buf[1024];
+  snprintf(buf, sizeof(buf),
+           "[setup-vars] pkg=%s version=%s arch=%s api=%u jobs=%u\n"
+           "TERMUX_HOST_PLATFORM=%s\nCFLAGS=%s\nLDFLAGS=%s\n",
+           ctx->pkg.pkg_name, ctx->pkg.version, flags->arch_name,
+           ctx->pkg.api_level, ctx->num_jobs, flags->llvm_target,
+           flags->cflags, flags->ldflags);
+  return termux_append_output(ctx, buf);
 }
 
 static int termux_phase_get_source(struct termux_build_context *ctx) {
-  char buf[512];
+  struct stat st;
+  if (stat(ctx->source_dir, &st) != 0 || !S_ISDIR(st.st_mode)) {
+    char buf[1024];
+    snprintf(buf, sizeof(buf),
+             "[ERROR] TOKEN_VAZIO_SOURCE_DIR_NOT_MATERIALIZED path=%s\n",
+             ctx->source_dir);
+    termux_append_output(ctx, buf);
+    return 72;
+  }
 
-  snprintf(buf, sizeof(buf), "[get-source] Fetching %s-%s\n",
-           ctx->pkg.pkg_name, ctx->pkg.version);
-  termux_append_output(ctx, buf);
-
-  return 0;
+  const char *source_url = termux_get_string(ctx->pkg.source_url_offset);
+  char buf[1536];
+  snprintf(buf, sizeof(buf),
+           "[get-source] mode=PREMATERIALIZED path=%s manifest_url=%s\n",
+           ctx->source_dir,
+           source_url && source_url[0] ? source_url : "TOKEN_VAZIO_SOURCE_URL");
+  return termux_append_output(ctx, buf);
 }
 
 static int termux_phase_apply_patches(struct termux_build_context *ctx) {
-  char buf[512];
-
-  snprintf(buf, sizeof(buf), "[apply-patches] Processing patches for %s\n",
-           ctx->pkg.pkg_name);
-  termux_append_output(ctx, buf);
-
-  return 0;
+  const char *patches = termux_get_string(ctx->pkg.patches_offset);
+  char buf[1024];
+  snprintf(buf, sizeof(buf),
+           "[apply-patches] state=%s descriptor=%s\n",
+           patches && patches[0] ? "TOKEN_VAZIO_PATCH_EXECUTION" : "NO_PATCHES_DECLARED",
+           patches && patches[0] ? patches : "none");
+  if (termux_append_output(ctx, buf) != 0) return -1;
+  return patches && patches[0] ? 73 : 0;
 }
 
 static int termux_phase_configure(struct termux_build_context *ctx) {
-  char buf[512];
   char build_dir[512];
-
-  snprintf(build_dir, sizeof(build_dir), "%s/build-%s", ctx->output_dir, ctx->pkg.pkg_name);
-
-  snprintf(buf, sizeof(buf), "[configure] Configuring %s-%s\n",
-           ctx->pkg.pkg_name, ctx->pkg.version);
-  termux_append_output(ctx, buf);
-
-  if (termux_dir_create(build_dir) != 0) {
-    snprintf(buf, sizeof(buf), "[ERROR] Failed to create build directory: %s\n", build_dir);
-    termux_append_output(ctx, buf);
+  if (snprintf(build_dir, sizeof(build_dir), "%s/build-%s",
+               ctx->output_dir, ctx->pkg.pkg_name) >= (int)sizeof(build_dir)) {
     return -1;
   }
+  if (termux_dir_create_recursive(build_dir) != 0) return -1;
 
-  int ret = termux_exec_configure(ctx, build_dir, build_dir);
+  char buf[1024];
+  snprintf(buf, sizeof(buf), "[configure] source=%s build=%s\n",
+           ctx->source_dir, build_dir);
+  if (termux_append_output(ctx, buf) != 0) return -1;
+
+  const int ret = termux_exec_configure(ctx, ctx->source_dir, build_dir);
   if (ret != 0) {
-    snprintf(buf, sizeof(buf), "[ERROR] configure failed with code %d\n", ret);
-    termux_append_output(ctx, buf);
-    return ret;
-  }
-
-  snprintf(buf, sizeof(buf), "[OK] configure succeeded\n");
-  termux_append_output(ctx, buf);
-  return 0;
-}
-
-static int termux_phase_make(struct termux_build_context *ctx) {
-  char buf[512];
-  char build_dir[512];
-
-  snprintf(build_dir, sizeof(build_dir), "%s/build-%s", ctx->output_dir, ctx->pkg.pkg_name);
-
-  snprintf(buf, sizeof(buf), "[make] Building %s\n", ctx->pkg.pkg_name);
-  termux_append_output(ctx, buf);
-
-  int ret = termux_exec_make(ctx, build_dir, 4);
-  if (ret != 0) {
-    snprintf(buf, sizeof(buf), "[ERROR] make failed with code %d\n", ret);
-    termux_append_output(ctx, buf);
-    return ret;
-  }
-
-  snprintf(buf, sizeof(buf), "[OK] make succeeded\n");
-  termux_append_output(ctx, buf);
-  return 0;
-}
-
-static int termux_phase_install(struct termux_build_context *ctx) {
-  char buf[512];
-  char build_dir[512];
-  char prefix_dir[512];
-
-  snprintf(build_dir, sizeof(build_dir), "%s/build-%s", ctx->output_dir, ctx->pkg.pkg_name);
-  snprintf(prefix_dir, sizeof(prefix_dir), "%s/prefix-%s", ctx->output_dir, ctx->pkg.pkg_name);
-
-  snprintf(buf, sizeof(buf), "[install] Installing %s to %s\n", ctx->pkg.pkg_name, prefix_dir);
-  termux_append_output(ctx, buf);
-
-  if (termux_dir_create(prefix_dir) != 0) {
-    snprintf(buf, sizeof(buf), "[ERROR] Failed to create prefix directory: %s\n", prefix_dir);
-    termux_append_output(ctx, buf);
-    return -1;
-  }
-
-  int ret = termux_exec_make_install(ctx, build_dir, prefix_dir);
-  if (ret != 0) {
-    snprintf(buf, sizeof(buf), "[ERROR] make install failed with code %d\n", ret);
-    termux_append_output(ctx, buf);
-  } else {
-    snprintf(buf, sizeof(buf), "[OK] make install succeeded\n");
+    snprintf(buf, sizeof(buf), "[ERROR] configure failed code=%d\n", ret);
     termux_append_output(ctx, buf);
   }
-
   return ret;
 }
 
-static int termux_phase_massage(struct termux_build_context *ctx) {
-  char buf[512];
+static int termux_select_make_dir(struct termux_build_context *ctx,
+                                  char *selected,
+                                  size_t selected_size) {
+  char build_dir[512];
+  char path[1024];
+  struct stat st;
 
-  snprintf(buf, sizeof(buf), "[massage] Post-processing %s\n", ctx->pkg.pkg_name);
-  termux_append_output(ctx, buf);
-
-  return 0;
-}
-
-static int termux_phase_package(struct termux_build_context *ctx) {
-  char buf[512];
-  char prefix_dir[512];
-  char output_path[512];
-  const char *arch_name = "unknown";
-
-  switch (ctx->pkg.arch) {
-    case TERMUX_ARCH_AARCH64: arch_name = "aarch64"; break;
-    case TERMUX_ARCH_ARM: arch_name = "arm"; break;
-    case TERMUX_ARCH_X86_64: arch_name = "x86_64"; break;
-    case TERMUX_ARCH_I686: arch_name = "i686"; break;
-  }
-
-  snprintf(prefix_dir, sizeof(prefix_dir), "%s/prefix-%s", ctx->output_dir, ctx->pkg.pkg_name);
-  snprintf(buf, sizeof(buf), "[package] Creating tarball for %s-%s from %s\n",
-           ctx->pkg.pkg_name, ctx->pkg.version, prefix_dir);
-  termux_append_output(ctx, buf);
-
-  snprintf(output_path, sizeof(output_path), "%s/%s-%s-%s.tar.gz",
-           ctx->output_dir, ctx->pkg.pkg_name, ctx->pkg.version, arch_name);
-
-  int ret = termux_collect_artifacts(prefix_dir, ctx->output_dir,
-                                      ctx->pkg.pkg_name, ctx->pkg.version, arch_name);
-  if (ret != 0) {
-    snprintf(buf, sizeof(buf), "[ERROR] Failed to create tarball: %s\n", output_path);
-    termux_append_output(ctx, buf);
+  if (snprintf(build_dir, sizeof(build_dir), "%s/build-%s",
+               ctx->output_dir, ctx->pkg.pkg_name) >= (int)sizeof(build_dir)) {
     return -1;
   }
 
-  snprintf(buf, sizeof(buf), "[SUCCESS] Tarball created: %s\n", output_path);
-  termux_append_output(ctx, buf);
+  if (snprintf(path, sizeof(path), "%s/Makefile", build_dir) >= (int)sizeof(path)) {
+    return -1;
+  }
+  if (stat(path, &st) == 0 && S_ISREG(st.st_mode)) {
+    return snprintf(selected, selected_size, "%s", build_dir) < (int)selected_size ? 0 : -1;
+  }
 
-  return 0;
+  if (snprintf(path, sizeof(path), "%s/Makefile", ctx->source_dir) >= (int)sizeof(path)) {
+    return -1;
+  }
+  if (stat(path, &st) == 0 && S_ISREG(st.st_mode)) {
+    return snprintf(selected, selected_size, "%s", ctx->source_dir) < (int)selected_size ? 0 : -1;
+  }
+
+  char buf[1200];
+  snprintf(buf, sizeof(buf),
+           "[ERROR] TOKEN_VAZIO_MAKEFILE_NOT_FOUND build=%s source=%s\n",
+           build_dir, ctx->source_dir);
+  termux_append_output(ctx, buf);
+  return 75;
+}
+
+static int termux_phase_make(struct termux_build_context *ctx) {
+  char make_dir[512];
+  const int selected = termux_select_make_dir(ctx, make_dir, sizeof(make_dir));
+  if (selected != 0) return selected;
+  return termux_exec_make(ctx, make_dir, ctx->num_jobs);
+}
+
+static int termux_phase_install(struct termux_build_context *ctx) {
+  char make_dir[512];
+  char prefix_dir[512];
+  const int selected = termux_select_make_dir(ctx, make_dir, sizeof(make_dir));
+  if (selected != 0) return selected;
+  if (snprintf(prefix_dir, sizeof(prefix_dir), "%s/prefix-%s",
+               ctx->output_dir, ctx->pkg.pkg_name) >= (int)sizeof(prefix_dir)) {
+    return -1;
+  }
+  if (termux_dir_create_recursive(prefix_dir) != 0) return -1;
+  return termux_exec_make_install(ctx, make_dir, prefix_dir);
+}
+
+static int termux_phase_massage(struct termux_build_context *ctx) {
+  return termux_append_output(ctx,
+      "[massage] state=TOKEN_VAZIO_POST_PROCESSING_NOT_IMPLEMENTED no_mutation=true\n");
+}
+
+static int termux_phase_package(struct termux_build_context *ctx) {
+  const struct termux_arch_flags *flags = termux_arch_by_id(ctx->pkg.arch);
+  if (!flags) return -1;
+
+  char prefix_dir[512];
+  if (snprintf(prefix_dir, sizeof(prefix_dir), "%s/prefix-%s",
+               ctx->output_dir, ctx->pkg.pkg_name) >= (int)sizeof(prefix_dir)) {
+    return -1;
+  }
+
+  return termux_collect_artifacts(prefix_dir, ctx->output_dir,
+                                  ctx->pkg.pkg_name, ctx->pkg.version,
+                                  flags->arch_name);
 }
 
 static const struct termux_phase_dispatch phase_table[] = {
@@ -267,66 +204,62 @@ static const struct termux_phase_dispatch phase_table[] = {
   { NULL, NULL },
 };
 
-static struct termux_build_context global_build_ctx;
-
-int termux_execute_build(struct termux_build_context *ctx) {
+static int termux_execute_build(struct termux_build_context *ctx) {
   ctx->output_pos = 0;
   ctx->exit_code = 0;
+  ctx->build_output[0] = '\0';
 
   for (size_t i = 0; phase_table[i].phase_name; i++) {
     char msg[256];
-
     termux_metric_phase_start(phase_table[i].phase_name);
-
     snprintf(msg, sizeof(msg), "=== %s ===\n", phase_table[i].phase_name);
-    termux_append_output(ctx, msg);
+    if (termux_append_output(ctx, msg) != 0) return -1;
 
-    int ret = phase_table[i].handler(ctx);
+    const int ret = phase_table[i].handler(ctx);
     termux_metric_phase_end(phase_table[i].phase_name, ret);
-
     if (ret != 0) {
-      snprintf(msg, sizeof(msg), "ERROR: %s failed with code %d\n",
+      snprintf(msg, sizeof(msg), "ERROR: %s failed code=%d\n",
                phase_table[i].phase_name, ret);
       termux_append_output(ctx, msg);
       ctx->exit_code = ret;
       return ret;
     }
-
-    termux_append_output(ctx, "\n");
+    termux_checkpoint_record_phase((uint32_t)i);
+    if (termux_append_output(ctx, "\n") != 0) return -1;
   }
-
   return 0;
 }
 
 static void print_usage(const char *prog) {
-  fprintf(stderr, "Usage: %s --manifest <manifest.bin> --package <name> --arch <arch> --api <level> [options]\n", prog);
-  fprintf(stderr, "Required:\n");
-  fprintf(stderr, "  --manifest <path>     Binary manifest file\n");
-  fprintf(stderr, "  --package <name>      Package name\n");
-  fprintf(stderr, "  --arch <arch>         Architecture: aarch64, arm, x86_64, i686\n");
-  fprintf(stderr, "  --api <level>         API level: 21-34\n");
-  fprintf(stderr, "Options:\n");
-  fprintf(stderr, "  --output <dir>        Output directory (default: ./build)\n");
-  fprintf(stderr, "  --metrics <file>      Save friction analysis report\n");
-  fprintf(stderr, "  --checkpoint <file>   Save checkpoint for resumable builds\n");
-  fprintf(stderr, "  --resume <file>       Resume from checkpoint file\n");
-  fprintf(stderr, "  --jobs <num>          Parallel jobs (1-8, default: 1)\n");
+  fprintf(stderr,
+      "Usage: %s --manifest <manifest.bin> --package <name> [options]\n"
+      "Options:\n"
+      "  --arch <aarch64|arm|x86_64|i686>  Override manifest default target\n"
+      "  --api <21-34>                     Override manifest default API\n"
+      "  --source-dir <path>                Pre-materialized source tree\n"
+      "  --output <dir>                     Output directory (default ./build)\n"
+      "  --jobs <1-8>                       Make jobs (default 1)\n"
+      "  --metrics <file>                   Save friction report\n"
+      "  --checkpoint <file>                Save final checkpoint\n"
+      "  --resume <file>                    Rejected until replay semantics are validated\n",
+      prog);
 }
 
 int main(int argc, char *const argv[]) {
   struct termux_build_context *ctx = &global_build_ctx;
   memset(ctx, 0, sizeof(*ctx));
   ctx->output_size = TERMUX_MAX_OUTPUT_SIZE;
-  ctx->pkg.api_level = 24;
+  ctx->num_jobs = 1;
 
   const char *manifest_path = NULL;
   const char *package_name = NULL;
   const char *arch_name = NULL;
+  const char *source_dir = NULL;
   const char *output_dir = "./build";
   const char *metrics_file = NULL;
   const char *checkpoint_file = NULL;
   const char *resume_file = NULL;
-  uint8_t max_jobs = 1;
+  int api_override = -1;
 
   for (int i = 1; i < argc; i++) {
     if (strcmp(argv[i], "--manifest") == 0 && i + 1 < argc) {
@@ -336,7 +269,9 @@ int main(int argc, char *const argv[]) {
     } else if (strcmp(argv[i], "--arch") == 0 && i + 1 < argc) {
       arch_name = argv[++i];
     } else if (strcmp(argv[i], "--api") == 0 && i + 1 < argc) {
-      ctx->pkg.api_level = (uint8_t)atoi(argv[++i]);
+      api_override = atoi(argv[++i]);
+    } else if (strcmp(argv[i], "--source-dir") == 0 && i + 1 < argc) {
+      source_dir = argv[++i];
     } else if (strcmp(argv[i], "--output") == 0 && i + 1 < argc) {
       output_dir = argv[++i];
     } else if (strcmp(argv[i], "--metrics") == 0 && i + 1 < argc) {
@@ -347,69 +282,109 @@ int main(int argc, char *const argv[]) {
       resume_file = argv[++i];
     } else if (strcmp(argv[i], "--jobs") == 0 && i + 1 < argc) {
       int jobs = atoi(argv[++i]);
-      max_jobs = jobs > TERMUX_MAX_JOBS ? TERMUX_MAX_JOBS : (uint8_t)jobs;
+      if (jobs < 1 || jobs > TERMUX_MAX_JOBS) {
+        fprintf(stderr, "Invalid jobs: %d\n", jobs);
+        return 2;
+      }
+      ctx->num_jobs = (uint8_t)jobs;
+    } else {
+      fprintf(stderr, "Unknown or incomplete option: %s\n", argv[i]);
+      print_usage(argv[0]);
+      return 2;
     }
   }
 
-  if (!manifest_path || !package_name || !arch_name) {
+  if (!manifest_path || !package_name) {
     print_usage(argv[0]);
-    return 1;
+    return 2;
   }
 
-  strncpy(ctx->pkg.pkg_name, package_name, TERMUX_PKG_NAME_LEN - 1);
-
-  if (strcmp(arch_name, "aarch64") == 0) {
-    ctx->pkg.arch = TERMUX_ARCH_AARCH64;
-  } else if (strcmp(arch_name, "arm") == 0) {
-    ctx->pkg.arch = TERMUX_ARCH_ARM;
-  } else if (strcmp(arch_name, "x86_64") == 0) {
-    ctx->pkg.arch = TERMUX_ARCH_X86_64;
-  } else if (strcmp(arch_name, "i686") == 0) {
-    ctx->pkg.arch = TERMUX_ARCH_I686;
-  } else {
-    fprintf(stderr, "Invalid architecture: %s\n", arch_name);
-    return 1;
+  if (resume_file) {
+    fprintf(stderr,
+            "TOKEN_VAZIO_RESUME_NOT_VALIDATED file=%s claim_allowed=false\n",
+            resume_file);
+    return 74;
   }
 
-  if (ctx->pkg.api_level < 21 || ctx->pkg.api_level > 34) {
-    fprintf(stderr, "Invalid API level: %u (range 21-34)\n", ctx->pkg.api_level);
-    return 1;
+  if (termux_load_manifest(manifest_path) != 0 ||
+      termux_validate_manifest() != 0) {
+    termux_unload_manifest();
+    return 3;
   }
 
-  printf("Building %s for %s (API %u)\n", ctx->pkg.pkg_name, arch_name, ctx->pkg.api_level);
-  printf("Manifest: %s\n", manifest_path);
-  printf("Output: %s\n\n", output_dir);
+  const struct termux_pkg_manifest *manifest_pkg = termux_find_package(package_name);
+  if (!manifest_pkg) {
+    fprintf(stderr, "Package not found in manifest: %s\n", package_name);
+    termux_unload_manifest();
+    return 4;
+  }
+  memcpy(&ctx->pkg, manifest_pkg, sizeof(ctx->pkg));
+  ctx->pkg.pkg_name[TERMUX_PKG_NAME_LEN - 1] = '\0';
+  ctx->pkg.version[TERMUX_PKG_VERSION_LEN - 1] = '\0';
 
-  strncpy(ctx->output_dir, output_dir, sizeof(ctx->output_dir) - 1);
+  if (arch_name) {
+    uint8_t arch = 0;
+    if (termux_arch_from_name(arch_name, &arch) != 0) {
+      fprintf(stderr, "Invalid architecture: %s\n", arch_name);
+      termux_unload_manifest();
+      return 5;
+    }
+    ctx->pkg.arch = arch;
+  }
+
+  if (api_override >= 0) {
+    if (api_override < 21 || api_override > 34) {
+      fprintf(stderr, "Invalid API level: %d\n", api_override);
+      termux_unload_manifest();
+      return 6;
+    }
+    ctx->pkg.api_level = (uint8_t)api_override;
+  }
+
+  if (snprintf(ctx->output_dir, sizeof(ctx->output_dir), "%s", output_dir) >=
+      (int)sizeof(ctx->output_dir)) {
+    termux_unload_manifest();
+    return 7;
+  }
+  if (source_dir) {
+    if (snprintf(ctx->source_dir, sizeof(ctx->source_dir), "%s", source_dir) >=
+        (int)sizeof(ctx->source_dir)) {
+      termux_unload_manifest();
+      return 7;
+    }
+  } else if (snprintf(ctx->source_dir, sizeof(ctx->source_dir), "%s/build-%s",
+                      output_dir, ctx->pkg.pkg_name) >= (int)sizeof(ctx->source_dir)) {
+    termux_unload_manifest();
+    return 7;
+  }
 
   if (termux_dir_create_recursive(output_dir) != 0) {
     fprintf(stderr, "Failed to create output directory: %s\n", output_dir);
-    return 1;
+    termux_unload_manifest();
+    return 8;
   }
 
-  int ret = termux_execute_build(ctx);
+  printf("manifest_gate=PASS package=%s version=%s arch=%u api=%u\n",
+         ctx->pkg.pkg_name, ctx->pkg.version, ctx->pkg.arch, ctx->pkg.api_level);
+  printf("source_mode=PREMATERIALIZED source_dir=%s\n", ctx->source_dir);
+  printf("claim_allowed=false release_allowed=false\n\n");
+
+  termux_reset_metrics();
+  termux_checkpoint_reset();
+  const int ret = termux_execute_build(ctx);
 
   printf("=== BUILD OUTPUT ===\n%s\n", ctx->build_output);
-
-  if (ret == 0) {
-    printf("\n[SUCCESS] Build completed\n");
-  } else {
-    printf("\n[FAILED] Build failed with code %d\n", ret);
-  }
-
+  printf(ret == 0 ? "[SUCCESS] Build completed\n" : "[FAILED] Build failed code=%d\n", ret);
   termux_print_metrics_summary();
 
-  if (metrics_file) {
-    if (termux_write_metrics_report(metrics_file) == 0) {
-      printf("Friction metrics saved to: %s\n", metrics_file);
-    }
+  if (metrics_file && termux_write_metrics_report(metrics_file) != 0) {
+    fprintf(stderr, "Failed to write metrics: %s\n", metrics_file);
+  }
+  if (checkpoint_file && ret == 0 &&
+      termux_checkpoint_save(checkpoint_file, ctx, TERMUX_MAX_PHASES - 1) != 0) {
+    fprintf(stderr, "Failed to save checkpoint: %s\n", checkpoint_file);
   }
 
-  if (checkpoint_file && ret == 0) {
-    if (termux_checkpoint_save(checkpoint_file, ctx, TERMUX_MAX_PHASES - 1) == 0) {
-      printf("Checkpoint saved to: %s\n", checkpoint_file);
-    }
-  }
-
+  termux_unload_manifest();
   return ret;
 }

@@ -66,12 +66,14 @@ struct termux_build_context {
   char env_vars[TERMUX_MAX_ENV_VARS][256];
   char build_args[TERMUX_MAX_BUILD_ARGS][256];
   char output_dir[512];
+  char source_dir[512];
   uint32_t output_pos;
   uint32_t output_size;
   uint32_t env_count;
   uint32_t arg_count;
   int job_pids[TERMUX_MAX_JOBS];
   uint8_t job_status[TERMUX_MAX_JOBS];
+  uint8_t num_jobs;
   int exit_code;
   uint8_t phase_flags;
 };
@@ -82,5 +84,14 @@ struct termux_phase_dispatch {
   const char *phase_name;
   termux_phase_fn handler;
 };
+
+int termux_load_manifest(const char *path);
+void termux_unload_manifest(void);
+const struct termux_pkg_manifest *termux_find_package(const char *pkg_name);
+uint32_t termux_get_manifest_size(void);
+const struct termux_pkg_manifest *termux_get_manifest_entry(uint32_t index);
+const char *termux_get_string(uint32_t offset);
+int termux_validate_manifest(void);
+void termux_print_manifest_stats(void);
 
 #endif
