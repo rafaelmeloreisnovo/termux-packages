@@ -105,7 +105,7 @@ static int termux_phase_configure(struct termux_build_context *ctx) {
   }
   if (termux_dir_create_recursive(build_dir) != 0) return -1;
 
-  char buf[1024];
+  char buf[2048];
   snprintf(buf, sizeof(buf), "[configure] source=%s build=%s\n",
            ctx->source_dir, build_dir);
   if (termux_append_output(ctx, buf) != 0) return -1;

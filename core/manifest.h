@@ -76,6 +76,7 @@ struct termux_build_context {
   uint8_t num_jobs;
   int exit_code;
   uint8_t phase_flags;
+  uint8_t max_jobs;  // Maximum parallel jobs for build
 };
 
 typedef int (*termux_phase_fn)(struct termux_build_context *);
