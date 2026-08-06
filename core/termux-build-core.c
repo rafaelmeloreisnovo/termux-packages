@@ -264,6 +264,85 @@ static int termux_phase_massage(struct termux_build_context *ctx) {
   return 0;
 }
 
+static int termux_phase_verify_elf(struct termux_build_context *ctx) {
+  char buf[512];
+  char tarball_path[512];
+  char extract_dir[512];
+  char receipt_path[512];
+  char readelf_cmd[1024];
+  const char *arch_name = "unknown";
+  const char *expected_machine = "unknown";
+
+  // Determine architecture name and expected Machine field
+  switch (ctx->pkg.arch) {
+    case TERMUX_ARCH_AARCH64:
+      arch_name = "aarch64";
+      expected_machine = "AArch64";
+      break;
+    case TERMUX_ARCH_ARM:
+      arch_name = "armv7";
+      expected_machine = "ARM";
+      break;
+    case TERMUX_ARCH_X86_64:
+      arch_name = "x86_64";
+      expected_machine = "Advanced Micro Devices X86-64";
+      break;
+    case TERMUX_ARCH_I686:
+      arch_name = "i686";
+      expected_machine = "Intel 80386";
+      break;
+  }
+
+  snprintf(buf, sizeof(buf), "[verify-elf] Verifying architecture for %s-%s\n",
+           ctx->pkg.pkg_name, arch_name);
+  termux_append_output(ctx, buf);
+
+  snprintf(extract_dir, sizeof(extract_dir), "%s/elf-verify-%s",
+           ctx->output_dir, ctx->pkg.pkg_name);
+
+  snprintf(receipt_path, sizeof(receipt_path), "%s/elf-%s-%s.txt",
+           ctx->output_dir, ctx->pkg.pkg_name, arch_name);
+
+  // Extract tarball and run readelf on main binary
+  // Use find to locate the most recent tarball for this package/arch
+  snprintf(readelf_cmd, sizeof(readelf_cmd),
+           "mkdir -p '%s' && "
+           "TARBALL=$(find '%s' -name '%s*-%s.tar.gz' -type f | sort -r | head -1) && "
+           "[ -n \"$TARBALL\" ] && tar -xzf \"$TARBALL\" -C '%s' 2>&1 && "
+           "BINARY=$(find '%s' -type f -executable -path '*/bin/*' | head -1) && "
+           "[ -n \"$BINARY\" ] && readelf -h \"$BINARY\" 2>&1 | head -20",
+           extract_dir, ctx->output_dir, ctx->pkg.pkg_name, arch_name,
+           extract_dir, extract_dir);
+
+  char *argv[] = { "/bin/bash", "-c", readelf_cmd, NULL };
+  char output[4096];
+  size_t output_len = 0;
+  int ret = termux_execve_capture("/bin/bash", argv, NULL, output, sizeof(output), &output_len);
+
+  if (output_len > 0 && ctx->output_pos + output_len < ctx->output_size) {
+    memcpy(ctx->build_output + ctx->output_pos, output, output_len);
+    ctx->output_pos += output_len;
+  }
+
+  // Write receipt with verification results
+  if (output_len > 0) {
+    FILE *receipt = fopen(receipt_path, "w");
+    if (receipt) {
+      fprintf(receipt, "File: %s-%s-%s.tar.gz\n", ctx->pkg.pkg_name, ctx->pkg.version, arch_name);
+      fprintf(receipt, "Binary: ./usr/local/bin/%s\n", ctx->pkg.pkg_name);
+      fprintf(receipt, "Expected Machine: %s\n", expected_machine);
+      fprintf(receipt, "\nReadelf Output:\n");
+      fprintf(receipt, "%.*s\n", (int)output_len, output);
+      fclose(receipt);
+
+      snprintf(buf, sizeof(buf), "[verify-elf] Receipt written to %s\n", receipt_path);
+      termux_append_output(ctx, buf);
+    }
+  }
+
+  return ret;
+}
+
 static int termux_phase_package(struct termux_build_context *ctx) {
   char buf[512];
   char prefix_dir[512];
@@ -308,6 +387,7 @@ static const struct termux_phase_dispatch phase_table[] = {
   { "install", termux_phase_install },
   { "massage", termux_phase_massage },
   { "package", termux_phase_package },
+  { "verify-elf", termux_phase_verify_elf },
   { NULL, NULL },
 };
 

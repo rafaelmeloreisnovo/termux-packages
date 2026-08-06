@@ -43,7 +43,7 @@ int termux_exec_configure(struct termux_build_context *ctx,
 
   char configure_cmd[1024];
   snprintf(configure_cmd, sizeof(configure_cmd),
-           "cd '%s' && [ -x ./configure ] && ./configure --prefix='%s' 2>&1 || echo 'No configure script'",
+           "cd '%s' && if [ -x ./configure ]; then ./configure --prefix='%s' 2>&1; else echo 'No configure script'; fi",
            abs_source, abs_build);
 
   char *argv[] = { "/bin/bash", "-c", configure_cmd, NULL };
