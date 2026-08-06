@@ -2,5 +2,7 @@
 *.a
 *.so
 termux-build-core
+test-manifest
+manifest-dumper
 manifest.bin
 build/
