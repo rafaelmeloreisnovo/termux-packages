@@ -19,6 +19,7 @@ TERMUX_MAX_DEPS = 16
 ARCH_MAP = {
     "aarch64": 0,
     "arm": 1,
+    "armv7": 1,  # armv7 is 32-bit ARM, maps to same value as arm
     "x86_64": 2,
     "i686": 3,
 }
@@ -27,7 +28,7 @@ class Package:
     def __init__(self, name):
         self.name = name
         self.version = ""
-        self.arch = 0
+        self.arch = 0  # Default to aarch64; override if TERMUX_PKG_ARCHITECTURE set
         self.api_level = 24
         self.flags = 0
         self.sha256 = b'\x00' * 32
@@ -35,9 +36,22 @@ class Package:
         self.source_url = ""
         self.patches = ""
         self.configure_args = ""
+        self.architectures = ["aarch64"]  # All supported architectures for this package
 
-    def to_bytes(self, string_pool_offset_fn):
-        dep_ids = list(range(len(self.deps))) + [0] * (TERMUX_MAX_DEPS - len(self.deps))
+    def to_bytes(self, string_pool_offset_fn, pkg_index_fn=None):
+        # Resolve dependency names to real package indices
+        dep_ids = []
+        for dep in self.deps:
+            dep_name = dep.split()[0]  # Handle "package >= version" syntax
+            if pkg_index_fn:
+                dep_id = pkg_index_fn(dep_name)
+            else:
+                dep_id = 0
+            dep_ids.append(dep_id)
+
+        # Pad with zeros
+        dep_ids += [0] * (TERMUX_MAX_DEPS - len(dep_ids))
+
         entry = struct.pack(
             '<64s32sBBH8IHH4I16H',
             self.name.encode().ljust(TERMUX_PKG_NAME_LEN, b'\x00'),
@@ -97,6 +111,12 @@ def parse_buildsh(build_sh_path):
     conf_match = re.search(r'TERMUX_PKG_EXTRA_CONFIGURE_ARGS=(["\']?)([^"\']+)\1', content)
     if conf_match:
         pkg.configure_args = conf_match.group(2)
+
+    # Extract architectures
+    arch_match = re.search(r'TERMUX_PKG_ARCHITECTURE=(["\']?)([^"\']+)\1', content)
+    if arch_match:
+        arch_str = arch_match.group(2)
+        pkg.architectures = [a.strip() for a in arch_str.split()]
 
     # Check flags
     if 'TERMUX_PKG_KEEP_STATIC_LIBS' in content:
@@ -166,6 +186,33 @@ def generate_manifest(packages_dir, output_path):
     packages = topological_sort(packages)
     print(f"Sorted {len(packages)} packages by dependency")
 
+    # Expand packages by architecture: create separate entry for each arch
+    expanded_packages = []
+    for pkg in packages:
+        for arch_name in pkg.architectures:
+            if arch_name not in ARCH_MAP:
+                print(f"Warning: Unknown architecture '{arch_name}' for {pkg.name}, skipping", file=sys.stderr)
+                continue
+            # Clone package with specific architecture
+            arch_pkg = Package(pkg.name)
+            arch_pkg.version = pkg.version
+            arch_pkg.arch = ARCH_MAP[arch_name]
+            arch_pkg.api_level = pkg.api_level
+            arch_pkg.flags = pkg.flags
+            arch_pkg.sha256 = pkg.sha256
+            arch_pkg.deps = pkg.deps
+            arch_pkg.source_url = pkg.source_url
+            arch_pkg.patches = pkg.patches
+            arch_pkg.configure_args = pkg.configure_args
+            arch_pkg.architectures = [arch_name]
+            expanded_packages.append(arch_pkg)
+
+    packages = expanded_packages
+    print(f"Expanded to {len(packages)} entries across all architectures")
+
+    # Build package name → index mapping for dependency resolution
+    pkg_index = {pkg.name: i for i, pkg in enumerate(packages)}
+
     # Build string pool
     string_pool = b""
     string_offsets = {}
@@ -195,8 +242,9 @@ def generate_manifest(packages_dir, output_path):
     # Write manifest
     try:
         with open(output_path, 'wb') as f:
-            # Write header
-            string_pool_offset = HEADER_SIZE + HEADER_SIZE + len(packages) * ENTRY_SIZE
+            # Write header: 5 uint32_t = 20 bytes, then string_pool_size = 4 bytes
+            # String pool starts after header (20) + string_pool_size field (4) + entries
+            string_pool_offset = HEADER_SIZE + 4 + len(packages) * ENTRY_SIZE
             header = struct.pack(
                 '<IIIII',
                 TERMUX_MANIFEST_MAGIC,
@@ -211,7 +259,10 @@ def generate_manifest(packages_dir, output_path):
             # Write package entries
             for i, pkg in enumerate(packages):
                 try:
-                    entry_data = pkg.to_bytes(lambda s: string_offsets.get(s, 0))
+                    entry_data = pkg.to_bytes(
+                        lambda s: string_offsets.get(s, 0),
+                        lambda dep_name: pkg_index.get(dep_name, 0)
+                    )
                     f.write(entry_data)
                 except Exception as e:
                     print(f"Error at package {i}: {pkg.name}", file=sys.stderr)

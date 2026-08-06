@@ -26,6 +26,11 @@ extern int termux_create_tar(const char *output_path, const char *pkg_name,
                              const char *version, const char *arch,
                              const char *build_output);
 
+// Manifest loading functions
+extern int termux_load_manifest(const char *path);
+extern const struct termux_pkg_manifest *termux_find_package(const char *pkg_name);
+extern const char *termux_get_string(uint32_t offset);
+
 static const struct termux_arch_flags arch_flags[] = {
   {
     .arch = TERMUX_ARCH_AARCH64,
@@ -499,6 +504,22 @@ int main(int argc, char *const argv[]) {
     fprintf(stderr, "Invalid API level: %u (range 21-34)\n", ctx->pkg.api_level);
     return 1;
   }
+
+  // Load and validate manifest
+  if (termux_load_manifest(manifest_path) != 0) {
+    fprintf(stderr, "Failed to load manifest: %s\n", manifest_path);
+    return 1;
+  }
+
+  // Find package in manifest
+  const struct termux_pkg_manifest *manifest_pkg = termux_find_package(package_name);
+  if (!manifest_pkg) {
+    fprintf(stderr, "Package not found in manifest: %s\n", package_name);
+    return 1;
+  }
+
+  // Override package context with manifest data
+  memcpy(&ctx->pkg, manifest_pkg, sizeof(struct termux_pkg_manifest));
 
   printf("Building %s for %s (API %u)\n", ctx->pkg.pkg_name, arch_name, ctx->pkg.api_level);
   printf("Manifest: %s\n", manifest_path);

@@ -14,7 +14,7 @@ DUMPER_OBJECTS := $(DUMPER_SOURCES:.c=.o)
 
 all: $(TARGETS)
 
-termux-build-core: termux-build-core.o sysexec.o package_writer.o elf_writer.o friction_analyzer.o checkpoint.o parallel_jobs.o build_exec.o
+termux-build-core: termux-build-core.o sysexec.o package_writer.o elf_writer.o friction_analyzer.o checkpoint.o parallel_jobs.o build_exec.o manifest_loader.o
 	$(CC) $(CFLAGS) $(LDFLAGS) -o $@ $^
 
 test-manifest: test_manifest.o manifest_loader.o
