@@ -48,12 +48,15 @@ jobs:
           make clean
           test ! -e manifest.bin
           make all
-          ./test-manifest
+          test -x termux-build-core
+          test -x test-manifest
+          test -x manifest-dumper
 
       - name: Emit gate receipt
         run: |
           printf '%s\n' \
             'MANIFEST_CI_GATE=PASS' \
             'CASES=5' \
+            'CLEAN_REBUILD=PASS' \
             'CLAIM_ALLOWED=false' \
             "COMMIT=${GITHUB_SHA}"
