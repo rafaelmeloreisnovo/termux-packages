@@ -65,14 +65,12 @@ int termux_exec_configure(struct termux_build_context *ctx,
   }
 
   char abs_source[512];
-  char abs_build[512];
   termux_make_absolute_path(source_dir, abs_source, sizeof(abs_source));
-  termux_make_absolute_path(build_dir, abs_build, sizeof(abs_build));
 
   char configure_cmd[1024];
   snprintf(configure_cmd, sizeof(configure_cmd),
-           "cd '%s' && if [ -x ./configure ]; then ./configure --prefix='%s' 2>&1; else echo 'No configure script'; fi",
-           abs_source, abs_build);
+           "cd '%s' && if [ -x ./configure ]; then ./configure --prefix=/usr 2>&1; else echo 'No configure script'; fi",
+           abs_source);
 
   const char *bash_path = termux_find_bash();
   char *argv[] = { (char *)bash_path, "-c", configure_cmd, NULL };
