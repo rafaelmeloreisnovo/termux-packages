@@ -28,12 +28,6 @@
 | **Configure prefix separation** | --prefix=/usr (not build_dir), DESTDIR used for staging | Cycle 2: Verify with actual autotools package |
 | **Directory organization** | source_dir ≠ build_dir ≠ destdir_staging ≠ logical_prefix (/usr) | Cycle 2: Test with complex package |
 
-### ⏳ IMPLEMENTED_UNTESTED (Cycle 1.5.5 TODO)
-
-| Claim | Work Needed | Status |
-|-------|---|---|
-| **STATUS.md normalization** | Consolidate contradictions, update date to 2026, one state per claim | THIS COMMIT |
-
 ### ❌ TOKEN_VAZIO (Not yet proven, blocking Cycle 2+)
 
 #### P0 (Blocking)
@@ -59,14 +53,12 @@
 
 ## Cycle 1.5 Closure Checklist
 
-### ✅ Completed (3/5)
+### ✅ Completed (5/5)
 1. ✅ ELF verification fail-closed (architecture enforcement)
 2. ✅ Composite manifest identity (architecture-aware lookup)
 3. ✅ Source requirement enforcement (no skip-success on missing source)
-
-### ⏳ In Progress (2/5)
 4. ✅ Directory separation (configure --prefix=/usr, not build_dir)
-5. 🔄 STATUS.md normalization (this file)
+5. ✅ STATUS.md normalization (honest state assessment, contradictions resolved)
 
 ---
 
@@ -118,4 +110,4 @@
 ---
 
 **Cycle 1.5 completion target:** All 5 gates closed before proceeding to Cycle 2.  
-**Current status:** 4/5 gates complete. Item 5 (this file update) finalizes the gate.
+**Current status:** ✅ 5/5 gates complete. Cycle 1.5 COMPLETE_LOCAL. Ready for Cycle 2 authorization.
