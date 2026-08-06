@@ -65,6 +65,7 @@ struct termux_build_context {
   char build_output[TERMUX_MAX_OUTPUT_SIZE];
   char env_vars[TERMUX_MAX_ENV_VARS][256];
   char build_args[TERMUX_MAX_BUILD_ARGS][256];
+  char output_dir[512];
   uint32_t output_pos;
   uint32_t output_size;
   uint32_t env_count;

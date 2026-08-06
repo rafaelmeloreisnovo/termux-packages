@@ -18,6 +18,9 @@ extern int termux_path_exists(const char *path);
 extern int termux_file_is_readable(const char *path);
 extern int termux_dir_create(const char *path);
 extern int termux_dir_create_recursive(const char *path);
+extern int termux_create_tar(const char *output_path, const char *pkg_name,
+                             const char *version, const char *arch,
+                             const char *build_output);
 
 static const struct termux_arch_flags arch_flags[] = {
   {
@@ -156,9 +159,31 @@ static int termux_phase_massage(struct termux_build_context *ctx) {
 
 static int termux_phase_package(struct termux_build_context *ctx) {
   char buf[512];
+  char output_path[512];
+  const char *arch_name = "unknown";
+
+  switch (ctx->pkg.arch) {
+    case TERMUX_ARCH_AARCH64: arch_name = "aarch64"; break;
+    case TERMUX_ARCH_ARM: arch_name = "arm"; break;
+    case TERMUX_ARCH_X86_64: arch_name = "x86_64"; break;
+    case TERMUX_ARCH_I686: arch_name = "i686"; break;
+  }
 
   snprintf(buf, sizeof(buf), "[package] Creating tarball for %s-%s\n",
            ctx->pkg.pkg_name, ctx->pkg.version);
+  termux_append_output(ctx, buf);
+
+  snprintf(output_path, sizeof(output_path), "%s/%s-%s-%s.tar",
+           ctx->output_dir, ctx->pkg.pkg_name, ctx->pkg.version, arch_name);
+
+  if (termux_create_tar(output_path, ctx->pkg.pkg_name, ctx->pkg.version,
+                        arch_name, ctx->build_output) != 0) {
+    snprintf(buf, sizeof(buf), "[ERROR] Failed to create tarball: %s\n", output_path);
+    termux_append_output(ctx, buf);
+    return -1;
+  }
+
+  snprintf(buf, sizeof(buf), "[SUCCESS] Tarball created: %s\n", output_path);
   termux_append_output(ctx, buf);
 
   return 0;
@@ -260,6 +285,13 @@ int main(int argc, char *const argv[]) {
   printf("Building %s for %s (API %u)\n", ctx->pkg.pkg_name, arch_name, ctx->pkg.api_level);
   printf("Manifest: %s\n", manifest_path);
   printf("Output: %s\n\n", output_dir);
+
+  strncpy(ctx->output_dir, output_dir, sizeof(ctx->output_dir) - 1);
+
+  if (termux_dir_create_recursive(output_dir) != 0) {
+    fprintf(stderr, "Failed to create output directory: %s\n", output_dir);
+    return 1;
+  }
 
   int ret = termux_execute_build(ctx);
 
