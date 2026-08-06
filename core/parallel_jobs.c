@@ -77,7 +77,7 @@ int termux_job_pool_wait_any(struct termux_job_pool *pool, int *out_exit_code) {
         *out_exit_code = exit_code;
       }
 
-      if (i < pool->active_jobs - 1) {
+      if (i < (size_t)pool->active_jobs - 1) {
         pool->jobs[i] = pool->jobs[pool->active_jobs - 1];
       }
       pool->active_jobs--;
@@ -107,7 +107,7 @@ int termux_job_pool_wait_all(struct termux_job_pool *pool) {
         job->status = TERMUX_JOB_COMPLETED;
         job->exit_code = exit_code;
 
-        if (i < pool->active_jobs - 1) {
+        if (i < (size_t)pool->active_jobs - 1) {
           pool->jobs[i] = pool->jobs[pool->active_jobs - 1];
         }
         pool->active_jobs--;

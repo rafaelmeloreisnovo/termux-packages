@@ -1,16 +1,16 @@
-CC := gcc
-CFLAGS := -Wall -Wextra -Wshadow -g -O0
-LDFLAGS :=
+CC ?= cc
+CFLAGS ?= -Wall -Wextra -Wshadow -Werror -g -O0
+LDFLAGS ?=
 
 TARGETS := termux-build-core test-manifest manifest-dumper
-SOURCES := termux-build-core.c sysexec.c package_writer.c elf_writer.c friction_analyzer.c checkpoint.c parallel_jobs.c build_exec.c
+SOURCES := termux-build-core.c sysexec.c package_writer.c elf_writer.c friction_analyzer.c checkpoint.c parallel_jobs.c build_exec.c manifest_loader.c
 TEST_SOURCES := test_manifest.c manifest_loader.c
 DUMPER_SOURCES := manifest_dumper.c
 OBJECTS := $(SOURCES:.c=.o)
 TEST_OBJECTS := $(TEST_SOURCES:.c=.o)
 DUMPER_OBJECTS := $(DUMPER_SOURCES:.c=.o)
 
-.PHONY: all clean test
+.PHONY: all clean test manifest
 
 all: $(TARGETS)
 
@@ -26,13 +26,15 @@ manifest-dumper: manifest_dumper.o
 %.o: %.c manifest.h
 	$(CC) $(CFLAGS) -c -o $@ $<
 
-test: all manifest.bin
-	./test-manifest 2>&1 | head -20
-	@echo
-	./termux-build-core --package hello-world --arch aarch64 --api 24 --manifest manifest.bin 2>&1 | head -15
+manifest: manifest_generator.py
+	python3 manifest_generator.py ../packages manifest.bin
+
+test: clean all
+	python3 tests/test_manifest_fail_closed.py
+	@echo "Structural and fixture manifest gates passed. Run 'make manifest' separately for the global V1 contract."
 
 clean:
-	rm -f $(OBJECTS) $(TEST_OBJECTS) $(DUMPER_OBJECTS) $(TARGETS)
+	rm -f $(OBJECTS) $(TEST_OBJECTS) $(DUMPER_OBJECTS) $(TARGETS) manifest.bin
 
 install: $(TARGETS)
 	install -D -m 755 termux-build-core $(PREFIX)/bin/termux-build-core
