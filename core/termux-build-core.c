@@ -3,6 +3,7 @@
 #include "checkpoint.h"
 #include "parallel_jobs.h"
 #include "build_exec.h"
+#include "source_download.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -68,22 +69,22 @@ static int termux_phase_setup_vars(struct termux_build_context *ctx) {
 
 static int termux_phase_get_source(struct termux_build_context *ctx) {
   struct stat st;
-  if (stat(ctx->source_dir, &st) != 0 || !S_ISDIR(st.st_mode)) {
-    char buf[1024];
+  if (stat(ctx->source_dir, &st) == 0 && S_ISDIR(st.st_mode)) {
+    const char *source_url = termux_get_string(ctx->pkg.source_url_offset);
+    char buf[1536];
     snprintf(buf, sizeof(buf),
-             "[ERROR] TOKEN_VAZIO_SOURCE_DIR_NOT_MATERIALIZED path=%s\n",
-             ctx->source_dir);
-    termux_append_output(ctx, buf);
-    return 72;
+             "[get-source] mode=PREMATERIALIZED path=%s manifest_url=%s claim_allowed=false\n",
+             ctx->source_dir,
+             source_url && source_url[0] ? source_url : "TOKEN_VAZIO_SOURCE_URL");
+    return termux_append_output(ctx, buf);
   }
 
-  const char *source_url = termux_get_string(ctx->pkg.source_url_offset);
-  char buf[1536];
+  char buf[1024];
   snprintf(buf, sizeof(buf),
-           "[get-source] mode=PREMATERIALIZED path=%s manifest_url=%s\n",
-           ctx->source_dir,
-           source_url && source_url[0] ? source_url : "TOKEN_VAZIO_SOURCE_URL");
-  return termux_append_output(ctx, buf);
+           "[get-source] mode=MANIFEST_ACQUIRE destination=%s claim_allowed=false\n",
+           ctx->source_dir);
+  if (termux_append_output(ctx, buf) != 0) return -1;
+  return termux_acquire_source(ctx);
 }
 
 static int termux_phase_apply_patches(struct termux_build_context *ctx) {
@@ -366,7 +367,7 @@ int main(int argc, char *const argv[]) {
 
   printf("manifest_gate=PASS package=%s version=%s arch=%u api=%u\n",
          ctx->pkg.pkg_name, ctx->pkg.version, ctx->pkg.arch, ctx->pkg.api_level);
-  printf("source_mode=PREMATERIALIZED source_dir=%s\n", ctx->source_dir);
+  printf("source_mode=PREMATERIALIZED_OR_MANIFEST_ACQUIRE source_dir=%s\n", ctx->source_dir);
   printf("claim_allowed=false release_allowed=false\n\n");
 
   termux_reset_metrics();

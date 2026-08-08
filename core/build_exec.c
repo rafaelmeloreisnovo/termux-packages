@@ -14,6 +14,16 @@ extern ssize_t termux_read_file(const char *path, char *buf, size_t buflen);
 extern int termux_execve_capture(const char *path, char *const argv[], char *const envp[],
                                   char *output_buf, size_t output_size, size_t *output_len);
 
+/*
+ * Build-time ABI/filesystem invariant for the RAFCODEΦ fork.
+ *
+ * This is deliberately distinct from DESTDIR. --prefix is the runtime path
+ * compiled into packages; DESTDIR is only a host-side staging root. Replacing
+ * the runtime prefix after compilation is forbidden because ELF/data payloads
+ * may embed it and the RAFCODEΦ prefix has a different length from upstream.
+ */
+#define RAFCODEPHI_TARGET_PREFIX "/data/data/com.termux.rafacodephi/files/usr"
+
 static int termux_make_absolute_path(const char *path, char *abs_path, size_t max_len) {
   if (!path || !abs_path || max_len == 0) return -1;
   if (path[0] == '/') {
@@ -82,6 +92,14 @@ int termux_exec_configure(struct termux_build_context *ctx,
     return -1;
   }
 
+  const char prefix_contract[] =
+      "target_prefix=" RAFCODEPHI_TARGET_PREFIX
+      " staging_model=DESTDIR claim_allowed=false\n";
+  if (termux_capture_append(ctx, "configure-contract", prefix_contract,
+                            sizeof(prefix_contract) - 1) != 0) {
+    return -1;
+  }
+
   char configure_cmd[1536];
   int n = snprintf(configure_cmd, sizeof(configure_cmd),
       "cd '%s' || exit 70; "
@@ -92,7 +110,8 @@ int termux_exec_configure(struct termux_build_context *ctx,
       "else "
       "  printf 'TOKEN_VAZIO_NO_CONFIGURE_SCRIPT\\n'; "
       "fi",
-      abs_build, abs_source, abs_source, abs_build, abs_build);
+      abs_build, abs_source, abs_source,
+      RAFCODEPHI_TARGET_PREFIX, RAFCODEPHI_TARGET_PREFIX);
   if (n < 0 || n >= (int)sizeof(configure_cmd)) return -1;
 
   char *argv[] = { (char *)shell, "-c", configure_cmd, NULL };

@@ -1,4 +1,4 @@
-#include "manifest.h"
+#include "source_download.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -153,28 +153,18 @@ static int termux_download_source(const char *url, const char *dest_path, size_t
   return 0;
 }
 
-/* Main source acquisition phase */
-int termux_phase_get_source(struct termux_build_context *ctx) {
+/* Main source acquisition primitive used by the build state machine. */
+int termux_acquire_source(struct termux_build_context *ctx) {
   if (!ctx) return -1;
 
   const char *url = termux_get_string(ctx->pkg.source_url_offset);
 
-  /* If no URL, source must be provided externally (fixture mode) */
   if (!url || url[0] == '\0') {
-    fprintf(stderr, "[get-source] No URL in manifest\n");
-    if (ctx->source_dir[0] != '\0') {
-      /* Check if prematerialized source exists */
-      struct stat st;
-      if (stat(ctx->source_dir, &st) == 0 && S_ISDIR(st.st_mode)) {
-        fprintf(stderr, "[get-source] Using prematerialized source_dir\n");
-        return 0;
-      }
-    }
     fprintf(stderr, "[get-source] SOURCE_URL_MISSING\n");
     return 76;  /* SOURCE_URL_MISSING */
   }
 
-  fprintf(stderr, "[get-source] url=%s\n", url);
+  fprintf(stderr, "[get-source] mode=MANIFEST_ACQUIRE url=%s\n", url);
 
   /* Construct cache path from SHA256 */
   char cache_path[512];
@@ -221,7 +211,6 @@ int termux_phase_get_source(struct termux_build_context *ctx) {
   fprintf(stderr, "[get-source] downloading...\n");
   int ret = termux_download_source(url, temp_path, SOURCE_MAX_SIZE);
   if (ret != 0) {
-    /* Distinguish network vs HTTP errors (basic heuristic) */
     fprintf(stderr, "[get-source] SOURCE_NETWORK_FAILURE\n");
     return 74;
   }
