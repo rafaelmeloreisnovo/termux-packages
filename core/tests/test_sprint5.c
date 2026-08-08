@@ -1,184 +1,152 @@
 #include "../hardware_tuning.h"
+#include <assert.h>
 #include <stdio.h>
 #include <stdlib.h>
-#include <assert.h>
 #include <string.h>
 
 static int test_soc_detection(void) {
-  printf("\n=== Sprint 5.1: SOC Detection ===\n");
-
+  printf("\n=== Sprint 5.1: SoC Identity Probe ===\n");
   enum termux_soc_type soc = termux_hardware_detect_soc();
   assert(soc >= TERMUX_SOC_UNKNOWN && soc <= TERMUX_SOC_EXYNOS_2200);
-
-  printf("  Detected SOC: %s\n", termux_hardware_soc_name(soc));
-  printf("✓ SOC detection PASSED\n");
+  printf("  SoC identity: %s\n", termux_hardware_soc_name(soc));
+  if (soc == TERMUX_SOC_UNKNOWN)
+    printf("  State: TOKEN_VAZIO_SOC_IDENTITY (accepted; no fallback invented)\n");
+  else
+    printf("  State: OBSERVED_LIMITED\n");
+  printf("✓ SoC identity handling PASSED\n");
   return 0;
 }
 
 static int test_hardware_config(void) {
-  printf("\n=== Sprint 5.2: Hardware Configuration ===\n");
-
+  printf("\n=== Sprint 5.2: Observable Hardware Configuration ===\n");
   struct termux_hardware_config config = {};
   int ret = termux_hardware_get_config(&config);
   assert(ret == 0);
   assert(config.total_cores > 0);
-  assert(config.total_cores <= 8);
-  assert(config.big_cores > 0);
-  assert(config.max_freq_mhz > 1000);
+  assert(config.total_cores <= TERMUX_MAX_CORES);
 
-  printf("  Total cores: %u\n", config.total_cores);
-  printf("  Big cores: %u, Little cores: %u\n", config.big_cores, config.little_cores);
-  printf("  Max frequency: %u MHz\n", config.max_freq_mhz);
-  printf("  Features: NEON=%u, SVE=%u, AVX512=%u\n",
+  printf("  Online cores observed: %u\n", config.total_cores);
+  printf("  Big cores inferred from cpufreq: %u\n", config.big_cores);
+  printf("  Little cores inferred from cpufreq: %u\n", config.little_cores);
+  if (config.max_freq_mhz > 0)
+    printf("  cpufreq max observed: %u MHz\n", config.max_freq_mhz);
+  else
+    printf("  cpufreq max: TOKEN_VAZIO\n");
+  printf("  Feature tokens: NEON=%u SVE=%u AVX512=%u\n",
          config.has_neon, config.has_sve, config.has_avx512);
 
-  printf("✓ Hardware config PASSED\n");
+  if (config.max_freq_mhz == 0) {
+    assert(config.big_cores == 0);
+    assert(config.little_cores == 0);
+    assert(config.golden.count == 0);
+  }
+  printf("✓ observable hardware config PASSED\n");
   return 0;
 }
 
 static int test_platform_profile_init(void) {
-  printf("\n=== Sprint 5.3: Platform Profile Initialization ===\n");
-
-  enum termux_soc_type soc = termux_hardware_detect_soc();
+  printf("\n=== Sprint 5.3: Observed-Limited Platform Profile ===\n");
   hardware_context_t ctx = {};
-
-  int ret = termux_platform_profile_init(&ctx, soc);
+  int ret = termux_platform_profile_init(&ctx, termux_hardware_detect_soc());
   assert(ret == 0);
   assert(ctx.profile.core_count > 0);
-  assert(ctx.profile.max_freq_mhz > 0);
-
-  printf("  Platform: %s\n", termux_hardware_soc_name(ctx.profile.soc_type));
+  assert(ctx.profile.core_count <= TERMUX_MAX_CORES);
+  printf("  Platform identity: %s\n", termux_hardware_soc_name(ctx.profile.soc_type));
   printf("  Cores: %u\n", ctx.profile.core_count);
-  printf("  Max freq: %u MHz\n", ctx.profile.max_freq_mhz);
-
-  printf("✓ Platform profile init PASSED\n");
+  printf("  Max freq: %s\n", ctx.profile.max_freq_mhz > 0 ? "OBSERVED" : "TOKEN_VAZIO");
+  printf("✓ profile scope PASSED (no device claim)\n");
   return 0;
 }
 
 static int test_golden_core_prioritization(void) {
-  printf("\n=== Sprint 5.4: Golden Core Prioritization ===\n");
-
-  enum termux_soc_type soc = termux_hardware_detect_soc();
+  printf("\n=== Sprint 5.4: Golden-Core Model Gate ===\n");
   hardware_context_t ctx = {};
-
-  int ret = termux_platform_profile_init(&ctx, soc);
+  int ret = termux_platform_profile_init(&ctx, termux_hardware_detect_soc());
   assert(ret == 0);
 
-  uint32_t baseline_freq = ctx.core_frequencies[ctx.profile.golden_core_id];
-
-  for (uint32_t pkg_idx = 0; pkg_idx < 10; pkg_idx++) {
-    ret = termux_golden_core_prioritize(&ctx, pkg_idx);
-    assert(ret == 0 || ret == -2);
+  if (ctx.profile.perf_core_mask == 0 || ctx.profile.max_freq_mhz == 0) {
+    ret = termux_golden_core_prioritize(&ctx, 0);
+    assert(ret == -2);
+    printf("  BLOCKED: no observed heterogeneous topology/frequency\n");
+    printf("✓ fail-closed golden-core gate PASSED\n");
+    return 0;
   }
 
-  uint32_t golden_freq = ctx.core_frequencies[ctx.profile.golden_core_id];
-  assert(golden_freq >= baseline_freq);
-
-  printf("  Baseline golden core freq: %u MHz\n", baseline_freq);
-  printf("  After prioritization: %u MHz\n", golden_freq);
-  printf("  Scheduled packages: %u\n", ctx.scheduled_count);
-
-  printf("✓ Golden core prioritization PASSED\n");
+  ret = termux_golden_core_prioritize(&ctx, 0);
+  assert(ret == 0);
+  printf("  Scheduler model accepted observed topology\n");
+  printf("✓ golden-core model PASSED (not DVFS proof)\n");
   return 0;
 }
 
 static int test_efficiency_core_bypass(void) {
-  printf("\n=== Sprint 5.5: Efficiency Core Bypass ===\n");
-
-  enum termux_soc_type soc = termux_hardware_detect_soc();
+  printf("\n=== Sprint 5.5: Efficiency-Core Model Gate ===\n");
   hardware_context_t ctx = {};
-
-  int ret = termux_platform_profile_init(&ctx, soc);
-  if (ret != 0 || ctx.profile.effi_core_mask == 0) {
-    printf("  No efficiency cores available, skipping\n");
-    return 0;
-  }
-
-  for (uint32_t pkg_idx = 0; pkg_idx < 5; pkg_idx++) {
-    ret = termux_efficiency_core_bypass(&ctx, pkg_idx);
+  int ret = termux_platform_profile_init(&ctx, termux_hardware_detect_soc());
+  assert(ret == 0);
+  ret = termux_efficiency_core_bypass(&ctx, 0);
+  if (ctx.profile.effi_core_mask == 0) {
+    assert(ret == -2);
+    printf("  BLOCKED: no observed efficiency-core mask\n");
+  } else {
     assert(ret == 0);
+    printf("  Model used observed efficiency-core mask\n");
   }
-
-  uint32_t highest_util = 0;
-  for (uint32_t i = 0; i < ctx.profile.core_count; i++) {
-    if (ctx.core_utilization[i] > highest_util) {
-      highest_util = ctx.core_utilization[i];
-    }
-  }
-
-  printf("  Highest core utilization: %u packages\n", highest_util);
-  printf("✓ Efficiency core bypass PASSED\n");
+  printf("✓ efficiency-core gate PASSED\n");
   return 0;
 }
 
 static int test_big_little_load_balance(void) {
-  printf("\n=== Sprint 5.6: Big.LITTLE Load Balancing ===\n");
-
-  enum termux_soc_type soc = termux_hardware_detect_soc();
+  printf("\n=== Sprint 5.6: Big/LITTLE Model Scope ===\n");
   hardware_context_t ctx = {};
-
-  int ret = termux_platform_profile_init(&ctx, soc);
+  int ret = termux_platform_profile_init(&ctx, termux_hardware_detect_soc());
   assert(ret == 0);
-
-  for (uint32_t i = 0; i < 8; i++) {
-    ctx.core_utilization[i] = (i < 4) ? 10 : 2;
-  }
-
   ret = termux_big_little_load_balance(&ctx, 0);
   assert(ret == 0);
-
-  printf("  Performed load balancing on layer 0\n");
-  printf("✓ Big.LITTLE load balance PASSED\n");
+  if (ctx.profile.perf_core_mask == 0 || ctx.profile.effi_core_mask == 0)
+    printf("  No observed heterogeneous split; no balancing claim made\n");
+  else
+    printf("  Observed masks available; scheduler model exercised\n");
+  printf("✓ big/LITTLE scope PASSED\n");
   return 0;
 }
 
 static int test_neon_mapping(void) {
-  printf("\n=== Sprint 5.7: NEON Mapping Optimization ===\n");
-
-  enum termux_soc_type soc = termux_hardware_detect_soc();
+  printf("\n=== Sprint 5.7: NEON Eligibility Gate ===\n");
   hardware_context_t ctx = {};
-
-  int ret = termux_platform_profile_init(&ctx, soc);
-  if (ret != 0 || !ctx.profile.has_neon) {
-    printf("  NEON not available, skipping\n");
-    return 0;
-  }
-
-  ret = termux_neon_mapping_optimize(&ctx);
+  int ret = termux_platform_profile_init(&ctx, termux_hardware_detect_soc());
   assert(ret == 0);
-
-  printf("  Optimized NEON mapping for %u cores\n", ctx.profile.core_count);
-  printf("✓ NEON mapping optimization PASSED\n");
+  ret = termux_neon_mapping_optimize(&ctx);
+  if (!ctx.profile.has_neon) {
+    assert(ret == -1);
+    printf("  NEON token not observed; optimization blocked\n");
+  } else {
+    assert(ret == 0);
+    printf("  NEON/ASIMD token observed; model path eligible\n");
+  }
+  printf("✓ NEON evidence gate PASSED (instruction execution not claimed)\n");
   return 0;
 }
 
 static int test_coherence_score_per_platform(void) {
-  printf("\n=== Sprint 5.8: Platform Coherence Scoring ===\n");
-
-  enum termux_soc_type soc = termux_hardware_detect_soc();
+  printf("\n=== Sprint 5.8: Platform Score Scope ===\n");
   hardware_context_t ctx = {};
-
-  int ret = termux_platform_profile_init(&ctx, soc);
+  int ret = termux_platform_profile_init(&ctx, termux_hardware_detect_soc());
   assert(ret == 0);
-
-  double total_coherence = 0.0;
   for (uint32_t i = 0; i < ctx.profile.core_count; i++) {
     double score = termux_coherence_score_platform(&ctx, i);
     assert(score >= 0.0 && score <= 1.0);
-    total_coherence += score;
   }
-
-  double avg_coherence = total_coherence / ctx.profile.core_count;
-  printf("  Average coherence score: %.3f\n", avg_coherence);
-
-  printf("✓ Platform coherence scoring PASSED\n");
+  printf("✓ score remains bounded; no performance claim promoted\n");
   return 0;
 }
 
 int main(void) {
   printf("\n================================================================================\n");
-  printf("                SPRINT 5: HARDWARE-SPECIFIC TUNING\n");
+  printf("       SPRINT 5: OBSERVED-LIMITED HARDWARE MODEL (NOT DEVICE VALIDATION)\n");
   printf("================================================================================\n");
+  printf("claim_allowed=false\n");
+  printf("physical_device_verified=false\n");
 
   int all_passed = 0;
   all_passed += test_soc_detection();
@@ -192,19 +160,12 @@ int main(void) {
 
   printf("\n================================================================================\n");
   if (all_passed == 0) {
-    printf("✓ ALL SPRINT 5 TESTS PASSED\n");
-    printf("  SOC detection: ✓\n");
-    printf("  Hardware config: ✓\n");
-    printf("  Platform profile: ✓\n");
-    printf("  Golden core prioritization: ✓\n");
-    printf("  Efficiency core bypass: ✓\n");
-    printf("  Big.LITTLE load balance: ✓\n");
-    printf("  NEON mapping: ✓\n");
-    printf("  Coherence scoring: ✓\n");
+    printf("✓ ALL SPRINT 5 SCOPE/REGRESSION TESTS PASSED\n");
+    printf("  PRODUCT_READINESS=NOT_CLAIMED\n");
+    printf("  DEVICE_RUNTIME=TOKEN_VAZIO_UNLESS_SEPARATE_RECEIPT\n");
   } else {
     printf("✗ SOME TESTS FAILED\n");
   }
   printf("================================================================================\n\n");
-
   return all_passed == 0 ? 0 : 1;
 }

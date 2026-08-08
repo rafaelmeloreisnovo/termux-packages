@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
-# REAL: verify architecture matrix and auto-adaptation.
-# Status: REAL — runs real binary against real uname output.
+# Architecture identity + nominal reference matrix verification.
+# Status: OBSERVED_LIMITED — host identity is observed; the 15-entry table is
+# reference metadata, not 15-architecture execution evidence.
 set -uo pipefail
 
 PASSED=0
@@ -10,83 +11,100 @@ fail() { printf "  ✗ %s\n" "$1"; FAILED=$((FAILED + 1)); }
 
 BIN="core/arch-detect"
 
-echo "=== REAL: architecture matrix verification ==="
+echo "=== architecture identity + NOMINAL matrix verification ==="
 
 [ -x "$BIN" ] || { echo "ERROR: $BIN missing"; exit 1; }
 
-# 1) 15 archs enumerated
-if $BIN --json 2>/dev/null | grep -q '"total_archs": 15'; then
-    pass "15 architectures declared"
+JSON=$($BIN --json 2>/dev/null)
+
+# 1) Scope must not claim the nominal table as global runtime truth.
+if echo "$JSON" | grep -q '"status": "OBSERVED_LIMITED"' && \
+   echo "$JSON" | grep -q '"claim_allowed": false' && \
+   echo "$JSON" | grep -q '"property_scope": "nominal_reference_not_runtime_capability"'; then
+    pass "matrix scope is OBSERVED_LIMITED + claim_allowed=false"
+else
+    fail "matrix scope overclaims runtime capability"
+fi
+
+# 2) 15 identifiers enumerated.
+if echo "$JSON" | grep -q '"total_archs": 15'; then
+    pass "15 architecture identifiers declared"
 else
     fail "wrong total_archs count"
 fi
 
-# 2) All 15 canonical names present
+# 3) All 15 canonical names present.
 for a in x86_64 i386 arm64 arm32 riscv64 riscv32 mips64 mips32 \
          ppc64le ppc32 s390x sparc64 loongarch64 wasm32 arm64_darwin; do
-    if $BIN --json 2>/dev/null | grep -q "\"name\":\"$a\""; then
-        pass "arch $a present"
+    if echo "$JSON" | grep -q "\"name\":\"$a\""; then
+        pass "arch id $a present"
     else
-        fail "arch $a missing"
+        fail "arch id $a missing"
     fi
 done
 
-# 3) Runtime detection matches uname -m
+# 4) Runtime identity matches uname -m for mappings this test knows.
 UN=$(uname -m)
-detected=$($BIN --json 2>/dev/null | grep '"runtime_arch"' | \
+detected=$(echo "$JSON" | grep '"runtime_arch"' | \
            sed 's/.*"runtime_arch": *"\([^"]*\)".*/\1/')
-# On x86_64 host, either "x86_64" (Linux) or "amd64" would map
 case "$UN" in
     x86_64|amd64)   want=x86_64 ;;
     aarch64)        want=arm64 ;;
+    arm64)          want=arm64 ;;
     armv7*)         want=arm32 ;;
     i686|i386)      want=i386 ;;
     riscv64)        want=riscv64 ;;
     *)              want=unknown ;;
 esac
 if [ "$detected" = "$want" ]; then
-    pass "runtime detect: uname=$UN → $detected (expected $want)"
+    pass "runtime identity: uname=$UN → $detected"
 else
-    fail "runtime detect: uname=$UN → $detected (expected $want)"
+    fail "runtime identity: uname=$UN → $detected (expected $want)"
 fi
 
-# 4) Compile-time detection matches (should always be x86_64 on this host)
-compile=$($BIN --json 2>/dev/null | grep '"compile_time_arch"' | \
+# 5) Compile-time identity matches the native compiler host in this CI route.
+compile=$(echo "$JSON" | grep '"compile_time_arch"' | \
           sed 's/.*"compile_time_arch": *"\([^"]*\)".*/\1/')
 if [ "$compile" = "$want" ]; then
-    pass "compile-time detect: $compile"
+    pass "compile-time identity: $compile"
 else
-    fail "compile-time detect: $compile (expected $want)"
+    fail "compile-time identity: $compile (expected $want)"
 fi
 
-# 5) Compat: x86_64 → i386 is ISA_SUPER + EMULATABLE
+# 6) x86_64 -> i386 may retain a nominal ISA-family relationship, but static
+# catalog data must NOT claim emulator availability.
 out=$($BIN --compat x86_64 i386 2>/dev/null)
 if echo "$out" | grep -q "ISA_SUPER  : yes" && \
-   echo "$out" | grep -q "EMULATABLE : yes"; then
-    pass "compat x86_64→i386: ISA_SUPER + EMULATABLE"
+   echo "$out" | grep -q "EMULATABLE : no"; then
+    pass "x86_64→i386 nominal ISA relation without emulation claim"
 else
-    fail "compat x86_64→i386 wrong"
+    fail "x86_64→i386 relation incorrectly claims runtime emulation"
 fi
 
-# 6) Compat: arm64 → arm32 is ISA_SUPER + EMULATABLE
+# 7) ARM64 -> ARM32 execution support is implementation/OS-dependent and must
+# not be promoted from the static table.
 out=$($BIN --compat arm64 arm32 2>/dev/null)
-if echo "$out" | grep -q "ISA_SUPER  : yes"; then
-    pass "compat arm64→arm32: ISA_SUPER"
+if echo "$out" | grep -q "ISA_SUPER  : no" && \
+   echo "$out" | grep -q "EMULATABLE : no"; then
+    pass "arm64→arm32 runtime support left unclaimed"
 else
-    fail "compat arm64→arm32 wrong"
+    fail "arm64→arm32 static table overclaims execution support"
 fi
 
-# 7) Compat: s390x → x86_64 endian mismatch (no ENDIAN flag)
-out=$($BIN --compat s390x x86_64 2>/dev/null)
-if echo "$out" | grep -q "ENDIAN     : no"; then
-    pass "compat s390x→x86_64: endian mismatch detected"
-else
-    fail "compat s390x→x86_64 endian check wrong"
-fi
+# 8) No arbitrary cross-arch pair may be statically marked emulatable.
+for pair in "x86_64 arm64" "arm64 riscv64" "riscv64 riscv32" "mips64 mips32"; do
+    set -- $pair
+    out=$($BIN --compat "$1" "$2" 2>/dev/null)
+    if echo "$out" | grep -q "EMULATABLE : no"; then
+        pass "compat $1→$2: no static emulator claim"
+    else
+        fail "compat $1→$2: static emulator claim leaked"
+    fi
+done
 
-# 8) Reflexivity: arch → same arch always SAME
+# 9) Reflexivity remains a catalog invariant.
 for a in x86_64 arm64 riscv64; do
-    out=$($BIN --compat $a $a 2>/dev/null)
+    out=$($BIN --compat "$a" "$a" 2>/dev/null)
     if echo "$out" | grep -q "SAME       : yes"; then
         pass "compat $a→$a: SAME"
     else
@@ -94,20 +112,29 @@ for a in x86_64 arm64 riscv64; do
     fi
 done
 
-# 9) big-endian arch table populated correctly
-big_count=$($BIN --json 2>/dev/null | grep -c '"endian":"big"')
+# 10) Endianness catalog remains populated.
+big_count=$(echo "$JSON" | grep -c '"endian":"big"')
 if [ "$big_count" -ge 4 ]; then
-    pass "big-endian archs represented ($big_count found)"
+    pass "big-endian reference profiles represented ($big_count found)"
 else
-    fail "expected >=4 big-endian archs; got $big_count"
+    fail "expected >=4 big-endian profiles; got $big_count"
 fi
 
-# 10) Termux-supported archs marked (4 real: x86_64, i686, aarch64, arm)
-termux_count=$($BIN --json 2>/dev/null | grep -cE '"termux":"[^"]+"')
+# 11) Termux-supported identifiers remain exactly the historical four.
+termux_count=$(echo "$JSON" | grep -cE '"termux":"[^"]+"')
 if [ "$termux_count" -eq 4 ]; then
-    pass "4 termux-supported archs marked (x86_64, i686, aarch64, arm)"
+    pass "4 Termux architecture identifiers marked"
 else
-    fail "expected 4 termux archs; got $termux_count"
+    fail "expected 4 Termux arch ids; got $termux_count"
+fi
+
+# 12) Capability-like fields must be named nominal_* in emitted JSON.
+if echo "$JSON" | grep -q '"nominal_page_size"' && \
+   echo "$JSON" | grep -q '"nominal_cache_line"' && \
+   echo "$JSON" | grep -q '"nominal_simd"'; then
+    pass "capability-like fields are explicitly nominal"
+else
+    fail "nominal capability field names missing"
 fi
 
 echo ""

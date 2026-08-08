@@ -1,21 +1,26 @@
 #!/bin/bash
 #
 # REAL: Governance gate.
-# Status: REAL — end-to-end enforcement of contract + provenance + regression.
+# Status: OBSERVED_LIMITED — enforcement of contract + provenance +
+# regression + receipt signature.
 #
 # What this enforces (all fail-closed):
-#   1) The producer binary exists and is executable.
-#   2) The producer runs and produces a JSON with status="REAL".
-#   3) The JSON validates against pkg_metrics/1.0.0 (real_contract).
-#   4) No provenance field contains TOKEN_VAZIO.
-#   5) Real numbers do not regress vs the tracked baseline:
-#         - node_count       >= baseline.node_count
-#         - edge_count       >= baseline.edge_count
-#         - coherence_phi    >= baseline.coherence_phi - 0.001
-#         - cycle_count      == baseline.cycle_count  (must stay 0)
-#         - unresolved_count <= baseline.unresolved_count + 5  (drift budget)
+#   1) Producer/validators exist and execute.
+#   2) Current JSON passes strict duplicate/scope-aware validation.
+#   3) Current JSON passes the compact C pkg_metrics validator.
+#   4) TOKEN_VAZIO cannot leak into the promoted metrics artifact.
+#   5) Baseline passes the same strict structural contract.
+#   6) Baseline exposes the fields used by the regression policy.
+#   7) Graph metrics satisfy the declared regression budget.
+#   8) The receipt for the current output verifies (SHA256 signature).
 #
-# Exit codes: 0 = PASS, 1 = FAIL.
+# Important scope boundary:
+#   Passing this gate validates pkg_metrics/1.0.0 plus its regression
+#   policy plus receipt tamper-evidence. It does NOT prove package
+#   buildability, Android/device runtime, cross-architecture portability,
+#   cryptographic authenticity of the toolchain, or product readiness.
+#
+# Exit codes: 0 = PASS, 1 = FAIL/BLOCKED.
 
 set -uo pipefail
 
@@ -23,6 +28,7 @@ REPO_ROOT="${REPO_ROOT:-.}"
 BASELINE="${BASELINE:-core/tests/fixtures/real_dag_baseline.json}"
 PRODUCER="${PRODUCER:-core/metrics-producer}"
 VALIDATOR="${VALIDATOR:-core/contract-validate}"
+STRICT_VALIDATOR="${STRICT_VALIDATOR:-scripts/validate_pkg_metrics_json.py}"
 RECEIPT_VALIDATOR="${RECEIPT_VALIDATOR:-core/receipt-validate}"
 OUT_JSON="${OUT_JSON:-/tmp/real_gov_metrics.json}"
 
@@ -39,100 +45,135 @@ require_bin() {
     fi
 }
 
+require_json_file() {
+    local file="$1"
+    [ -f "$file" ] || fail "required JSON missing: $file (TOKEN_VAZIO_SOURCE)"
+    jq -e . "$file" >/dev/null 2>&1 || fail "invalid JSON: $file"
+}
+
 require_json_field() {
     local file="$1" field="$2"
-    if ! jq -e ".$field" "$file" >/dev/null 2>&1; then
+    if ! jq -e ".$field != null" "$file" >/dev/null 2>&1; then
         fail "$file missing required field: $field"
     fi
 }
 
-log "=== REAL Governance Gate ==="
+require_no_token_vazio() {
+    local file="$1"
+    if grep -q "TOKEN_VAZIO" "$file"; then
+        grep "TOKEN_VAZIO" "$file" >&2 || true
+        fail "$file contains TOKEN_VAZIO placeholders"
+    fi
+}
+
+strict_validate() {
+    local file="$1"
+    if ! python3 "$STRICT_VALIDATOR" "$file" >/dev/null; then
+        fail "strict duplicate/scope-aware contract rejected: $file"
+    fi
+}
+
+log "=== pkg_metrics Governance Gate ==="
 log "repo_root=$REPO_ROOT"
 log "baseline=$BASELINE"
 log "producer=$PRODUCER"
+log "strict_validator=$STRICT_VALIDATOR"
+log "receipt_validator=$RECEIPT_VALIDATOR"
 
-command -v jq >/dev/null 2>&1 || fail "jq not installed"
+for cmd in jq python3; do
+    command -v "$cmd" >/dev/null 2>&1 || fail "$cmd not installed"
+done
+[ -f "$STRICT_VALIDATOR" ] || fail "strict validator missing: $STRICT_VALIDATOR"
 
 # 1) Binaries present
 require_bin "$PRODUCER"
 require_bin "$VALIDATOR"
 
 # 2) Producer runs
-log "step 1/6: run producer"
+log "step 1/8: run producer"
 if ! "$PRODUCER" "$REPO_ROOT" "$OUT_JSON" >/dev/null; then
     fail "producer failed to run"
 fi
 
-# 3) status=REAL
-log "step 2/6: check status=REAL"
-if ! jq -e '.status == "REAL"' "$OUT_JSON" >/dev/null 2>&1; then
-    fail "output is not status=REAL"
-fi
+# 3) Strict JSON grammar/scope/duplicate gate
+log "step 2/8: strict current JSON validation"
+require_json_file "$OUT_JSON"
+strict_validate "$OUT_JSON"
 
-# 4) Contract validation
-log "step 3/6: contract validation (pkg_metrics/1.0.0)"
+# 4) Compact C contract validation remains an independent ruler
+log "step 3/8: C contract validation (pkg_metrics/1.0.0)"
 if ! "$VALIDATOR" "$OUT_JSON"; then
-    fail "contract validation rejected the JSON"
+    fail "C contract validation rejected the JSON"
 fi
 
-# 5) No TOKEN_VAZIO leaks
-log "step 4/6: scan for TOKEN_VAZIO"
-if grep -q "TOKEN_VAZIO" "$OUT_JSON"; then
-    grep "TOKEN_VAZIO" "$OUT_JSON" >&2
-    fail "output contains TOKEN_VAZIO placeholders"
+# 5) No TOKEN_VAZIO leaks into the promoted metrics artifact
+log "step 4/8: scan current output for TOKEN_VAZIO"
+require_no_token_vazio "$OUT_JSON"
+
+# 6) Baseline is evidence too and must satisfy the strict contract.
+log "step 5/8: strict regression baseline validation"
+require_json_file "$BASELINE"
+strict_validate "$BASELINE"
+require_no_token_vazio "$BASELINE"
+
+# 7) Regression fields must exist
+log "step 6/8: regression field presence"
+for field in node_count edge_count coherence_phi cycle_count unresolved_count; do
+    require_json_field "$BASELINE" "$field"
+    require_json_field "$OUT_JSON" "$field"
+done
+
+# 8) Regression gate vs baseline
+log "step 7/8: regression gate vs $BASELINE"
+base_nodes=$(jq -r '.node_count' "$BASELINE")
+base_edges=$(jq -r '.edge_count' "$BASELINE")
+base_phi=$(jq -r '.coherence_phi' "$BASELINE")
+base_cycles=$(jq -r '.cycle_count' "$BASELINE")
+base_unres=$(jq -r '.unresolved_count' "$BASELINE")
+
+cur_nodes=$(jq -r '.node_count' "$OUT_JSON")
+cur_edges=$(jq -r '.edge_count' "$OUT_JSON")
+cur_phi=$(jq -r '.coherence_phi' "$OUT_JSON")
+cur_cycles=$(jq -r '.cycle_count' "$OUT_JSON")
+cur_unres=$(jq -r '.unresolved_count' "$OUT_JSON")
+
+log "baseline: nodes=$base_nodes edges=$base_edges phi=$base_phi cycles=$base_cycles unres=$base_unres"
+log "current:  nodes=$cur_nodes edges=$cur_edges phi=$cur_phi cycles=$cur_cycles unres=$cur_unres"
+
+if [ "$cur_nodes" -lt "$base_nodes" ]; then
+    fail "regression: node_count $cur_nodes < baseline $base_nodes"
+fi
+if [ "$cur_edges" -lt "$base_edges" ]; then
+    fail "regression: edge_count $cur_edges < baseline $base_edges"
+fi
+if [ "$cur_cycles" -ne "$base_cycles" ]; then
+    fail "regression: cycle_count $cur_cycles != baseline $base_cycles"
 fi
 
-# 6) Regression gate vs baseline
-log "step 5/6: regression gate vs $BASELINE"
-if [ ! -f "$BASELINE" ]; then
-    log "WARN: baseline missing; skipping regression gate"
-else
-    base_nodes=$(jq -r '.node_count' "$BASELINE")
-    base_edges=$(jq -r '.edge_count' "$BASELINE")
-    base_phi=$(jq -r '.coherence_phi // 0' "$BASELINE")
-    base_cycles=$(jq -r '.cycle_count' "$BASELINE")
-    base_unres=$(jq -r '.unresolved_count' "$BASELINE")
-
-    cur_nodes=$(jq -r '.node_count' "$OUT_JSON")
-    cur_edges=$(jq -r '.edge_count' "$OUT_JSON")
-    cur_phi=$(jq -r '.coherence_phi' "$OUT_JSON")
-    cur_cycles=$(jq -r '.cycle_count' "$OUT_JSON")
-    cur_unres=$(jq -r '.unresolved_count' "$OUT_JSON")
-
-    log "baseline: nodes=$base_nodes edges=$base_edges phi=$base_phi cycles=$base_cycles unres=$base_unres"
-    log "current:  nodes=$cur_nodes edges=$cur_edges phi=$cur_phi cycles=$cur_cycles unres=$cur_unres"
-
-    if [ "$cur_nodes" -lt "$base_nodes" ]; then
-        fail "regression: node_count $cur_nodes < baseline $base_nodes"
-    fi
-    if [ "$cur_edges" -lt "$base_edges" ]; then
-        fail "regression: edge_count $cur_edges < baseline $base_edges"
-    fi
-    if [ "$cur_cycles" -ne "$base_cycles" ]; then
-        fail "regression: cycle_count $cur_cycles != baseline $base_cycles"
-    fi
-
-    drift=$(( cur_unres - base_unres ))
-    if [ "$drift" -gt 5 ]; then
-        fail "regression: unresolved drift +$drift > 5 (cur=$cur_unres base=$base_unres)"
-    fi
-
-    if awk "BEGIN { exit !($cur_phi < $base_phi - 0.001) }"; then
-        fail "regression: coherence_phi $cur_phi < baseline $base_phi - 0.001"
-    fi
-
-    log "regression gate passed"
+drift=$(( cur_unres - base_unres ))
+if [ "$drift" -gt 5 ]; then
+    fail "regression: unresolved drift +$drift > 5 (cur=$cur_unres base=$base_unres)"
 fi
 
-log "step 6/6: verify receipt for output"
-if [ -f "$RECEIPT_VALIDATOR" ] && [ -f "$OUT_JSON.receipt" ]; then
-    if ! "$RECEIPT_VALIDATOR" "$OUT_JSON.receipt" >/dev/null 2>&1; then
-        fail "receipt verification failed for $OUT_JSON.receipt"
-    fi
-    log "receipt signature valid"
-else
-    log "WARN: no receipt validator or receipt file; skipping"
+if awk "BEGIN { exit !($cur_phi < $base_phi - 0.001) }"; then
+    fail "regression: coherence_phi $cur_phi < baseline $base_phi - 0.001"
 fi
 
-log "✓✓✓ REAL Governance Gate PASSED"
+log "regression gate passed"
+
+# 9) Receipt verification — signature must match; tampering is fatal.
+log "step 8/8: verify receipt signature"
+if [ ! -f "$RECEIPT_VALIDATOR" ]; then
+    fail "receipt validator missing: $RECEIPT_VALIDATOR"
+fi
+if [ ! -f "$OUT_JSON.receipt" ]; then
+    fail "receipt file missing: $OUT_JSON.receipt (producer must emit receipt)"
+fi
+if ! "$RECEIPT_VALIDATOR" "$OUT_JSON.receipt" >/dev/null 2>&1; then
+    fail "receipt signature verification FAILED for $OUT_JSON.receipt"
+fi
+log "receipt signature valid"
+
+log "STRICT_JSON_GATE=PASS duplicate_keys=REJECTED scope_enforcement=PASS receipt=VALID"
+log "✓✓✓ pkg_metrics governance gate PASSED (scope-limited; not product readiness)"
 exit 0

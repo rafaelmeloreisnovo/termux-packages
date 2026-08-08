@@ -6,43 +6,16 @@ diff -u -r ../cache/termux-api-package-0.59.1/termux-api.c ./termux-api.c
      // - https://github.com/termux/termux-api/issues/638#issuecomment-1813233924
      int listenfd = -1;
 -    #ifdef __ANDROID__
-+    #ifdef __ANDROID_DISABLED__
++    #if defined(__ANDROID__) && defined(RAFCODEPHI_SHARED_UID_FILESYSTEM_SOCKETS)
          if (android_get_device_api_level() < 34) {
              listenfd = socket(AF_UNIX, SOCK_STREAM|SOCK_CLOEXEC, 0);
          }
-@@ -246,7 +246,7 @@
-     // Close stdin:
-     close(STDIN_FILENO);
- 
--    const int child_pre_argc = 14;
-+    const int child_pre_argc = 16;
-     const int child_post_argc = argc - 1; // Except `argv[0]`.
-     const int child_argc = child_pre_argc + child_post_argc;
- 
-@@ -261,11 +261,11 @@
-     char **child_argv = (char **) result;
- 
-     child_argv[0] = "am";
--    child_argv[1] = "broadcast";
-+    child_argv[1] = "startservice";
+@@ -265,7 +265,7 @@
      child_argv[2] = "--user";
      child_argv[3] = "0";
      child_argv[4] = "-n";
 -    child_argv[5] = "com.termux.api/.TermuxApiReceiver";
-+    child_argv[5] = "com.termux/com.termux.app.TermuxService";
++    child_argv[5] = "com.termux.rafacodephi.api/com.termux.api.TermuxApiReceiver";
      child_argv[6] = "--es";
      // Input/output are reversed for the java process (our output is its input):
      child_argv[7] = "socket_input";
-@@ -273,8 +273,10 @@
-     child_argv[9] = "--es";
-     child_argv[10] = "socket_output";
-     child_argv[11] = input_address_string;
--    child_argv[12] = "--es";
--    child_argv[13] = "api_method";
-+    child_argv[12] = "-a";
-+    child_argv[13] = "com.termux.service_api";
-+    child_argv[14] = "--es";
-+    child_argv[15] = "api_method";
- 
-     // Copy the remaining arguments except `argv[0]`, `argv[1]` should be `api_method` extra value:
-     memcpy(child_argv + child_pre_argc, argv + 1, child_post_argc * sizeof(char*));

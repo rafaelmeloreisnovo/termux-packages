@@ -2,13 +2,19 @@
 #define PKG_SCANNER_H
 
 /*
- * REAL: Package Inventory Scanner
- * Status: REAL — scans actual filesystem, no simulation
+ * Package Inventory Scanner — evidence-first.
+ * Status: OBSERVED_LIMITED.
  *
- * Scans packages/, root-packages/, x11-packages/, disabled-packages/
- * and produces authoritative inventory of every real build.sh.
+ * The scanner reads the actual filesystem, but filesystem I/O alone is not an
+ * authoritative completeness proof. Coverage of the four known repository
+ * roots and every collection failure is recorded explicitly. No absent root,
+ * path overflow, allocation failure or subpackage scan failure may disappear
+ * silently.
  *
- * Item #1 from consolidation list: real inventory of packages.
+ * Compatibility note:
+ *   The concurrent `build_sh/repo_type/roots_scanned` API is preserved as C11
+ *   union aliases of `path/repo/roots_present`; there is one storage location
+ *   and therefore no split state.
  */
 
 #include "real_attrs.h"
@@ -18,62 +24,98 @@
 #define PKG_NAME_MAX      128
 #define PKG_PATH_MAX      512
 #define PKG_REPO_MAX      64
+#define PKG_REPO_EXPECTED_ROOTS 4
 
 typedef enum {
-  PKG_REPO_MAIN = 0,        /* packages/ */
-  PKG_REPO_ROOT = 1,        /* root-packages/ */
-  PKG_REPO_X11 = 2,         /* x11-packages/ */
-  PKG_REPO_DISABLED = 3,    /* disabled-packages/ */
+  PKG_REPO_MAIN = 0,
+  PKG_REPO_ROOT = 1,
+  PKG_REPO_X11 = 2,
+  PKG_REPO_DISABLED = 3,
   PKG_REPO_UNKNOWN = 255
 } pkg_repo_t;
 
 typedef struct {
-  char name[PKG_NAME_MAX];        /* directory name OR subpackage name */
-  char path[PKG_PATH_MAX];        /* full path to build.sh or *.subpackage.sh */
-  char parent[PKG_NAME_MAX];      /* if subpackage: parent pkg name; else same as name */
-  pkg_repo_t repo;                /* which repo this package lives in */
-  uint64_t build_sh_size;         /* real file size in bytes */
-  uint8_t has_build_sh;           /* 1 if build.sh exists and is readable */
-  uint8_t is_subpackage;          /* 1 if entry is a *.subpackage.sh */
+  char name[PKG_NAME_MAX];
+  union {
+    char path[PKG_PATH_MAX];
+    char build_sh[PKG_PATH_MAX]; /* compatibility alias */
+  };
+  char parent[PKG_NAME_MAX];
+  union {
+    pkg_repo_t repo;
+    pkg_repo_t repo_type; /* compatibility alias */
+  };
+  uint64_t build_sh_size;
+  uint8_t has_build_sh;
+  uint8_t is_subpackage;
 } pkg_inventory_entry_t;
 
 typedef struct {
   pkg_inventory_entry_t *entries;
   uint32_t count;
   uint32_t capacity;
-  uint32_t total_scanned;         /* total directories inspected */
-  uint32_t total_with_build_sh;   /* directories that have valid build.sh */
-  uint32_t total_missing;         /* dirs without build.sh (TOKEN_VAZIO) */
-  uint32_t total_subpackages;     /* *.subpackage.sh entries appended */
+
+  /* Content counters. */
+  uint32_t total_scanned;
+  uint32_t total_with_build_sh;
+  uint32_t total_missing;
+  uint32_t total_subpackages;
+  uint32_t non_directory_entries;
+  uint32_t non_regular_subpackages;
+
+  /* Coverage ledger for known repository roots. */
+  uint32_t roots_expected;
+  union {
+    uint32_t roots_present;
+    uint32_t roots_scanned; /* compatibility alias */
+  };
+  uint32_t roots_absent;
+  uint32_t roots_failed;
+
+  /* Collection failures. Any non-zero error counter blocks completeness. */
+  uint32_t path_errors;
+  uint32_t io_errors;
+  uint32_t allocation_errors;
+  uint32_t subpackage_scan_failures;
 } pkg_inventory_t;
 
-/* Initialize inventory (allocate initial capacity). */
 REAL_WARN_UNUSED REAL_NONNULL(1)
 int pkg_inventory_init(pkg_inventory_t *inv, uint32_t initial_capacity);
 
-/* Scan a single repo directory (e.g. "packages"). Appends to inventory. */
 REAL_HOT REAL_WARN_UNUSED REAL_NONNULL(1, 2)
 int pkg_inventory_scan_repo(pkg_inventory_t *inv, const char *repo_dir,
                             pkg_repo_t repo_type);
 
-/* Scan all known repos in the given base directory. */
+/* Diagnostic scan: absent known roots are recorded, not silently discarded.
+ * Returns -1 on collection failure, but an absent root alone can still return 0
+ * so the caller can inspect a partial inventory. */
 REAL_HOT REAL_WARN_UNUSED REAL_NONNULL_ALL
 int pkg_inventory_scan_all(pkg_inventory_t *inv, const char *base_dir);
 
-/* Print inventory as JSON to `out`. */
+/* Compatibility strict scan: succeeds only for a complete four-root census. */
+REAL_HOT REAL_WARN_UNUSED REAL_NONNULL_ALL
+int pkg_inventory_scan(pkg_inventory_t *inv, const char *repo_root);
+
+/* True only when all expected roots were observed and no collection errors
+ * occurred. This says nothing about Bash semantic completeness. */
+REAL_PURE REAL_NONNULL(1)
+int pkg_inventory_is_complete(const pkg_inventory_t *inv);
+
 REAL_COLD REAL_NONNULL_ALL
 void pkg_inventory_write_json(FILE *out, const pkg_inventory_t *inv);
 
-/* Print human summary to `out`. */
+/* Compatibility stdout JSON printer. */
+REAL_COLD REAL_NONNULL(1)
+void pkg_inventory_print_json(const pkg_inventory_t *inv);
+
 REAL_COLD REAL_NONNULL_ALL
 void pkg_inventory_report(FILE *out, const pkg_inventory_t *inv);
 
-/* Find entry by name (linear scan). Returns NULL if not found. */
 REAL_PURE REAL_NONNULL_ALL
 const pkg_inventory_entry_t *
 pkg_inventory_find(const pkg_inventory_t *inv, const char *name);
 
-/* free-style convention: accepts NULL as no-op, so no NONNULL here */
 void pkg_inventory_free(pkg_inventory_t *inv);
+void pkg_inventory_destroy(pkg_inventory_t *inv); /* compatibility alias */
 
 #endif /* PKG_SCANNER_H */

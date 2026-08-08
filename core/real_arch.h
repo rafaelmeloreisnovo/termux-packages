@@ -2,26 +2,23 @@
 #define REAL_ARCH_H
 
 /*
- * REAL: architecture matrix with absolute auto-adaptation.
- * Status: REAL — enum, compile-time detection, runtime detection, and
- * property matrix are all real data derived from compiler predefines
- * (compile-time) or uname(2) (runtime). No simulation, no guessing.
+ * Architecture identity catalog + NOMINAL reference matrix.
+ * Status: OBSERVED_LIMITED.
  *
- * Supported architectures (15 total):
+ * Compile-time architecture identity comes from compiler predefines and runtime
+ * architecture identity comes from uname(2). The static property table is a
+ * reference profile only: page size, cache line, SIMD support and emulator
+ * availability are environment/device facts and MUST NOT be promoted from this
+ * table to runtime evidence.
+ *
+ * Supported identifiers (15 total):
  *   x86_64, i386, arm64, arm32, riscv64, riscv32, mips64, mips32,
  *   ppc64le, ppc32, s390x, sparc64, loongarch64, wasm32, arm64_darwin
  *
- * arm64_darwin is treated as a distinct target because its OS (Apple)
- * and syscall convention differ from Linux aarch64; sharing hardware
- * with Linux arm64 does not mean sharing ABI.
+ * Runtime capability evidence is produced separately by:
+ *   scripts/arch_runtime_probe.py
  *
- * Auto-adaptation surface: property matrix returned by real_arch_props()
- * carries word size, endianness, page size, cache-line size, SIMD flags,
- * syscall convention. Any consumer can select behavior from these.
- *
- * Compatibility matrix: real_arch_compat(a, b) returns a bitmask of
- * REAL_COMPAT_* flags describing whether A can run B's code, share ABI,
- * share endianness, share word size, or emulate B.
+ * claim_allowed=false until the claimed target has an execution receipt.
  */
 
 #include "real_attrs.h"
@@ -39,13 +36,13 @@ typedef enum {
   REAL_ARCH_RISCV32       = 6,
   REAL_ARCH_MIPS64        = 7,
   REAL_ARCH_MIPS32        = 8,
-  REAL_ARCH_PPC64LE       = 9,   /* IBM POWER little-endian */
+  REAL_ARCH_PPC64LE       = 9,
   REAL_ARCH_PPC32         = 10,
   REAL_ARCH_S390X         = 11,
   REAL_ARCH_SPARC64       = 12,
   REAL_ARCH_LOONGARCH64   = 13,
   REAL_ARCH_WASM32        = 14,
-  REAL_ARCH_ARM64_DARWIN  = 15,  /* Apple Silicon macOS/iOS */
+  REAL_ARCH_ARM64_DARWIN  = 15,
   REAL_ARCH__COUNT
 } real_arch_t;
 
@@ -54,49 +51,53 @@ typedef enum {
   REAL_ENDIAN_BIG    = 1
 } real_endian_t;
 
-/* SIMD/vector flags — bitmask, extensible. */
+/* SIMD/vector reference flags. These are nominal table metadata; consumers
+ * must use an observed runtime probe before selecting a hardware code path. */
 #define REAL_SIMD_NONE     0x00
 #define REAL_SIMD_MMX      0x01
 #define REAL_SIMD_SSE2     0x02
 #define REAL_SIMD_AVX2     0x04
 #define REAL_SIMD_AVX512   0x08
-#define REAL_SIMD_NEON     0x10  /* ARM Advanced SIMD */
-#define REAL_SIMD_SVE      0x20  /* ARM SVE */
-#define REAL_SIMD_RVV      0x40  /* RISC-V V */
-#define REAL_SIMD_ALTIVEC  0x80  /* POWER AltiVec */
+#define REAL_SIMD_NEON     0x10
+#define REAL_SIMD_SVE      0x20
+#define REAL_SIMD_RVV      0x40
+#define REAL_SIMD_ALTIVEC  0x80
 
-/* Syscall conventions — every supported OS/arch pair has one. */
 typedef enum {
-  REAL_SYSCALL_LINUX_SYSCALL = 0,  /* Linux `syscall` instruction */
-  REAL_SYSCALL_LINUX_SVC     = 1,  /* Linux ARM SVC */
-  REAL_SYSCALL_DARWIN_SVC    = 2,  /* macOS/iOS `svc #0x80` */
-  REAL_SYSCALL_WASI          = 3,  /* WebAssembly WASI imports */
+  REAL_SYSCALL_LINUX_SYSCALL = 0,
+  REAL_SYSCALL_LINUX_SVC     = 1,
+  REAL_SYSCALL_DARWIN_SVC    = 2,
+  REAL_SYSCALL_WASI          = 3,
   REAL_SYSCALL_UNKNOWN       = 255
 } real_syscall_conv_t;
 
-/* Compatibility flags — bitmask returned by real_arch_compat(). */
-#define REAL_COMPAT_SAME        0x01  /* identical arch */
-#define REAL_COMPAT_ABI         0x02  /* shares ABI (can call each other) */
-#define REAL_COMPAT_ENDIAN      0x04  /* same endianness */
-#define REAL_COMPAT_WORDSIZE    0x08  /* same word size */
-#define REAL_COMPAT_ISA_SUPER   0x10  /* A is a superset of B (e.g. x86_64⊃i386) */
-#define REAL_COMPAT_EMULATABLE  0x20  /* A can emulate B (qemu-user etc.) */
+/* Relationship flags. SAME/ABI/ENDIAN/WORDSIZE describe catalog relations.
+ * ISA_SUPER is nominal and does not prove OS execution support.
+ * EMULATABLE is retained for ABI compatibility but is deliberately not inferred
+ * by real_arch_compat(); emulator presence/execution requires runtime evidence. */
+#define REAL_COMPAT_SAME        0x01
+#define REAL_COMPAT_ABI         0x02
+#define REAL_COMPAT_ENDIAN      0x04
+#define REAL_COMPAT_WORDSIZE    0x08
+#define REAL_COMPAT_ISA_SUPER   0x10
+#define REAL_COMPAT_EMULATABLE  0x20
 
-/* Property record — every field REAL, derived from arch enum. */
+/* Reference profile. page_size/cache_line/simd are NOMINAL values, not runtime
+ * capabilities. Field names remain unchanged to preserve the current C ABI. */
 typedef struct {
   real_arch_t arch;
-  const char *name;              /* canonical: "x86_64", "arm64", ... */
-  const char *canonical_uname;   /* what uname -m returns */
-  const char *termux_name;       /* what termux calls it (or NULL) */
-  uint8_t word_bits;             /* 32 or 64 */
+  const char *name;
+  const char *canonical_uname;
+  const char *termux_name;
+  uint8_t word_bits;
   real_endian_t endian;
-  uint32_t page_size;            /* bytes, typical */
-  uint32_t cache_line;           /* bytes, typical */
-  uint32_t simd;                 /* REAL_SIMD_* bitmask */
+  uint32_t page_size;            /* nominal/reference only */
+  uint32_t cache_line;           /* nominal/reference only */
+  uint32_t simd;                 /* nominal/reference only */
   real_syscall_conv_t syscall_conv;
 } real_arch_props_t;
 
-/* Compile-time detection — evaluates to a stable arch id at cpp time. */
+/* Compile-time identity detection. */
 #if defined(__x86_64__) || defined(_M_X64)
 #  define REAL_ARCH_BUILD REAL_ARCH_X86_64
 #elif defined(__i386__) || defined(_M_IX86)
@@ -131,38 +132,33 @@ typedef struct {
 #  define REAL_ARCH_BUILD REAL_ARCH_UNKNOWN
 #endif
 
-/* Get the properties for a given architecture. Returns a pointer into
- * a static table; callers must not modify. Returns NULL for
- * REAL_ARCH_UNKNOWN or out-of-range. */
+/* Return nominal/reference properties for an architecture identifier. */
 REAL_PURE
 const real_arch_props_t *real_arch_props(real_arch_t arch);
 
-/* Return the compile-time detected architecture (from REAL_ARCH_BUILD). */
 REAL_CONST
 real_arch_t real_arch_compile_time(void);
 
-/* Detect the running architecture at run time via uname(2).
- * Returns REAL_ARCH_UNKNOWN if uname fails or name is unrecognized. */
+/* Detect runtime architecture identity via uname(2). This does not detect SIMD,
+ * cache topology, page-size policy or emulator availability. */
 REAL_WARN_UNUSED
 real_arch_t real_arch_detect_runtime(void);
 
-/* Compatibility matrix: return REAL_COMPAT_* bitmask describing what
- * relationships arch A has with arch B. */
+/* Return nominal catalog relationship flags. Never treat this function as an
+ * execution/emulation receipt. */
 REAL_PURE
 uint32_t real_arch_compat(real_arch_t a, real_arch_t b);
 
-/* Convert enum ↔ canonical name. Returns NULL on unknown. */
 REAL_PURE
 const char *real_arch_name(real_arch_t arch);
 
 REAL_PURE REAL_NONNULL_ALL
 real_arch_t real_arch_from_name(const char *name);
 
-/* Emit the full matrix as JSON to `out`. */
+/* Emit identity + nominal matrix JSON. */
 REAL_COLD REAL_NONNULL_ALL
 void real_arch_write_json(FILE *out);
 
-/* Human-readable report. */
 REAL_COLD REAL_NONNULL_ALL
 void real_arch_report(FILE *out);
 

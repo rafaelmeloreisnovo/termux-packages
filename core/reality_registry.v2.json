@@ -1,0 +1,193 @@
+{
+  "schema": "reality_registry/2.0.0",
+  "generated_policy": "evidence-first/fail-closed",
+  "default_classification": "TOKEN_VAZIO",
+  "default_priority": "P2",
+  "claim_allowed_default": false,
+  "classifications": [
+    "VERIFIED_LIMITED",
+    "OBSERVED_LIMITED",
+    "PROTOTYPE",
+    "SIMULATED",
+    "STUB",
+    "TOKEN_VAZIO",
+    "REFUTED",
+    "OUT_OF_DOMAIN"
+  ],
+  "evidence_states": [
+    "PASS",
+    "FAIL",
+    "BLOCKED",
+    "OBSERVED",
+    "OBSERVED_LIMITED",
+    "TOKEN_VAZIO",
+    "NOT_APPLICABLE"
+  ],
+  "required_evidence_axes": [
+    "code",
+    "build",
+    "runtime",
+    "test",
+    "ci",
+    "device",
+    "portability",
+    "security",
+    "provenance"
+  ],
+  "promotion_axes": ["code", "build", "runtime", "test", "provenance"],
+  "modules": [
+    {
+      "file": "pkg_scanner.c",
+      "classification": "OBSERVED_LIMITED",
+      "priority": "P1",
+      "reason": "Reads the repository filesystem directly, but silent skips and incomplete-directory semantics can still hide coverage gaps.",
+      "evidence": {"code":"PASS","build":"OBSERVED_LIMITED","runtime":"OBSERVED_LIMITED","test":"OBSERVED_LIMITED","ci":"TOKEN_VAZIO","device":"TOKEN_VAZIO","portability":"TOKEN_VAZIO","security":"NOT_APPLICABLE","provenance":"OBSERVED_LIMITED"},
+      "claim_allowed": false,
+      "next_gate": "Propagate every scan/open/grow failure and emit a coverage ledger proving which repository roots were present, absent, skipped or failed."
+    },
+    {
+      "file": "pkg_parser.c",
+      "classification": "OBSERVED_LIMITED",
+      "priority": "P1",
+      "reason": "Static TERMUX_PKG assignment extractor is useful but is not a complete Bash evaluator and does not establish full build.sh semantics.",
+      "evidence": {"code":"PASS","build":"OBSERVED_LIMITED","runtime":"OBSERVED_LIMITED","test":"OBSERVED_LIMITED","ci":"TOKEN_VAZIO","device":"TOKEN_VAZIO","portability":"TOKEN_VAZIO","security":"NOT_APPLICABLE","provenance":"OBSERVED_LIMITED"},
+      "claim_allowed": false,
+      "next_gate": "Type unresolved expansions, TERMUX_SUBPKG semantics, conditional assignments and parser coverage; compare against a controlled Bash oracle."
+    },
+    {
+      "file": "pkg_dag.c",
+      "classification": "OBSERVED_LIMITED",
+      "priority": "P1",
+      "reason": "Builds a real dependency graph from parsed fields, while alternatives/providers/conditional edges and exact SCC cycle decomposition remain incomplete.",
+      "evidence": {"code":"PASS","build":"OBSERVED_LIMITED","runtime":"OBSERVED_LIMITED","test":"OBSERVED_LIMITED","ci":"TOKEN_VAZIO","device":"TOKEN_VAZIO","portability":"TOKEN_VAZIO","security":"NOT_APPLICABLE","provenance":"OBSERVED_LIMITED"},
+      "claim_allowed": false,
+      "next_gate": "Represent alternative/provider/conditional edges explicitly, propagate allocation failures and replace aggregate cycle detection with SCC decomposition."
+    },
+    {
+      "file": "pkg_real_cli.c",
+      "classification": "OBSERVED_LIMITED",
+      "priority": "P1",
+      "reason": "CLI exposes the real scanner/parser/DAG path but inherits their semantic limits.",
+      "evidence": {"code":"PASS","build":"OBSERVED_LIMITED","runtime":"OBSERVED_LIMITED","test":"OBSERVED_LIMITED","ci":"TOKEN_VAZIO","device":"TOKEN_VAZIO","portability":"TOKEN_VAZIO","security":"NOT_APPLICABLE","provenance":"OBSERVED_LIMITED"},
+      "claim_allowed": false,
+      "next_gate": "Emit the V2 evidence vector beside every result and refuse global REAL claims when any upstream axis is unresolved."
+    },
+    {
+      "file": "metrics_producer.c",
+      "classification": "OBSERVED_LIMITED",
+      "priority": "P0",
+      "reason": "Metrics are derived from actual filesystem/DAG state, but the producer currently labels the whole output REAL even when upstream semantic coverage is limited.",
+      "evidence": {"code":"PASS","build":"OBSERVED_LIMITED","runtime":"OBSERVED_LIMITED","test":"OBSERVED_LIMITED","ci":"TOKEN_VAZIO","device":"TOKEN_VAZIO","portability":"TOKEN_VAZIO","security":"NOT_APPLICABLE","provenance":"PASS"},
+      "claim_allowed": false,
+      "next_gate": "Add coverage/parse-failure fields to the contract and distinguish measured graph metrics from global product/runtime readiness."
+    },
+    {
+      "file": "real_contract.c",
+      "classification": "OBSERVED_LIMITED",
+      "priority": "P0",
+      "reason": "Fail-closed cross-field checks exist, but the compact C validator remains a textual extractor. The governed route now places a duplicate-aware, scope-aware strict JSON validator in front of it.",
+      "evidence": {"code":"PASS","build":"OBSERVED_LIMITED","runtime":"OBSERVED_LIMITED","test":"OBSERVED_LIMITED","ci":"TOKEN_VAZIO","device":"TOKEN_VAZIO","portability":"TOKEN_VAZIO","security":"OBSERVED_LIMITED","provenance":"OBSERVED_LIMITED"},
+      "claim_allowed": false,
+      "next_gate": "Keep the strict JSON gate mandatory and either replace the standalone textual C extractor with a bounded parser or explicitly deprecate standalone use."
+    },
+    {
+      "file": "real_provenance.c",
+      "classification": "OBSERVED_LIMITED",
+      "priority": "P1",
+      "reason": "Captures useful build/run provenance but does not by itself establish independent reproduction or device evidence.",
+      "evidence": {"code":"PASS","build":"OBSERVED_LIMITED","runtime":"OBSERVED_LIMITED","test":"OBSERVED_LIMITED","ci":"TOKEN_VAZIO","device":"TOKEN_VAZIO","portability":"TOKEN_VAZIO","security":"NOT_APPLICABLE","provenance":"PASS"},
+      "claim_allowed": false,
+      "next_gate": "Bind receipts to source tree hash, artifact hash, environment identity and an independently replayed execution."
+    },
+    {
+      "file": "real_arch.c",
+      "classification": "OBSERVED_LIMITED",
+      "priority": "P0",
+      "reason": "Compile/runtime identity is observed while the legacy property table is now explicitly nominal. Static emulation claims were removed and a separate runtime capability probe was added; target execution receipts are still absent.",
+      "evidence": {"code":"PASS","build":"OBSERVED_LIMITED","runtime":"OBSERVED_LIMITED","test":"OBSERVED_LIMITED","ci":"TOKEN_VAZIO","device":"TOKEN_VAZIO","portability":"TOKEN_VAZIO","security":"NOT_APPLICABLE","provenance":"OBSERVED_LIMITED"},
+      "claim_allowed": false,
+      "next_gate": "Validate the new runtime probe in CI, then collect independent execution receipts for each claimed target before lowering this P0."
+    },
+    {
+      "file": "hardware_tuning.c",
+      "classification": "OBSERVED_LIMITED",
+      "priority": "P1",
+      "reason": "The module now keeps unknown SoC identity unknown, probes CPU feature tokens/cpufreq when observable and no longer fabricates Generic ARM64, NEON or 2800 MHz defaults.",
+      "evidence": {"code":"PASS","build":"TOKEN_VAZIO","runtime":"OBSERVED_LIMITED","test":"TOKEN_VAZIO","ci":"TOKEN_VAZIO","device":"TOKEN_VAZIO","portability":"TOKEN_VAZIO","security":"NOT_APPLICABLE","provenance":"OBSERVED_LIMITED"},
+      "claim_allowed": false,
+      "next_gate": "Collect physical Android receipts for topology/frequency/features and separate scheduler-model state from actual DVFS/affinity effects."
+    },
+    {
+      "file": "device_test_orchestrator.c",
+      "classification": "SIMULATED",
+      "priority": "P1",
+      "reason": "This is a host-side structural/model fixture. It has been relabeled to explicitly deny physical ARM/device validation and production readiness.",
+      "evidence": {"code":"PASS","build":"TOKEN_VAZIO","runtime":"OBSERVED_LIMITED","test":"TOKEN_VAZIO","ci":"TOKEN_VAZIO","device":"TOKEN_VAZIO","portability":"TOKEN_VAZIO","security":"NOT_APPLICABLE","provenance":"OBSERVED_LIMITED"},
+      "claim_allowed": false,
+      "next_gate": "Keep structural regression tests here; create a separate device harness that receives real Android/Termux environment identity and artifact hashes."
+    },
+    {
+      "file": "gpu_integration.c",
+      "classification": "SIMULATED",
+      "priority": "P1",
+      "reason": "The current backend is a CPU-backed deterministic GPU fixture. Synthetic devices are now gated behind RAF_ENABLE_GPU_FIXTURE=1 and are blocked by default.",
+      "evidence": {"code":"PASS","build":"TOKEN_VAZIO","runtime":"TOKEN_VAZIO","test":"TOKEN_VAZIO","ci":"TOKEN_VAZIO","device":"TOKEN_VAZIO","portability":"TOKEN_VAZIO","security":"NOT_APPLICABLE","provenance":"OBSERVED_LIMITED"},
+      "claim_allowed": false,
+      "next_gate": "Implement a real OpenCL/Vulkan/other explicit backend with physical device enumeration and measured kernel receipts before claiming GPU runtime."
+    },
+    {
+      "file": "pkg_count_freestanding.c",
+      "classification": "VERIFIED_LIMITED",
+      "priority": "P1",
+      "reason": "Freestanding direct-syscall counter is concretely implemented for Linux x86_64; cross-architecture freestanding support is not established.",
+      "evidence": {"code":"PASS","build":"OBSERVED_LIMITED","runtime":"OBSERVED_LIMITED","test":"OBSERVED_LIMITED","ci":"TOKEN_VAZIO","device":"TOKEN_VAZIO","portability":"TOKEN_VAZIO","security":"NOT_APPLICABLE","provenance":"OBSERVED_LIMITED"},
+      "claim_allowed": false,
+      "next_gate": "Add explicit ARMv7/AArch64 syscall backends and reproduce byte/runtime receipts on each architecture before widening the claim."
+    },
+    {
+      "file": "rpc_coordinator.c",
+      "classification": "PROTOTYPE",
+      "priority": "P1",
+      "reason": "Uses real sockets but protocol framing, partial I/O handling, full deserialization, authentication and meaningful statistics are incomplete.",
+      "evidence": {"code":"PASS","build":"TOKEN_VAZIO","runtime":"TOKEN_VAZIO","test":"TOKEN_VAZIO","ci":"TOKEN_VAZIO","device":"TOKEN_VAZIO","portability":"TOKEN_VAZIO","security":"FAIL","provenance":"TOKEN_VAZIO"},
+      "claim_allowed": false,
+      "next_gate": "Implement framed messages, send/recv loops, strict parsing, authenticated peer identity, fault injection and multi-process receipts."
+    },
+    {
+      "file": "dist_orchestrator.c",
+      "classification": "PROTOTYPE",
+      "priority": "P1",
+      "reason": "Contains orchestration structures but worker connect/assignment/heartbeat paths do not yet execute a distributed build contract end-to-end.",
+      "evidence": {"code":"PASS","build":"TOKEN_VAZIO","runtime":"TOKEN_VAZIO","test":"TOKEN_VAZIO","ci":"TOKEN_VAZIO","device":"TOKEN_VAZIO","portability":"TOKEN_VAZIO","security":"TOKEN_VAZIO","provenance":"TOKEN_VAZIO"},
+      "claim_allowed": false,
+      "next_gate": "Connect workers through the RPC contract, assign real DAG slices, collect signed receipts and measure speedup only from homogeneous workloads."
+    },
+    {
+      "file": "crypto_ed25519.c",
+      "classification": "SIMULATED",
+      "priority": "P0",
+      "reason": "The source explicitly simulates Ed25519-like behavior. Headers now identify it as SIMULATED_TOY and RAF_PRODUCTION_BUILD rejects inclusion at compile time.",
+      "evidence": {"code":"PASS","build":"TOKEN_VAZIO","runtime":"TOKEN_VAZIO","test":"TOKEN_VAZIO","ci":"TOKEN_VAZIO","device":"TOKEN_VAZIO","portability":"TOKEN_VAZIO","security":"FAIL","provenance":"OBSERVED_LIMITED"},
+      "claim_allowed": false,
+      "next_gate": "Replace with a vetted Ed25519 implementation plus standard test vectors and a misuse-resistant API before any security claim."
+    },
+    {
+      "file": "crypto_chacha20.c",
+      "classification": "SIMULATED",
+      "priority": "P0",
+      "reason": "The source explicitly simulates ChaCha20/Poly1305 and uses rand(). Headers now identify it as SIMULATED_TOY and production inclusion is compile-time blocked.",
+      "evidence": {"code":"PASS","build":"TOKEN_VAZIO","runtime":"TOKEN_VAZIO","test":"TOKEN_VAZIO","ci":"TOKEN_VAZIO","device":"TOKEN_VAZIO","portability":"TOKEN_VAZIO","security":"FAIL","provenance":"OBSERVED_LIMITED"},
+      "claim_allowed": false,
+      "next_gate": "Replace with a vetted ChaCha20-Poly1305 implementation and standard vectors; use a secure nonce/key contract."
+    },
+    {
+      "file": "crypto_pqc.c",
+      "classification": "SIMULATED",
+      "priority": "P0",
+      "reason": "The source explicitly simulates Kyber/Dilithium-like operations with rand()/XOR. Headers now identify it as SIMULATED_TOY and production inclusion is compile-time blocked.",
+      "evidence": {"code":"PASS","build":"TOKEN_VAZIO","runtime":"TOKEN_VAZIO","test":"TOKEN_VAZIO","ci":"TOKEN_VAZIO","device":"TOKEN_VAZIO","portability":"TOKEN_VAZIO","security":"FAIL","provenance":"OBSERVED_LIMITED"},
+      "claim_allowed": false,
+      "next_gate": "Integrate a vetted standardized ML-KEM/ML-DSA library with known-answer tests and explicit algorithm/version identifiers."
+    }
+  ]
+}
