@@ -6,7 +6,7 @@ on:
       architectures:
         description: Architectures to source-build
         required: true
-        default: arm
+        default: arm,aarch64
         type: choice
         options:
           - arm
@@ -19,6 +19,7 @@ on:
       - 'scripts/generate-bootstraps.sh'
       - 'scripts/properties.sh'
       - 'packages/**'
+      - 'scripts/tests/test_rafcodephi_termux_api_contract.py'
       - '.github/workflows/rafcodephi-real-bootstrap.yml'
 
 concurrency:
@@ -32,7 +33,7 @@ jobs:
   real-bootstrap-arm:
     name: Source-build real RAFCODEPHI bootstrap
     runs-on: ubuntu-latest
-    timeout-minutes: 180
+    timeout-minutes: 240
     env:
       CI: 'true'
       TERMUX_DOCKER_USE_SUDO: '1'
@@ -52,7 +53,7 @@ jobs:
           if [[ "${GITHUB_EVENT_NAME}" == "workflow_dispatch" ]]; then
             ARCHITECTURES='${{ inputs.architectures }}'
           else
-            ARCHITECTURES='arm'
+            ARCHITECTURES='arm,aarch64'
           fi
           echo "architectures=$ARCHITECTURES" >> "$GITHUB_OUTPUT"
           echo "Selected: $ARCHITECTURES"
@@ -67,6 +68,10 @@ jobs:
           grep -q 'legacy_prefix_allowed=false' scripts/build-rafcodephi-real-bootstrap.sh
           grep -q "RAFCODEPHI pkg bridge" scripts/build-rafcodephi-real-bootstrap.sh
           grep -q "is a bridge, not a real package-manager frontend" scripts/build-rafcodephi-real-bootstrap.sh
+
+      - name: Validate Termux API client route
+        shell: bash
+        run: python3 scripts/tests/test_rafcodephi_termux_api_contract.py
 
       - name: Materialize RAFCODEPHI package prefix on host checkout
         shell: bash
@@ -107,6 +112,11 @@ jobs:
           grep -Fx 'prefix=/data/data/com.termux.rafacodephi/files/usr' "$manifest"
           grep -Fx 'bridge_allowed=false' "$manifest"
           grep -Fx 'legacy_prefix_allowed=false' "$manifest"
+          grep -Fx 'api_package=com.termux.rafacodephi.api' "$manifest"
+          grep -Fx 'api_receiver_component=com.termux.rafacodephi.api/com.termux.api.TermuxApiReceiver' "$manifest"
+          grep -Fx 'api_access_control=SIGNATURE_PERMISSION_NO_SHARED_UID' "$manifest"
+          grep -Fx 'termux_api_cli=EMBEDDED' "$manifest"
+          grep -Fx 'apt_update_guard=RAFCODEPHI_PACKAGE_REPOSITORY_NOT_PUBLISHED' "$manifest"
           grep -Fx 'claim_allowed_device_runtime=false' "$manifest"
           grep -Fx 'device_runtime_proof=TOKEN_VAZIO' "$manifest"
           cat "$manifest"
