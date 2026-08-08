@@ -25,6 +25,7 @@
 #include "pkg_dag.h"
 #include "pkg_parser.h"
 #include "pkg_scanner.h"
+#include "real_arch.h"
 #include "real_contract.h"
 #include "real_provenance.h"
 #include <errno.h>
@@ -127,6 +128,30 @@ int main(int argc, char **argv) {
   fprintf(f, "\n");
   real_provenance_write_json(f, &prov);
   fprintf(f, ",\n\n");
+
+  /* Auto-adaptive arch metadata */
+  {
+    real_arch_t ct = real_arch_compile_time();
+    real_arch_t rt = real_arch_detect_runtime();
+    const real_arch_props_t *rtp = real_arch_props(rt);
+    fprintf(f, "  \"arch\": {\n");
+    fprintf(f, "    \"compile_time\": \"%s\",\n", real_arch_name(ct));
+    fprintf(f, "    \"runtime\": \"%s\",\n", real_arch_name(rt));
+    if (rtp) {
+      fprintf(f, "    \"word_bits\": %u,\n", rtp->word_bits);
+      fprintf(f, "    \"endian\": \"%s\",\n",
+              rtp->endian == REAL_ENDIAN_BIG ? "big" : "little");
+      fprintf(f, "    \"page_size\": %u,\n", rtp->page_size);
+      fprintf(f, "    \"cache_line\": %u\n", rtp->cache_line);
+    } else {
+      fprintf(f, "    \"word_bits\": 0,\n");
+      fprintf(f, "    \"endian\": \"unknown\",\n");
+      fprintf(f, "    \"page_size\": 0,\n");
+      fprintf(f, "    \"cache_line\": 0\n");
+    }
+    fprintf(f, "  },\n\n");
+  }
+
   fprintf(f, "  \"node_count\": %u,\n", nodes);
   fprintf(f, "  \"edge_count\": %u,\n", edges);
   fprintf(f, "  \"depends_edges\": %u,\n", dag.total_depends_edges);
