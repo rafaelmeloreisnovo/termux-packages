@@ -3,15 +3,17 @@
  * Status: REAL for the emitted measurement artifact only.
  *
  * Scope boundary:
- *   This producer measures a static package dependency graph from the current
- *   repository filesystem. It does NOT prove package buildability, Android
- *   runtime, physical-device execution, security, or product readiness.
+ *   This producer measures a static FIRST-ALTERNATIVE dependency projection
+ *   from the current repository filesystem. It does NOT prove full Bash/apt
+ *   dependency semantics, package buildability, Android runtime, physical
+ *   device execution, security, or product readiness.
  *
  * Promotion prerequisites enforced here:
  *   - provenance capture succeeds;
  *   - all four known package roots are present and scanner collection has zero
  *     path/I/O/allocation/subpackage failures;
- *   - DAG construction/topological analysis succeeds;
+ *   - DAG construction/topological analysis succeeds without allocation or
+ *     dependency-field truncation;
  *   - no parser file failures are tolerated.
  *
  * Usage: metrics-producer <repo_base_dir> <output_json_path>
@@ -92,7 +94,10 @@ int main(int argc, char **argv) {
   pkg_dag_t dag;
   uint64_t t_dag_start = monotonic_ns();
   if (pkg_dag_build(&dag, &inv) < 0) {
-    fprintf(stderr, "BLOCKED: dag build failed\n");
+    fprintf(stderr,
+            "BLOCKED: dag build failed (alloc=%u field_overflows=%u)\n",
+            dag.allocation_failures, dag.dependency_field_overflows);
+    pkg_dag_free(&dag);
     pkg_inventory_free(&inv);
     return 2;
   }
@@ -105,7 +110,8 @@ int main(int argc, char **argv) {
   }
 
   if (pkg_dag_topo_sort(&dag) < 0) {
-    fprintf(stderr, "BLOCKED: topo sort failed\n");
+    fprintf(stderr, "BLOCKED: topo/SCC analysis failed (alloc=%u)\n",
+            dag.allocation_failures);
     pkg_dag_free(&dag);
     pkg_inventory_free(&inv);
     return 2;
@@ -117,10 +123,13 @@ int main(int argc, char **argv) {
   uint32_t unres = dag.unresolved_count;
   uint32_t cycles = dag.cycle_count;
 
+  /* Legacy contract field name retained, but semantics are explicitly scoped:
+   * fraction of projected dependency names resolved to inventory entries. */
   double completeness =
       edges > 0 ? 1.0 - ((double)unres / (double)edges) : 0.0;
-  double acyclicity =
-      nodes > 0 ? 1.0 - ((double)cycles / (double)nodes) : 0.0;
+
+  /* Acyclicity is a graph property, not 1 - SCC_count/node_count. */
+  double acyclicity = nodes > 0 ? (cycles == 0 ? 1.0 : 0.0) : 0.0;
   double coherence_phi = completeness * acyclicity;
   double avg_deps = nodes > 0 ? (double)edges / (double)nodes : 0.0;
 
@@ -141,7 +150,9 @@ int main(int argc, char **argv) {
   fprintf(f, "  \"schema\": \"" REAL_CONTRACT_SCHEMA_VERSION "\",\n");
   fprintf(f, "  \"status\": \"REAL\",\n");
   fprintf(f, "  \"claim_allowed\": false,\n");
-  fprintf(f, "  \"measurement_scope\": \"static_package_dependency_graph\",\n");
+  fprintf(f, "  \"measurement_scope\": \"static_first_alternative_dependency_projection\",\n");
+  fprintf(f, "  \"graph_completeness_semantics\": \"resolved_name_fraction_of_projection_edges\",\n");
+  fprintf(f, "  \"cycle_semantics\": \"cyclic_scc_count\",\n");
   fprintf(f, "  \"product_readiness\": \"NOT_CLAIMED\",\n");
   fprintf(f, "  \"device_runtime\": \"NOT_MEASURED_SEPARATE_RECEIPT_REQUIRED\",\n");
   fprintf(f, "  \"generated_unix_ms\": %" PRIu64 ",\n", now_unix_ms());
@@ -172,7 +183,11 @@ int main(int argc, char **argv) {
   fprintf(f, "    \"allocation_errors\": %u,\n", inv.allocation_errors);
   fprintf(f, "    \"subpackage_scan_failures\": %u\n", inv.subpackage_scan_failures);
   fprintf(f, "  },\n");
-  fprintf(f, "  \"parse_failures\": %u,\n\n", dag.parse_failures);
+  fprintf(f, "  \"parse_failures\": %u,\n", dag.parse_failures);
+  fprintf(f, "  \"alternative_dep_fields\": %u,\n", dag.alternative_dep_fields);
+  fprintf(f, "  \"dependency_field_overflows\": %u,\n", dag.dependency_field_overflows);
+  fprintf(f, "  \"dag_allocation_failures\": %u,\n", dag.allocation_failures);
+  fprintf(f, "  \"cycle_nodes\": %u,\n\n", dag.cycle_nodes);
 
   fprintf(f, "  \"node_count\": %u,\n", nodes);
   fprintf(f, "  \"edge_count\": %u,\n", edges);
@@ -201,11 +216,12 @@ int main(int argc, char **argv) {
   }
 
   fprintf(stdout,
-          "pkg_metrics written to %s scope=static_package_dependency_graph "
-          "nodes=%u edges=%u phi=%.4f cycles=%u unresolved=%u "
-          "roots=%u/%u parse_failures=%u claim_allowed=false\n",
-          out_path, nodes, edges, coherence_phi, cycles, unres,
-          inv.roots_present, inv.roots_expected, dag.parse_failures);
+          "pkg_metrics written to %s scope=static_first_alternative_dependency_projection "
+          "nodes=%u edges=%u phi=%.4f cyclic_sccs=%u cycle_nodes=%u unresolved=%u "
+          "alternatives=%u roots=%u/%u parse_failures=%u claim_allowed=false\n",
+          out_path, nodes, edges, coherence_phi, cycles, dag.cycle_nodes, unres,
+          dag.alternative_dep_fields, inv.roots_present, inv.roots_expected,
+          dag.parse_failures);
 
   pkg_dag_free(&dag);
   pkg_inventory_free(&inv);
