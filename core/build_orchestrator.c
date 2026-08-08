@@ -6,19 +6,15 @@
 #include <string.h>
 #include <math.h>
 
-#define GCD_SAFE(a, b) ((b) == 0 ? (a) : gcd_recursive((a), (b)))
+#define GCD_SAFE(a, b) ({ uint32_t _a = (a), _b = (b); while (_b) { uint32_t _t = _b; _b = _a % _b; _a = _t; } _a; })
 #define PHI_PRECISION 16
 #define PHI_SCALE (1ULL << PHI_PRECISION)
 
-static uint32_t gcd_recursive(uint32_t a, uint32_t b) {
-  return b == 0 ? a : gcd_recursive(b, a % b);
-}
-
-static int termux_orch_phase_setup_vars(struct termux_build_state *state) {
-  if (!state || state->phase != TERMUX_PHASE_SETUP_VARS) return -1;
+static int termux_orch_phase_setup(struct termux_build_state *state) {
+  if (!state || state->phase != TERMUX_PHASE_SETUP) return -1;
   memset(state->state_buffer, 0, TERMUX_ORCHESTRATOR_STATE_BUFFER_SIZE);
   snprintf((char *)state->state_buffer, TERMUX_ORCHESTRATOR_STATE_BUFFER_SIZE,
-           "[setup-vars] arch_state=%u api=21\n", state->arch_state);
+           "[setup] arch=%u api=21\n", state->arch_state);
   return 0;
 }
 
@@ -58,7 +54,15 @@ static int termux_orch_phase_install(struct termux_build_state *state) {
   if (!state || state->phase != TERMUX_PHASE_INSTALL) return -1;
   memset(state->state_buffer, 0, TERMUX_ORCHESTRATOR_STATE_BUFFER_SIZE);
   snprintf((char *)state->state_buffer, TERMUX_ORCHESTRATOR_STATE_BUFFER_SIZE,
-           "[install] zero_copy=true\n");
+           "[install] destdir=true\n");
+  return 0;
+}
+
+static int termux_orch_phase_massage(struct termux_build_state *state) {
+  if (!state || state->phase != TERMUX_PHASE_MASSAGE) return -1;
+  memset(state->state_buffer, 0, TERMUX_ORCHESTRATOR_STATE_BUFFER_SIZE);
+  snprintf((char *)state->state_buffer, TERMUX_ORCHESTRATOR_STATE_BUFFER_SIZE,
+           "[massage] strip=true\n");
   return 0;
 }
 
@@ -66,25 +70,27 @@ static int termux_orch_phase_package(struct termux_build_state *state) {
   if (!state || state->phase != TERMUX_PHASE_PACKAGE) return -1;
   memset(state->state_buffer, 0, TERMUX_ORCHESTRATOR_STATE_BUFFER_SIZE);
   snprintf((char *)state->state_buffer, TERMUX_ORCHESTRATOR_STATE_BUFFER_SIZE,
-           "[package] format=deb manifest_update=true\n");
+           "[package] format=deb\n");
   return 0;
 }
 
-static uint64_t termux_attractor_compute(uint32_t index) {
-  if (index >= TERMUX_ORCHESTRATOR_TOTAL_STATES) return 0;
+static uint64_t termux_attractor_compute(uint32_t phase, uint32_t arch_state) {
+  if (phase >= TERMUX_BUILD_PHASES || arch_state >= TERMUX_ARCH_STATES) return 0;
   const uint32_t golden_ratio_32 = 0x9E3779B9U;
+  uint32_t index = phase * TERMUX_ARCH_STATES + arch_state;
   return ((uint64_t)(golden_ratio_32 * (index + 1)) << 16) | index;
 }
 
 uint64_t termux_orchestrator_compute_phi(struct termux_build_state *state) {
   if (!state) return 0;
 
-  uint64_t overhead_penalty = state->cycle_count > 42 ? 1000 : 0;
-  uint64_t depth_score = 42ULL - (state->phase * 6 + state->arch_state);
-  uint64_t coherence_base = (depth_score * PHI_SCALE) / 42;
+  uint64_t overhead_penalty = state->cycle_count > 32 ? 500 : 0;
+  uint64_t layer_index = state->phase * TERMUX_ARCH_STATES + state->arch_state;
+  uint64_t depth_score = 32ULL - layer_index;
+  uint64_t coherence_base = (depth_score * PHI_SCALE) / 32;
 
-  uint64_t gcd_val = GCD_SAFE(state->phase + 1, TERMUX_ORCHESTRATOR_PHASES);
-  uint64_t gcd_factor = (gcd_val * PHI_SCALE) / TERMUX_ORCHESTRATOR_PHASES;
+  uint64_t gcd_val = GCD_SAFE(state->phase + 1, TERMUX_BUILD_PHASES);
+  uint64_t gcd_factor = (gcd_val * PHI_SCALE) / TERMUX_BUILD_PHASES;
 
   return (coherence_base * gcd_factor / PHI_SCALE) - overhead_penalty;
 }
@@ -92,11 +98,15 @@ uint64_t termux_orchestrator_compute_phi(struct termux_build_state *state) {
 int termux_orchestrator_validate_invariants(struct termux_build_state *state) {
   if (!state) return -1;
 
-  uint32_t gcd_depth_42 = GCD_SAFE(state->phase * 6 + state->arch_state, 42);
-  uint32_t valid_gcds[] = {1, 2, 3, 6, 7, 14, 21, 42};
+  if (state->phase >= TERMUX_BUILD_PHASES) return -10;
+  if (state->arch_state >= TERMUX_ARCH_STATES) return -11;
+  if (state->pkg_idx >= 2057) return -12;
+
+  uint32_t gcd_depth_32 = GCD_SAFE(state->phase * TERMUX_ARCH_STATES + state->arch_state, 32);
+  uint32_t valid_gcds[] = {1, 2, 4, 8, 16, 32};
   int gcd_valid = 0;
   for (size_t i = 0; i < sizeof(valid_gcds) / sizeof(valid_gcds[0]); i++) {
-    if (gcd_depth_42 == valid_gcds[i]) {
+    if (gcd_depth_32 == valid_gcds[i]) {
       gcd_valid = 1;
       break;
     }

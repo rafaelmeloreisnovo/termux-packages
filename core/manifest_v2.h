@@ -3,6 +3,7 @@
 
 #include <stdint.h>
 #include <stddef.h>
+#include <assert.h>
 
 #define TERMUX_MANIFEST_V2_MAGIC 0x4D46564DU
 #define TERMUX_MANIFEST_V2_VERSION 2
@@ -12,6 +13,7 @@
 #define TERMUX_MANIFEST_MAX_DEPS 16
 #define TERMUX_MANIFEST_MAX_ENTRIES 2057
 #define TERMUX_MANIFEST_SHA256_LEN 32
+#define TERMUX_MANIFEST_ENTRY_SIZE 200
 
 #pragma pack(push, 1)
 
@@ -22,14 +24,20 @@ struct termux_manifest_entry_v2 {
   uint32_t api_level;
   uint32_t build_flags;
   uint8_t sha256[TERMUX_MANIFEST_SHA256_LEN];
-  uint32_t crc32c;              // deps[] validation
-  uint64_t coherence_phi;       // Q48.16 fixed-point
-  uint32_t toroidal_depth;      // 0..41
+  uint32_t crc32c;              // deps/depth/phi CRC32C
+  uint64_t coherence_phi;       // φ score (Q48.16 fixed-point)
+  uint16_t toroidal_depth;      // 0..31 (DAG layer depth for 8×4 matrix)
   uint16_t dep_count;
   uint16_t deps[TERMUX_MANIFEST_MAX_DEPS];
-  uint64_t phase_mask;          // 7 phases completed
-  uint16_t _pad;
+  uint64_t phase_mask;          // 8 phases completed (bits 0..7)
 };
+
+_Static_assert(sizeof(struct termux_manifest_entry_v2) == TERMUX_MANIFEST_ENTRY_SIZE,
+               "termux_manifest_entry_v2 must be exactly 200 bytes");
+_Static_assert(offsetof(struct termux_manifest_entry_v2, coherence_phi) == 168,
+               "coherence_phi offset must be 168 bytes");
+_Static_assert(offsetof(struct termux_manifest_entry_v2, phase_mask) == 192,
+               "phase_mask offset must be 192 bytes");
 
 struct termux_manifest_v2 {
   uint32_t magic;
