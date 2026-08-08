@@ -14,6 +14,7 @@ struct job_context {
   struct termux_build_state state;
   uint64_t total_cycles;
   uint64_t total_phi;
+  volatile uint32_t layer_num;
 };
 
 static void* job_thread_worker(void *arg) {
@@ -22,20 +23,19 @@ static void* job_thread_worker(void *arg) {
 
   termux_cpu_affinity_set(ctx->cpu_id);
 
-  uint32_t layer_start = (ctx->thread_id * sched->layers_per_thread);
-  uint32_t layer_end = layer_start + sched->layers_per_thread;
-
-  if (ctx->thread_id == sched->num_threads - 1) {
-    layer_end = TERMUX_DAG_LAYERS;
-  }
-
   ctx->total_cycles = 0;
   ctx->total_phi = 0;
 
-  for (uint32_t layer = layer_start; layer < layer_end; layer++) {
+  for (uint32_t layer = 0; layer < TERMUX_DAG_LAYERS; layer++) {
     struct termux_layer_info *layer_info = &sched->layers[layer];
+    uint32_t pkg_per_thread = (layer_info->package_count + sched->num_threads - 1) / sched->num_threads;
+    uint32_t pkg_start = ctx->thread_id * pkg_per_thread;
+    uint32_t pkg_end = pkg_start + pkg_per_thread;
+    if (pkg_end > layer_info->package_count) {
+      pkg_end = layer_info->package_count;
+    }
 
-    for (uint32_t pkg_idx = 0; pkg_idx < layer_info->package_count; pkg_idx++) {
+    for (uint32_t pkg_idx = pkg_start; pkg_idx < pkg_end; pkg_idx++) {
       uint32_t pkg_id = layer_info->package_indices[pkg_idx];
 
       if (sched->execute_fn) {
@@ -49,7 +49,10 @@ static void* job_thread_worker(void *arg) {
       }
     }
 
-    termux_phase_barrier_wait(&sched->barrier);
+    int barrier_ret = termux_phase_barrier_wait(&sched->barrier);
+    if (barrier_ret != 0) {
+      return NULL;
+    }
   }
 
   sched->results[ctx->thread_id].total_cycles = ctx->total_cycles;

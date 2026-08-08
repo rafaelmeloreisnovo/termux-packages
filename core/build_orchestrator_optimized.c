@@ -33,8 +33,8 @@ static inline uint32_t gcd_compute_branchless(uint32_t a, uint32_t b) {
 
 static inline int invariant_gcd_valid(uint32_t depth) {
   uint32_t gcd_val = gcd_compute_branchless(depth, TERMUX_DAG_LAYERS);
-  uint8_t valid_gcds[] = {1, 2, 3, 6, 7, 14, 21, 42};
-  for (size_t i = 0; i < 8; i++) {
+  uint8_t valid_gcds[] = {1, 2, 4, 8, 16, 32};
+  for (size_t i = 0; i < 6; i++) {
     if (gcd_val == valid_gcds[i]) return 1;
   }
   return 0;
@@ -130,6 +130,7 @@ static inline void transition_batch_optimized(struct termux_build_state *state,
     if (state->phase < TERMUX_BUILD_PHASES - 1) {
       state->phase++;
     } else {
+      state->phase = TERMUX_BUILD_PHASES;
       break;
     }
   }
