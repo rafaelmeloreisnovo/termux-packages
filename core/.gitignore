@@ -39,5 +39,7 @@ test-production-hardening
 test-orchestrator-v2
 test-performance-opt
 test-distributed
+test-security-hardening
+test-integration-e2e
 _checkpoints
 _build_cache
