@@ -10,6 +10,7 @@
 
 static char g_source_url[2048];
 static int g_url_enabled = 1;
+static struct termux_build_context g_ctx;
 
 const char *termux_get_string(uint32_t offset) {
   (void)offset;
@@ -69,47 +70,47 @@ int main(void) {
     return fail("url-too-long");
   }
 
-  struct termux_build_context ctx;
-  memset(&ctx, 0, sizeof(ctx));
-  ctx.pkg.source_url_offset = 1;
-  if (sha256_words(archive, ctx.pkg.sha256) != 0) return fail("sha256-fixture");
+  struct termux_build_context *ctx = &g_ctx;
+  memset(ctx, 0, sizeof(*ctx));
+  ctx->pkg.source_url_offset = 1;
+  if (sha256_words(archive, ctx->pkg.sha256) != 0) return fail("sha256-fixture");
 
-  if (snprintf(ctx.source_dir, sizeof(ctx.source_dir), "%s/out-source-1", root) >= (int)sizeof(ctx.source_dir)) {
+  if (snprintf(ctx->source_dir, sizeof(ctx->source_dir), "%s/out-source-1", root) >= (int)sizeof(ctx->source_dir)) {
     return fail("source-dir-1-too-long");
   }
-  int rc = termux_acquire_source(&ctx);
+  int rc = termux_acquire_source(ctx);
   if (rc != 0) return fail("fresh-acquisition-returned-nonzero");
 
   char extracted[2048];
-  if (snprintf(extracted, sizeof(extracted), "%s/payload/marker.txt", ctx.source_dir) >= (int)sizeof(extracted)) {
+  if (snprintf(extracted, sizeof(extracted), "%s/payload/marker.txt", ctx->source_dir) >= (int)sizeof(extracted)) {
     return fail("marker-path-too-long");
   }
   if (!file_exists(extracted)) return fail("fresh-acquisition-did-not-extract-marker");
 
-  if (snprintf(ctx.source_dir, sizeof(ctx.source_dir), "%s/out-source-2", root) >= (int)sizeof(ctx.source_dir)) {
+  if (snprintf(ctx->source_dir, sizeof(ctx->source_dir), "%s/out-source-2", root) >= (int)sizeof(ctx->source_dir)) {
     return fail("source-dir-2-too-long");
   }
-  rc = termux_acquire_source(&ctx);
+  rc = termux_acquire_source(ctx);
   if (rc != 0) return fail("cache-hit-returned-nonzero");
-  if (snprintf(extracted, sizeof(extracted), "%s/payload/marker.txt", ctx.source_dir) >= (int)sizeof(extracted)) {
+  if (snprintf(extracted, sizeof(extracted), "%s/payload/marker.txt", ctx->source_dir) >= (int)sizeof(extracted)) {
     return fail("marker-path-2-too-long");
   }
   if (!file_exists(extracted)) return fail("cache-hit-did-not-extract-marker");
 
-  uint32_t original = ctx.pkg.sha256[0];
-  ctx.pkg.sha256[0] ^= 0x01000000u;
-  if (snprintf(ctx.source_dir, sizeof(ctx.source_dir), "%s/out-source-badhash", root) >= (int)sizeof(ctx.source_dir)) {
+  uint32_t original = ctx->pkg.sha256[0];
+  ctx->pkg.sha256[0] ^= 0x01000000u;
+  if (snprintf(ctx->source_dir, sizeof(ctx->source_dir), "%s/out-source-badhash", root) >= (int)sizeof(ctx->source_dir)) {
     return fail("source-dir-badhash-too-long");
   }
-  rc = termux_acquire_source(&ctx);
+  rc = termux_acquire_source(ctx);
   if (rc != 78) return fail("hash-mismatch-did-not-fail-closed-with-78");
-  ctx.pkg.sha256[0] = original;
+  ctx->pkg.sha256[0] = original;
 
   g_url_enabled = 0;
-  if (snprintf(ctx.source_dir, sizeof(ctx.source_dir), "%s/out-source-no-url", root) >= (int)sizeof(ctx.source_dir)) {
+  if (snprintf(ctx->source_dir, sizeof(ctx->source_dir), "%s/out-source-no-url", root) >= (int)sizeof(ctx->source_dir)) {
     return fail("source-dir-no-url-too-long");
   }
-  rc = termux_acquire_source(&ctx);
+  rc = termux_acquire_source(ctx);
   if (rc != 76) return fail("missing-url-did-not-fail-closed-with-76");
 
   printf("SOURCE_ACQUISITION_LOCAL_RUNTIME=PASS fresh=PASS cache_hit=PASS hash_mismatch=PASS missing_url=PASS remote_network=NOT_MEASURED claim_allowed=false\n");
