@@ -3,8 +3,9 @@
 #
 # Modes:
 #   validate (default): validate registry/quarantine/contracts/runtime probes
-#                       + bootstrap provenance + scoped architecture matrix
-#                       + scanner/DAG integrity + pkg_metrics governance.
+#                       + bootstrap provenance + RAFCODEPHI delivery source gate
+#                       + scoped architecture matrix + scanner/DAG integrity
+#                       + pkg_metrics governance.
 #   promote:            run validate, then require strict Reality V2 gate.
 #
 # A validate PASS does not mean promotion PASS. Promotion remains blocked while
@@ -40,52 +41,60 @@ for cmd in python3 make jq cc; do
     }
 done
 
-echo "[1/14] Reality V2 registry/unit tests"
+echo "[1/15] Reality V2 registry/unit tests"
 python3 -m unittest core/tests/test_reality_audit_v2.py
 
-echo "[2/14] Bootstrap source-manifest provenance self-test"
+echo "[2/15] Bootstrap source-manifest provenance self-test"
 python3 scripts/emit_rafcodephi_bootstrap_source_manifest.py --self-test
 
-echo "[3/14] Toy crypto quarantine gate"
+echo "[3/15] RAFCODEPHI source-to-DEB delivery preflight"
+python3 -m unittest core/tests/test_rafcodephi_delivery_gate.py
+python3 scripts/rafcodephi_delivery_gate.py source --repo . >/dev/null
+
+echo "[4/15] Toy crypto quarantine gate"
 python3 -m unittest core/tests/test_toy_crypto_quarantine.py
 
-echo "[4/14] Strict pkg_metrics adversarial contract tests"
+echo "[5/15] Strict pkg_metrics adversarial contract tests"
 python3 -m unittest core/tests/test_contract_adversarial.py
 
-echo "[5/14] Runtime architecture probe tests"
+echo "[6/15] Runtime architecture probe tests"
 python3 -m unittest core/tests/test_arch_runtime_probe.py
 
-echo "[6/14] Runtime architecture receipt"
+echo "[7/15] Runtime architecture receipt"
 python3 scripts/arch_runtime_probe.py --out "$ARCH_OUT"
 
-echo "[7/14] Build scoped architecture CLI"
+echo "[8/15] Build scoped architecture CLI"
 make -C core arch-detect
 
-echo "[8/14] Architecture identity/nominal matrix scope tests"
+echo "[9/15] Architecture identity/nominal matrix scope tests"
 bash core/tests/test_arch.sh
 
-echo "[9/14] Scanner coverage/fail-closed tests"
+echo "[10/15] Scanner coverage/fail-closed tests"
 python3 -m unittest core/tests/test_scanner_coverage.py
 
-echo "[10/14] DAG integrity/SCC/fail-closed tests"
+echo "[11/15] DAG integrity/SCC/fail-closed tests"
 python3 -m unittest core/tests/test_dag_integrity.py
 
-echo "[11/14] Reality V2 report (non-promoting)"
+echo "[12/15] Reality V2 report (non-promoting)"
 python3 core/audit_reality_v2.py --out "$AUDIT_OUT"
 
-echo "[12/14] Build governed metrics binaries"
+echo "[13/15] Build governed metrics binaries"
 make -C core metrics-producer contract-validate
 
-echo "[13/14] pkg_metrics governance + adversarial baseline tests"
+echo "[14/15] pkg_metrics governance + adversarial baseline tests"
 bash core/tests/test_governance.sh
 
-echo "[14/14] Scope assertion"
+echo "[15/15] Scope assertion"
 echo "VALIDATION_GATE=PASS"
 echo "STRICT_JSON_GATE=PASS"
 echo "DUPLICATE_KEYS=REJECTED"
 echo "SCOPE_ENFORCEMENT=PASS"
 echo "BOOTSTRAP_SOURCE_MANIFEST_SELFTEST=PASS"
 echo "BOOTSTRAP_SOURCE_MANIFEST_IS_DEVICE_EVIDENCE=false"
+echo "RAFCODEPHI_DELIVERY_SOURCE_GATE=PASS"
+echo "DEB_ARTIFACT=NOT_MEASURED_UNLESS_SEPARATE_ARTIFACT_GATE"
+echo "APT_REPO_METADATA=NOT_MEASURED"
+echo "PKG_APT_RUNTIME=NOT_MEASURED"
 echo "SCANNER_COVERAGE_GATE=PASS"
 echo "SCANNER_SILENT_SKIP_ALLOWED=false"
 echo "DAG_ALLOCATION_FAILURE_SILENT=false"
