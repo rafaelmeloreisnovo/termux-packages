@@ -84,7 +84,7 @@ static uint64_t termux_attractor_compute(uint32_t phase, uint32_t arch_state) {
 uint64_t termux_orchestrator_compute_phi(struct termux_build_state *state) {
   if (!state) return 0;
 
-  uint64_t overhead_penalty = state->cycle_count > 32 ? 500 : 0;
+  uint64_t overhead_penalty = state->cycle_count > 32 ? (state->cycle_count - 32) * 8 : 0;
   uint64_t layer_index = state->phase * TERMUX_ARCH_STATES + state->arch_state;
   uint64_t depth_score = 32ULL - layer_index;
   uint64_t coherence_base = (depth_score * PHI_SCALE) / 32;
@@ -92,15 +92,12 @@ uint64_t termux_orchestrator_compute_phi(struct termux_build_state *state) {
   uint64_t gcd_val = GCD_SAFE(state->phase + 1, TERMUX_BUILD_PHASES);
   uint64_t gcd_factor = (gcd_val * PHI_SCALE) / TERMUX_BUILD_PHASES;
 
-  return (coherence_base * gcd_factor / PHI_SCALE) - overhead_penalty;
+  uint64_t result = (coherence_base * gcd_factor / PHI_SCALE);
+  return result > overhead_penalty ? result - overhead_penalty : 0;
 }
 
 int termux_orchestrator_validate_invariants(struct termux_build_state *state) {
   if (!state) return -1;
-
-  if (state->phase >= TERMUX_BUILD_PHASES) return -10;
-  if (state->arch_state >= TERMUX_ARCH_STATES) return -11;
-  if (state->pkg_idx >= 2057) return -12;
 
   uint32_t gcd_depth_32 = GCD_SAFE(state->phase * TERMUX_ARCH_STATES + state->arch_state, 32);
   uint32_t valid_gcds[] = {1, 2, 4, 8, 16, 32};

@@ -25,12 +25,12 @@ static int test_orchestrator_invariants_gcd(void) {
   ret = termux_orchestrator_validate_invariants(&state);
   assert(ret == 0);
 
-  state.phase = 6;
-  state.arch_state = 5;
+  state.phase = 7;
+  state.arch_state = 3;
   ret = termux_orchestrator_validate_invariants(&state);
   assert(ret == 0);
 
-  printf("✓ test_orchestrator_invariants_gcd passed (all depth/42 gcd valid)\n");
+  printf("✓ test_orchestrator_invariants_gcd passed (all depth/32 gcd valid)\n");
   return 0;
 }
 
@@ -110,7 +110,7 @@ static int test_orchestrator_toroidal_coverage(void) {
     }
   }
 
-  printf("✓ test_orchestrator_toroidal_coverage passed (all 42 states valid)\n");
+  printf("✓ test_orchestrator_toroidal_coverage passed (all 32 states valid)\n");
   return 0;
 }
 

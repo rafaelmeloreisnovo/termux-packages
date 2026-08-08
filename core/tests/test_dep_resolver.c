@@ -36,9 +36,8 @@ static int test_toroidal_layer_batching(void) {
   int ret = termux_dep_resolver_init(&resolver, TERMUX_TOROIDAL_LAYERS);
   assert(ret == 0);
 
-  for (uint16_t i = 0; i < TERMUX_TOROIDAL_LAYERS; i++) {
-    resolver.graph.depths[i] = i;
-  }
+  ret = termux_dep_graph_finalize_csr(&resolver.graph);
+  assert(ret == 0);
 
   ret = termux_dep_resolver_build_layers(&resolver);
   assert(ret == 0 || ret == -3);
@@ -78,7 +77,7 @@ static int test_layer_phi_computation(void) {
   assert(ret == 0);
 
   struct termux_layer_batch layer_deep = {
-    .layer_idx = 21,
+    .layer_idx = 16,
   };
   ret = termux_dep_resolver_compute_layer_phi(&layer_deep, &graph);
   assert(ret == 0);
@@ -88,7 +87,7 @@ static int test_layer_phi_computation(void) {
 }
 
 static int test_gcd_coverage(void) {
-  uint8_t valid_gcds[] = {1, 2, 3, 6, 7, 14, 21, 42};
+  uint8_t valid_gcds[] = {1, 2, 4, 8, 16, 32};
 
   for (uint32_t depth = 0; depth < TERMUX_TOROIDAL_LAYERS; depth++) {
     int depth_gcd_valid = 0;
@@ -112,7 +111,7 @@ static int test_gcd_coverage(void) {
     assert(depth_gcd_valid);
   }
 
-  printf("✓ test_gcd_coverage passed (all depths have valid gcd(depth, 42))\n");
+  printf("✓ test_gcd_coverage passed (all depths have valid gcd(depth, 32))\n");
   return 0;
 }
 
