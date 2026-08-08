@@ -68,6 +68,25 @@ jobs:
           grep -q "RAFCODEPHI pkg bridge" scripts/build-rafcodephi-real-bootstrap.sh
           grep -q "is a bridge, not a real package-manager frontend" scripts/build-rafcodephi-real-bootstrap.sh
 
+      - name: Materialize RAFCODEPHI package prefix on host checkout
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+          path = Path('scripts/properties.sh')
+          text = path.read_text(encoding='utf-8')
+          old = 'TERMUX_APP__PACKAGE_NAME="com.termux"'
+          new = 'TERMUX_APP__PACKAGE_NAME="com.termux.rafacodephi"'
+          count = text.count(old)
+          if count != 1:
+              raise SystemExit(f'expected one canonical package assignment, found {count}')
+          path.write_text(text.replace(old, new, 1), encoding='utf-8')
+          PY
+          resolved="$(bash -c 'set -euo pipefail; source scripts/properties.sh; printf "%s|%s" "$TERMUX_APP__PACKAGE_NAME" "$TERMUX__PREFIX"')"
+          test "$resolved" = 'com.termux.rafacodephi|/data/data/com.termux.rafacodephi/files/usr'
+          echo "Resolved build identity: $resolved"
+
       - name: Build source packages and real bootstrap in Termux builder
         shell: bash
         run: |
