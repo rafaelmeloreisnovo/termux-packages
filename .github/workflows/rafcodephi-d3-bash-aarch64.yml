@@ -1,0 +1,152 @@
+name: RAFCODEPHI D3 Bash AArch64 Artifact
+
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/rafcodephi-d3-bash-aarch64.yml'
+      - 'scripts/rafcodephi_dependency_closure.py'
+      - 'scripts/rafcodephi_delivery_gate.py'
+      - 'scripts/run-docker.sh'
+      - 'build-package.sh'
+      - 'scripts/**'
+      - 'packages/bash/**'
+      - 'packages/readline/**'
+      - 'packages/termux-tools/**'
+      - 'packages/ncurses/**'
+      - 'core/product_surface.v1.json'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: rafcodephi-d3-bash-aarch64-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build-bash-aarch64:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
+    env:
+      TERMUX_APP_PACKAGE: com.termux.rafacodephi
+      TERMUX_PACKAGE_FORMAT: debian
+    steps:
+      - name: Checkout pinned revision
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+
+      - name: Record host and Docker provenance
+        run: |
+          set -eux
+          uname -a
+          docker --version
+          python3 --version
+          git rev-parse HEAD
+          printf 'TERMUX_APP_PACKAGE=%s\n' "$TERMUX_APP_PACKAGE"
+          printf 'TERMUX_PACKAGE_FORMAT=%s\n' "$TERMUX_PACKAGE_FORMAT"
+
+      - name: Validate closure tool
+        run: |
+          set -eux
+          python3 -m unittest core/tests/test_rafcodephi_dependency_closure.py
+
+      - name: Compute Bash custom-prefix dependency closure
+        run: |
+          set -eux
+          python3 scripts/rafcodephi_dependency_closure.py bash \
+            --repo . \
+            --out /tmp/bash-closure.json
+          python3 - <<'PY'
+          import json
+          p='/tmp/bash-closure.json'
+          d=json.load(open(p))
+          print('CLOSURE_COUNT=', d['closure_count'])
+          print('UNRESOLVED_COUNT=', d['unresolved_count'])
+          print('DYNAMIC_DEPENDENCY_PACKAGES=', d['dynamic_dependency_package_count'])
+          print('CLOSURE=', ','.join(d['closure']))
+          print('CLOSURE_STRICT_COMPLETE=', d['complete_for_literal_projection'])
+          print('CLAIM_ALLOWED=false')
+          PY
+
+      - name: Validate RAFCODEPHI source delivery contract
+        run: |
+          set -eux
+          python3 scripts/rafcodephi_delivery_gate.py source \
+            --repo . \
+            --out /tmp/delivery-source.json
+
+      - name: Build Bash AArch64 and dependencies from source
+        run: |
+          set -euxo pipefail
+          # CRITICAL: no -I. For a custom TERMUX_APP_PACKAGE/prefix, target
+          # dependencies must be built for the same namespace instead of being
+          # downloaded from the standard Termux binary repository.
+          ./scripts/run-docker.sh ./build-package.sh -a aarch64 bash \
+            2>&1 | tee /tmp/bash-aarch64-build.log
+
+      - name: Locate and validate concrete Bash Debian artifact
+        id: artifact
+        run: |
+          set -euxo pipefail
+          mapfile -t debs < <(find output -maxdepth 1 -type f -name 'bash_*.deb' -print | sort)
+          if [ "${#debs[@]}" -ne 1 ]; then
+            printf 'D3_GATE=BLOCKED expected_exactly_one_bash_deb found=%s\n' "${#debs[@]}" >&2
+            printf '%s\n' "${debs[@]:-}" >&2
+            exit 1
+          fi
+          deb="${debs[0]}"
+          python3 scripts/rafcodephi_delivery_gate.py artifact \
+            --repo . \
+            --artifact "$deb" \
+            --expected-package bash \
+            --arch aarch64 \
+            --out /tmp/d3-bash-aarch64.json
+          sha256sum "$deb"
+          dpkg-deb -f "$deb" Package Version Architecture Depends || true
+          printf 'deb=%s\n' "$deb" >> "$GITHUB_OUTPUT"
+
+      - name: Emit D3 receipt
+        run: |
+          set -eux
+          python3 - <<'PY'
+          import json, os, hashlib, pathlib
+          src=json.load(open('/tmp/delivery-source.json'))
+          clo=json.load(open('/tmp/bash-closure.json'))
+          d3=json.load(open('/tmp/d3-bash-aarch64.json'))
+          receipt={
+            'schema':'rafcodephi_d3_ci_receipt/1.0.0',
+            'git_sha':os.environ['GITHUB_SHA'],
+            'termux_app_package':os.environ['TERMUX_APP_PACKAGE'],
+            'termux_package_format':os.environ['TERMUX_PACKAGE_FORMAT'],
+            'target_arch':'aarch64',
+            'root_package':'bash',
+            'dependency_closure':clo,
+            'source_gate':src,
+            'artifact_gate':d3,
+            'd3':'PASS',
+            'd4_apt_repo':'NOT_MEASURED',
+            'd5_bootstrap':'NOT_MEASURED',
+            'd6_prefix_runtime':'NOT_MEASURED',
+            'd7_pkg_apt_runtime':'NOT_MEASURED',
+            'd8_physical_aarch64':'NOT_MEASURED',
+            'claim_allowed':False,
+          }
+          pathlib.Path('/tmp/rafcodephi-d3-receipt.json').write_text(json.dumps(receipt,indent=2,sort_keys=True)+'\n')
+          print('D3_BASH_AARCH64=PASS')
+          print('D4_APT_REPO=NOT_MEASURED')
+          print('DEVICE_RUNTIME=NOT_MEASURED')
+          print('CLAIM_ALLOWED=false')
+          PY
+
+      - name: Upload Debian artifact and receipts
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: rafcodephi-bash-aarch64-d3-${{ github.run_id }}
+          path: |
+            output/bash_*.deb
+            /tmp/bash-closure.json
+            /tmp/delivery-source.json
+            /tmp/d3-bash-aarch64.json
+            /tmp/rafcodephi-d3-receipt.json
+            /tmp/bash-aarch64-build.log
+          if-no-files-found: error
+          retention-days: 14
