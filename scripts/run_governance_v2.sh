@@ -4,7 +4,7 @@
 # Modes:
 #   validate (default): validate registry/quarantine/contracts/runtime probes
 #                       + bootstrap provenance + scoped architecture matrix
-#                       + pkg_metrics governance.
+#                       + scanner coverage + pkg_metrics governance.
 #   promote:            run validate, then require strict Reality V2 gate.
 #
 # A validate PASS does not mean promotion PASS. Promotion remains blocked while
@@ -40,46 +40,51 @@ for cmd in python3 make jq cc; do
     }
 done
 
-echo "[1/12] Reality V2 registry/unit tests"
+echo "[1/13] Reality V2 registry/unit tests"
 python3 -m unittest core/tests/test_reality_audit_v2.py
 
-echo "[2/12] Bootstrap source-manifest provenance self-test"
+echo "[2/13] Bootstrap source-manifest provenance self-test"
 python3 scripts/emit_rafcodephi_bootstrap_source_manifest.py --self-test
 
-echo "[3/12] Toy crypto quarantine gate"
+echo "[3/13] Toy crypto quarantine gate"
 python3 -m unittest core/tests/test_toy_crypto_quarantine.py
 
-echo "[4/12] Strict pkg_metrics adversarial contract tests"
+echo "[4/13] Strict pkg_metrics adversarial contract tests"
 python3 -m unittest core/tests/test_contract_adversarial.py
 
-echo "[5/12] Runtime architecture probe tests"
+echo "[5/13] Runtime architecture probe tests"
 python3 -m unittest core/tests/test_arch_runtime_probe.py
 
-echo "[6/12] Runtime architecture receipt"
+echo "[6/13] Runtime architecture receipt"
 python3 scripts/arch_runtime_probe.py --out "$ARCH_OUT"
 
-echo "[7/12] Build scoped architecture CLI"
+echo "[7/13] Build scoped architecture CLI"
 make -C core arch-detect
 
-echo "[8/12] Architecture identity/nominal matrix scope tests"
+echo "[8/13] Architecture identity/nominal matrix scope tests"
 bash core/tests/test_arch.sh
 
-echo "[9/12] Reality V2 report (non-promoting)"
+echo "[9/13] Scanner coverage/fail-closed tests"
+python3 -m unittest core/tests/test_scanner_coverage.py
+
+echo "[10/13] Reality V2 report (non-promoting)"
 python3 core/audit_reality_v2.py --out "$AUDIT_OUT"
 
-echo "[10/12] Build governed metrics binaries"
+echo "[11/13] Build governed metrics binaries"
 make -C core metrics-producer contract-validate
 
-echo "[11/12] pkg_metrics governance + adversarial baseline tests"
+echo "[12/13] pkg_metrics governance + adversarial baseline tests"
 bash core/tests/test_governance.sh
 
-echo "[12/12] Scope assertion"
+echo "[13/13] Scope assertion"
 echo "VALIDATION_GATE=PASS"
 echo "STRICT_JSON_GATE=PASS"
 echo "DUPLICATE_KEYS=REJECTED"
 echo "SCOPE_ENFORCEMENT=PASS"
 echo "BOOTSTRAP_SOURCE_MANIFEST_SELFTEST=PASS"
 echo "BOOTSTRAP_SOURCE_MANIFEST_IS_DEVICE_EVIDENCE=false"
+echo "SCANNER_COVERAGE_GATE=PASS"
+echo "SCANNER_SILENT_SKIP_ALLOWED=false"
 echo "TOY_CRYPTO_QUARANTINE=PASS"
 echo "TOY_CRYPTO_PRODUCTION_ALLOWED=false"
 echo "ARCH_RUNTIME_PROBE=OBSERVED_LIMITED"
