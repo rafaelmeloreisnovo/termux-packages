@@ -143,14 +143,13 @@ int main(int argc, char **argv) {
   fprintf(f, "  \"claim_allowed\": false,\n");
   fprintf(f, "  \"measurement_scope\": \"static_package_dependency_graph\",\n");
   fprintf(f, "  \"product_readiness\": \"NOT_CLAIMED\",\n");
-  fprintf(f, "  \"device_runtime\": \"TOKEN_VAZIO_UNLESS_SEPARATE_RECEIPT\",\n");
+  fprintf(f, "  \"device_runtime\": \"NOT_MEASURED_SEPARATE_RECEIPT_REQUIRED\",\n");
   fprintf(f, "  \"generated_unix_ms\": %" PRIu64 ",\n", now_unix_ms());
   fprintf(f, "  \"repo_base\": \"%s\",\n", base);
   fprintf(f, "\n");
   real_provenance_write_json(f, &prov);
   fprintf(f, ",\n\n");
 
-  /* Architecture identity only. Runtime capabilities have a separate probe. */
   {
     real_arch_t ct = real_arch_compile_time();
     real_arch_t rt = real_arch_detect_runtime();
