@@ -131,9 +131,9 @@ for arch in "${arch_list[@]}"; do
     zip_path="$ROOT/bootstrap-${arch}.zip"
     [[ -s "$zip_path" ]] || { echo "missing generated $zip_path" >&2; exit 1; }
 
-    # Seal the upstream-generated bootstrap with the app-side fail-closed profile
-    # contract before hashing/publication. Canonical Termux bootstrap symlinks are
-    # represented in SYMLINKS.txt and count as required installed entries.
+    # Seal the upstream-generated bootstrap with app-side evidence metadata before
+    # hashing/publication. Standard Termux symlinks in SYMLINKS.txt count as
+    # installed entries; they are not materialized inside the archive.
     python3 - "$zip_path" "$PACKAGE_NAME" "$TARGET_PREFIX" "$arch" <<'PY'
 import json
 import sys
@@ -145,6 +145,8 @@ package_name = sys.argv[2]
 prefix = sys.argv[3]
 arch = sys.argv[4]
 required = [
+    "BOOTSTRAP_INFO",
+    "SYMLINKS.txt",
     "bin/sh",
     "bin/pkg",
     "bin/apt",
@@ -154,13 +156,15 @@ required = [
     "bin/busybox",
     "bin/proot",
     "etc/apt/sources.list",
-    "SYMLINKS.txt",
+    "var/lib/dpkg/status",
 ]
 with zipfile.ZipFile(zip_path, "r") as zf:
     names = set(zf.namelist())
     if "SYMLINKS.txt" not in names:
         raise SystemExit("cannot seal profile; SYMLINKS.txt missing")
     symlink_text = zf.read("SYMLINKS.txt").decode("utf-8")
+if "BOOTSTRAP_PROFILE.json" in names or "BOOTSTRAP_INFO" in names:
+    raise SystemExit("refusing to overwrite pre-existing RAFCODEPHI bootstrap metadata")
 symlink_destinations = set()
 for number, line in enumerate(symlink_text.splitlines(), 1):
     if not line:
@@ -172,9 +176,8 @@ for number, line in enumerate(symlink_text.splitlines(), 1):
     if link.startswith("/") or ".." in link or "\\" in link:
         raise SystemExit(f"unsafe symlink destination line {number}: {link!r}")
     symlink_destinations.add(link)
-available = names | symlink_destinations
-if "BOOTSTRAP_PROFILE.json" in names:
-    raise SystemExit("refusing to overwrite pre-existing BOOTSTRAP_PROFILE.json")
+# BOOTSTRAP_INFO is added below; include it in the projected installed/archive set.
+available = names | symlink_destinations | {"BOOTSTRAP_INFO", "BOOTSTRAP_PROFILE.json"}
 missing = [name for name in required if name not in available]
 if missing:
     raise SystemExit("cannot seal profile; missing installed entries: " + ",".join(missing))
@@ -187,41 +190,62 @@ profile = {
     "prefix": prefix,
     "arch": arch,
     "required_entries": required,
+    "legacy_prefix_forbidden": True,
+    "bridge_markers_forbidden": True,
     "claim_allowed": False,
     "release_allowed": False,
     "device_validation": "TOKEN_VAZIO",
     "real_pkg_relocation_claim_allowed": False,
     "package_repo_runtime_state": "BLOCKED_CUSTOM_REPOSITORY_NOT_PUBLISHED",
 }
-info = zipfile.ZipInfo("BOOTSTRAP_PROFILE.json")
-info.date_time = (1980, 1, 1, 0, 0, 0)
-info.external_attr = 0o100600 << 16
-payload = (json.dumps(profile, sort_keys=True, separators=(",", ":")) + "\n").encode("utf-8")
+bootstrap_info = {
+    "TERMUX_PACKAGE_NAME": package_name,
+    "TERMUX_ARCH": arch,
+    "RAFCODEPHI_BOOTSTRAP_PROFILE": "real-pkg",
+    "RAFCODEPHI_PACKAGE_LAYER": "real-pkg",
+    "RAFCODEPHI_DEVICE_VALIDATION": "TOKEN_VAZIO",
+    "RAFCODEPHI_CLAIM_ALLOWED": "0",
+    "BOOTSTRAP_FULLENGINE_READY": "0",
+    "BOOTSTRAP_PKG_REAL": "1",
+    "BOOTSTRAP_APT_REAL": "1",
+    "BOOTSTRAP_DPKG_REAL": "1",
+}
+profile_payload = (json.dumps(profile, sort_keys=True, separators=(",", ":")) + "\n").encode("utf-8")
+info_payload = "".join(f"{key}={bootstrap_info[key]}\n" for key in sorted(bootstrap_info)).encode("utf-8")
 with zipfile.ZipFile(zip_path, "a", compression=zipfile.ZIP_DEFLATED, compresslevel=9) as zf:
-    zf.writestr(info, payload)
+    for name, payload in (("BOOTSTRAP_INFO", info_payload), ("BOOTSTRAP_PROFILE.json", profile_payload)):
+        info = zipfile.ZipInfo(name)
+        info.date_time = (1980, 1, 1, 0, 0, 0)
+        info.external_attr = 0o100600 << 16
+        zf.writestr(info, payload)
 PY
 
     extract="$validation_root/$arch"
     mkdir -p "$extract"
     unzip -q "$zip_path" -d "$extract"
 
-    for required in bin/apt bin/apt-get bin/dpkg bin/bash bin/pkg bin/busybox bin/proot SYMLINKS.txt BOOTSTRAP_PROFILE.json; do
+    for required in BOOTSTRAP_INFO BOOTSTRAP_PROFILE.json SYMLINKS.txt bin/apt bin/apt-get bin/dpkg bin/bash bin/pkg bin/busybox bin/proot var/lib/dpkg/status; do
         [[ -f "$extract/$required" ]] || { echo "$arch missing real bootstrap archive target: $required" >&2; exit 1; }
     done
 
-    python3 - "$extract/BOOTSTRAP_PROFILE.json" "$PACKAGE_NAME" "$TARGET_PREFIX" "$arch" "$zip_path" <<'PY'
+    python3 - "$extract/BOOTSTRAP_PROFILE.json" "$extract/BOOTSTRAP_INFO" "$PACKAGE_NAME" "$TARGET_PREFIX" "$arch" "$zip_path" <<'PY'
 import json
 import sys
 import zipfile
 from pathlib import Path
 p = json.loads(Path(sys.argv[1]).read_text(encoding="utf-8"))
+info = {}
+for line in Path(sys.argv[2]).read_text(encoding="utf-8").splitlines():
+    if "=" in line:
+        key, value = line.split("=", 1)
+        info[key] = value
 expected = {
     "schema": "rafcodephi-bootstrap-profile/v1",
     "profile": "real-pkg",
     "package_layer": "real-pkg",
-    "package_name": sys.argv[2],
-    "prefix": sys.argv[3],
-    "arch": sys.argv[4],
+    "package_name": sys.argv[3],
+    "prefix": sys.argv[4],
+    "arch": sys.argv[5],
     "claim_allowed": False,
     "release_allowed": False,
     "device_validation": "TOKEN_VAZIO",
@@ -230,10 +254,24 @@ expected = {
 for key, value in expected.items():
     if p.get(key) != value:
         raise SystemExit(f"profile contract mismatch {key}: {p.get(key)!r} != {value!r}")
+for key, value in {
+    "TERMUX_PACKAGE_NAME": sys.argv[3],
+    "TERMUX_ARCH": sys.argv[5],
+    "RAFCODEPHI_BOOTSTRAP_PROFILE": "real-pkg",
+    "RAFCODEPHI_PACKAGE_LAYER": "real-pkg",
+    "RAFCODEPHI_DEVICE_VALIDATION": "TOKEN_VAZIO",
+    "RAFCODEPHI_CLAIM_ALLOWED": "0",
+    "BOOTSTRAP_FULLENGINE_READY": "0",
+    "BOOTSTRAP_PKG_REAL": "1",
+    "BOOTSTRAP_APT_REAL": "1",
+    "BOOTSTRAP_DPKG_REAL": "1",
+}.items():
+    if info.get(key) != value:
+        raise SystemExit(f"BOOTSTRAP_INFO mismatch {key}: {info.get(key)!r} != {value!r}")
 required = p.get("required_entries")
 if not isinstance(required, list) or not required:
     raise SystemExit("profile required_entries empty")
-with zipfile.ZipFile(sys.argv[5], "r") as zf:
+with zipfile.ZipFile(sys.argv[6], "r") as zf:
     names = set(zf.namelist())
     symlinks = zf.read("SYMLINKS.txt").decode("utf-8").splitlines()
 links = set()
