@@ -3,12 +3,18 @@
 #include <sys/utsname.h>
 
 /* ============================================================================
- * REAL: 15-architecture property table + compatibility matrix.
- * All values come from documented ABI/ISA references — not simulated.
+ * Architecture identity catalog + NOMINAL reference matrix.
+ *
+ * Stable ABI/ISA identifiers are useful as reference metadata, but page size,
+ * cache-line size, SIMD availability and emulator availability are environment
+ * properties. Values in k_props are therefore NOMINAL references only and must
+ * never be treated as runtime capability evidence.
+ *
+ * Runtime evidence is emitted separately by scripts/arch_runtime_probe.py.
  * ============================================================================ */
 
 /* Order matches enum values 1..15 (index 0 = UNKNOWN sentinel).
- * Values chosen from official ABI docs and Termux's supported arch list. */
+ * Reference values preserve the historical table/API for compatibility. */
 static const real_arch_props_t k_props[REAL_ARCH__COUNT] = {
     [REAL_ARCH_UNKNOWN] = {
         .arch = REAL_ARCH_UNKNOWN, .name = "unknown",
@@ -152,11 +158,10 @@ real_arch_t real_arch_detect_runtime(void) {
   struct utsname u;
   if (uname(&u) != 0) return REAL_ARCH_UNKNOWN;
 
-  /* Try direct match on uname -m */
+  /* Runtime identity only; this does not establish SIMD/page/cache support. */
   for (int i = 1; i < REAL_ARCH__COUNT; i++) {
     if (k_props[i].canonical_uname &&
         strcmp(k_props[i].canonical_uname, u.machine) == 0) {
-      /* Distinguish arm64 Linux vs arm64 Darwin */
       if (i == REAL_ARCH_ARM64 && strcmp(u.sysname, "Darwin") == 0) {
         return REAL_ARCH_ARM64_DARWIN;
       }
@@ -164,7 +169,6 @@ real_arch_t real_arch_detect_runtime(void) {
     }
   }
 
-  /* Additional aliases uname may return */
   if (strcmp(u.machine, "amd64") == 0) return REAL_ARCH_X86_64;
   if (strcmp(u.machine, "i386") == 0 ||
       strcmp(u.machine, "i586") == 0)
@@ -198,26 +202,15 @@ uint32_t real_arch_compat(real_arch_t a, real_arch_t b) {
   if (pa->endian == pb->endian)       flags |= REAL_COMPAT_ENDIAN;
   if (pa->word_bits == pb->word_bits) flags |= REAL_COMPAT_WORDSIZE;
 
-  /* ISA superset relationships that are real */
+  /* Nominal ISA-family relation only. It does NOT mean the current OS can
+   * execute a 32-bit binary. Runtime execution/emulation requires a receipt. */
   if (a == REAL_ARCH_X86_64 && b == REAL_ARCH_I386) {
-    flags |= REAL_COMPAT_ISA_SUPER | REAL_COMPAT_EMULATABLE;
+    flags |= REAL_COMPAT_ISA_SUPER;
   }
-  if (a == REAL_ARCH_ARM64 && b == REAL_ARCH_ARM32) {
-    /* AArch64 CPUs can run AArch32 in EL0 iff the SoC exposes it. */
-    flags |= REAL_COMPAT_ISA_SUPER | REAL_COMPAT_EMULATABLE;
-  }
-  if (a == REAL_ARCH_RISCV64 && b == REAL_ARCH_RISCV32) {
-    flags |= REAL_COMPAT_EMULATABLE;
-  }
-  if (a == REAL_ARCH_MIPS64 && b == REAL_ARCH_MIPS32) {
-    flags |= REAL_COMPAT_ISA_SUPER | REAL_COMPAT_EMULATABLE;
-  }
-  /* qemu-user emulates most Linux archs on x86_64/arm64 */
-  if ((a == REAL_ARCH_X86_64 || a == REAL_ARCH_ARM64) &&
-      pb->syscall_conv == REAL_SYSCALL_LINUX_SYSCALL &&
-      a != b) {
-    flags |= REAL_COMPAT_EMULATABLE;
-  }
+
+  /* REAL_COMPAT_EMULATABLE is deliberately never inferred here. Emulator
+   * presence is an environment fact measured by arch_runtime_probe.py; even
+   * presence alone is not proof that a target binary executed successfully. */
   return flags;
 }
 
@@ -262,8 +255,11 @@ static void write_simd_flags(FILE *out, uint32_t simd) {
 void real_arch_write_json(FILE *out) {
   /* NONNULL_ALL contract enforced by compiler */
   fprintf(out, "{\n");
-  fprintf(out, "  \"schema\": \"real_arch_matrix/1.0.0\",\n");
-  fprintf(out, "  \"status\": \"REAL\",\n");
+  fprintf(out, "  \"schema\": \"real_arch_matrix/1.1.0\",\n");
+  fprintf(out, "  \"status\": \"OBSERVED_LIMITED\",\n");
+  fprintf(out, "  \"claim_allowed\": false,\n");
+  fprintf(out, "  \"property_scope\": \"nominal_reference_not_runtime_capability\",\n");
+  fprintf(out, "  \"runtime_probe\": \"scripts/arch_runtime_probe.py\",\n");
   fprintf(out, "  \"total_archs\": %d,\n", REAL_ARCH__COUNT - 1);
 
   real_arch_t rt = real_arch_detect_runtime();
@@ -276,7 +272,7 @@ void real_arch_write_json(FILE *out) {
     fprintf(out,
             "    {\"name\":\"%s\",\"uname\":\"%s\",\"termux\":%s%s%s,"
             "\"word_bits\":%u,\"endian\":\"%s\","
-            "\"page_size\":%u,\"cache_line\":%u,\"simd\":",
+            "\"nominal_page_size\":%u,\"nominal_cache_line\":%u,\"nominal_simd\":",
             p->name, p->canonical_uname,
             p->termux_name ? "\"" : "",
             p->termux_name ? p->termux_name : "null",
@@ -305,31 +301,34 @@ static void write_compat_flags(FILE *out, uint32_t f) {
 
 void real_arch_report(FILE *out) {
   /* NONNULL_ALL contract enforced by compiler */
-  fprintf(out, "=== REAL Architecture Matrix (%d archs) ===\n",
+  fprintf(out, "=== Architecture Identity + NOMINAL Reference Matrix (%d archs) ===\n",
           REAL_ARCH__COUNT - 1);
 
   real_arch_t rt = real_arch_detect_runtime();
   real_arch_t ct = real_arch_compile_time();
-  fprintf(out, "Compile-time: %s\n", real_arch_name(ct));
-  fprintf(out, "Runtime:      %s\n\n", real_arch_name(rt));
+  fprintf(out, "Compile-time identity: %s\n", real_arch_name(ct));
+  fprintf(out, "Runtime identity:      %s\n", real_arch_name(rt));
+  fprintf(out, "Capability proof:      scripts/arch_runtime_probe.py\n");
+  fprintf(out, "Claim allowed:         false\n\n");
 
-  fprintf(out, "%-14s %-10s %-8s %-6s %-4s %-6s %-6s %-16s\n",
-          "arch", "uname", "termux", "bits", "end", "page", "cache",
+  fprintf(out, "%-14s %-10s %-8s %-6s %-4s %-8s %-8s %-16s\n",
+          "arch", "uname", "termux", "bits", "end", "n.page", "n.cache",
           "syscall");
-  fprintf(out, "%-14s %-10s %-8s %-6s %-4s %-6s %-6s %-16s\n",
-          "----", "-----", "------", "----", "---", "----", "-----",
+  fprintf(out, "%-14s %-10s %-8s %-6s %-4s %-8s %-8s %-16s\n",
+          "----", "-----", "------", "----", "---", "------", "-------",
           "-------");
   for (int i = 1; i < REAL_ARCH__COUNT; i++) {
     const real_arch_props_t *p = &k_props[i];
-    fprintf(out, "%-14s %-10s %-8s %-6u %-4s %-6u %-6u %-16s\n",
+    fprintf(out, "%-14s %-10s %-8s %-6u %-4s %-8u %-8u %-16s\n",
             p->name, p->canonical_uname,
             p->termux_name ? p->termux_name : "-",
             p->word_bits, endian_name(p->endian),
             p->page_size, p->cache_line, syscall_name(p->syscall_conv));
   }
 
-  fprintf(out, "\nCompatibility matrix (row can run column?):\n");
-  fprintf(out, "  Legend: S=Same A=ABI E=Endian W=WordSize >=ISA-super Q=Emulatable\n\n");
+  fprintf(out, "\nNominal relationship matrix (NOT execution proof):\n");
+  fprintf(out, "  Legend: S=Same A=ABI E=Endian W=WordSize >=nominal ISA relation\n");
+  fprintf(out, "  Q is never inferred statically; use runtime probe + execution receipt.\n\n");
   fprintf(out, "%-14s", "");
   for (int j = 1; j < REAL_ARCH__COUNT; j++) {
     fprintf(out, " %-7s", real_arch_name((real_arch_t)j));
