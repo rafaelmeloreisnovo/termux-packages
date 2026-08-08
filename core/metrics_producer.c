@@ -1,23 +1,18 @@
 /*
- * REAL: metrics_current.json producer.
- * Status: REAL — computes every field from real filesystem scan + DAG.
+ * pkg_metrics/1.0.0 measurement producer.
+ * Status: REAL for the emitted measurement artifact only.
  *
- * Emits the JSON that scripts/health_check.sh consumes. All fields are
- * derived from actual measurements — no simulated numbers.
+ * Scope boundary:
+ *   This producer measures a static package dependency graph from the current
+ *   repository filesystem. It does NOT prove package buildability, Android
+ *   runtime, physical-device execution, security, or product readiness.
  *
- * Definitions (transparent so anyone can verify):
- *   node_count             = real inventory count (packages + subpackages)
- *   edge_count             = real DAG edges from parsed DEPENDS/BUILD_DEPENDS
- *   unresolved_count       = real deps with no matching build.sh
- *   cycle_count            = real cycles detected by Kahn's algorithm
- *   max_depth              = real max topological depth
- *   coherence_phi          = (1 - unresolved/edges) × (1 - cycles/nodes)
- *                          = 1.0 exactly when graph resolves cleanly
- *   graph_completeness     = 1 - (unresolved_count / edge_count)
- *   avg_deps_per_pkg       = edge_count / node_count
- *
- * The producer never emits fields it cannot compute. Missing = missing;
- * downstream consumers must fail-closed on absence.
+ * Promotion prerequisites enforced here:
+ *   - provenance capture succeeds;
+ *   - all four known package roots are present and scanner collection has zero
+ *     path/I/O/allocation/subpackage failures;
+ *   - DAG construction/topological analysis succeeds;
+ *   - no parser file failures are tolerated.
  *
  * Usage: metrics-producer <repo_base_dir> <output_json_path>
  */
@@ -56,10 +51,9 @@ int main(int argc, char **argv) {
   const char *base = argv[1];
   const char *out_path = argv[2];
 
-  /* Capture provenance FIRST — if we can't establish who we are, refuse. */
   real_provenance_t prov;
   if (real_provenance_capture(&prov, argv[0], REAL_CONTRACT_SCHEMA_VERSION) < 0) {
-    fprintf(stderr, "REAL_ERROR: provenance capture failed\n");
+    fprintf(stderr, "BLOCKED: provenance capture failed\n");
     return 2;
   }
 
@@ -67,34 +61,57 @@ int main(int argc, char **argv) {
 
   pkg_inventory_t inv;
   if (pkg_inventory_init(&inv, 512) < 0) {
-    fprintf(stderr, "REAL_ERROR: inventory init failed\n");
+    fprintf(stderr, "BLOCKED: inventory init failed\n");
     return 2;
   }
 
   uint64_t t_inv_start = monotonic_ns();
   if (pkg_inventory_scan_all(&inv, base) < 0) {
-    fprintf(stderr, "REAL_ERROR: scan failed for %s\n", base);
+    fprintf(stderr,
+            "BLOCKED: inventory collection failed for %s "
+            "(roots=%u/%u absent=%u failed=%u path=%u io=%u alloc=%u subpkg=%u)\n",
+            base, inv.roots_present, inv.roots_expected, inv.roots_absent,
+            inv.roots_failed, inv.path_errors, inv.io_errors,
+            inv.allocation_errors, inv.subpackage_scan_failures);
     pkg_inventory_free(&inv);
     return 2;
   }
   uint64_t t_inv_end = monotonic_ns();
 
-  pkg_dag_t dag;
-  uint64_t t_dag_start = monotonic_ns();
-  if (pkg_dag_build(&dag, &inv) < 0) {
-    fprintf(stderr, "REAL_ERROR: dag build failed\n");
+  if (!pkg_inventory_is_complete(&inv)) {
+    fprintf(stderr,
+            "BLOCKED: inventory coverage incomplete "
+            "(roots=%u/%u absent=%u failed=%u path=%u io=%u alloc=%u subpkg=%u)\n",
+            inv.roots_present, inv.roots_expected, inv.roots_absent,
+            inv.roots_failed, inv.path_errors, inv.io_errors,
+            inv.allocation_errors, inv.subpackage_scan_failures);
     pkg_inventory_free(&inv);
     return 2;
   }
+
+  pkg_dag_t dag;
+  uint64_t t_dag_start = monotonic_ns();
+  if (pkg_dag_build(&dag, &inv) < 0) {
+    fprintf(stderr, "BLOCKED: dag build failed\n");
+    pkg_inventory_free(&inv);
+    return 2;
+  }
+
+  if (dag.parse_failures != 0) {
+    fprintf(stderr, "BLOCKED: parser file failures=%u\n", dag.parse_failures);
+    pkg_dag_free(&dag);
+    pkg_inventory_free(&inv);
+    return 2;
+  }
+
   if (pkg_dag_topo_sort(&dag) < 0) {
-    fprintf(stderr, "REAL_ERROR: topo sort failed\n");
+    fprintf(stderr, "BLOCKED: topo sort failed\n");
     pkg_dag_free(&dag);
     pkg_inventory_free(&inv);
     return 2;
   }
   uint64_t t_dag_end = monotonic_ns();
 
-  /* Real derived metrics */
   uint32_t nodes = inv.count;
   uint32_t edges = dag.edge_count;
   uint32_t unres = dag.unresolved_count;
@@ -113,7 +130,7 @@ int main(int argc, char **argv) {
 
   FILE *f = fopen(out_path, "w");
   if (!f) {
-    fprintf(stderr, "REAL_ERROR: cannot open %s: %s\n", out_path,
+    fprintf(stderr, "BLOCKED: cannot open %s: %s\n", out_path,
             strerror(errno));
     pkg_dag_free(&dag);
     pkg_inventory_free(&inv);
@@ -123,34 +140,40 @@ int main(int argc, char **argv) {
   fprintf(f, "{\n");
   fprintf(f, "  \"schema\": \"" REAL_CONTRACT_SCHEMA_VERSION "\",\n");
   fprintf(f, "  \"status\": \"REAL\",\n");
+  fprintf(f, "  \"claim_allowed\": false,\n");
+  fprintf(f, "  \"measurement_scope\": \"static_package_dependency_graph\",\n");
+  fprintf(f, "  \"product_readiness\": \"NOT_CLAIMED\",\n");
+  fprintf(f, "  \"device_runtime\": \"TOKEN_VAZIO_UNLESS_SEPARATE_RECEIPT\",\n");
   fprintf(f, "  \"generated_unix_ms\": %" PRIu64 ",\n", now_unix_ms());
   fprintf(f, "  \"repo_base\": \"%s\",\n", base);
   fprintf(f, "\n");
   real_provenance_write_json(f, &prov);
   fprintf(f, ",\n\n");
 
-  /* Auto-adaptive arch metadata */
+  /* Architecture identity only. Runtime capabilities have a separate probe. */
   {
     real_arch_t ct = real_arch_compile_time();
     real_arch_t rt = real_arch_detect_runtime();
-    const real_arch_props_t *rtp = real_arch_props(rt);
     fprintf(f, "  \"arch\": {\n");
+    fprintf(f, "    \"scope\": \"identity_only\",\n");
     fprintf(f, "    \"compile_time\": \"%s\",\n", real_arch_name(ct));
     fprintf(f, "    \"runtime\": \"%s\",\n", real_arch_name(rt));
-    if (rtp) {
-      fprintf(f, "    \"word_bits\": %u,\n", rtp->word_bits);
-      fprintf(f, "    \"endian\": \"%s\",\n",
-              rtp->endian == REAL_ENDIAN_BIG ? "big" : "little");
-      fprintf(f, "    \"page_size\": %u,\n", rtp->page_size);
-      fprintf(f, "    \"cache_line\": %u\n", rtp->cache_line);
-    } else {
-      fprintf(f, "    \"word_bits\": 0,\n");
-      fprintf(f, "    \"endian\": \"unknown\",\n");
-      fprintf(f, "    \"page_size\": 0,\n");
-      fprintf(f, "    \"cache_line\": 0\n");
-    }
+    fprintf(f, "    \"capability_evidence\": \"arch_runtime_probe/1.0.0\"\n");
     fprintf(f, "  },\n\n");
   }
+
+  fprintf(f, "  \"inventory_coverage\": {\n");
+  fprintf(f, "    \"complete\": true,\n");
+  fprintf(f, "    \"roots_expected\": %u,\n", inv.roots_expected);
+  fprintf(f, "    \"roots_present\": %u,\n", inv.roots_present);
+  fprintf(f, "    \"roots_absent\": %u,\n", inv.roots_absent);
+  fprintf(f, "    \"roots_failed\": %u,\n", inv.roots_failed);
+  fprintf(f, "    \"path_errors\": %u,\n", inv.path_errors);
+  fprintf(f, "    \"io_errors\": %u,\n", inv.io_errors);
+  fprintf(f, "    \"allocation_errors\": %u,\n", inv.allocation_errors);
+  fprintf(f, "    \"subpackage_scan_failures\": %u\n", inv.subpackage_scan_failures);
+  fprintf(f, "  },\n");
+  fprintf(f, "  \"parse_failures\": %u,\n\n", dag.parse_failures);
 
   fprintf(f, "  \"node_count\": %u,\n", nodes);
   fprintf(f, "  \"edge_count\": %u,\n", edges);
@@ -170,12 +193,20 @@ int main(int argc, char **argv) {
   fprintf(f, "  \"dag_latency_us\": %" PRIu64 ",\n", dag_latency_us);
   fprintf(f, "  \"total_latency_us\": %" PRIu64 "\n", total_latency_us);
   fprintf(f, "}\n");
-  fclose(f);
+
+  if (fclose(f) != 0) {
+    fprintf(stderr, "BLOCKED: failed to close/flush %s\n", out_path);
+    pkg_dag_free(&dag);
+    pkg_inventory_free(&inv);
+    return 2;
+  }
 
   fprintf(stdout,
-          "REAL metrics written to %s (nodes=%u edges=%u phi=%.4f "
-          "cycles=%u unresolved=%u)\n",
-          out_path, nodes, edges, coherence_phi, cycles, unres);
+          "pkg_metrics written to %s scope=static_package_dependency_graph "
+          "nodes=%u edges=%u phi=%.4f cycles=%u unresolved=%u "
+          "roots=%u/%u parse_failures=%u claim_allowed=false\n",
+          out_path, nodes, edges, coherence_phi, cycles, unres,
+          inv.roots_present, inv.roots_expected, dag.parse_failures);
 
   pkg_dag_free(&dag);
   pkg_inventory_free(&inv);
