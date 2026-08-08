@@ -4,16 +4,22 @@ on:
   pull_request:
     paths:
       - 'core/**'
-      - 'scripts/real_governance.sh'
-      - 'scripts/run_governance_v2.sh'
+      - 'scripts/**'
+      - 'build-package.sh'
+      - 'repo.json'
+      - 'packages/bash/build.sh'
+      - 'packages/termux-tools/build.sh'
       - '.github/workflows/manifest-fail-closed.yml'
   push:
     branches:
       - main
     paths:
       - 'core/**'
-      - 'scripts/real_governance.sh'
-      - 'scripts/run_governance_v2.sh'
+      - 'scripts/**'
+      - 'build-package.sh'
+      - 'repo.json'
+      - 'packages/bash/build.sh'
+      - 'packages/termux-tools/build.sh'
       - '.github/workflows/manifest-fail-closed.yml'
   workflow_dispatch:
 
@@ -67,6 +73,11 @@ jobs:
           printf '%s\n' \
             'MANIFEST_CI_GATE=PASS' \
             'REALITY_EVIDENCE_VECTOR_V2=VALIDATED' \
+            'RAFCODEPHI_DELIVERY_SOURCE_GATE=PASS' \
+            'GOVERNED_PRODUCT_SURFACE=PASS' \
+            'DEB_ARTIFACT=NOT_MEASURED' \
+            'APT_REPO_METADATA=NOT_MEASURED' \
+            'DEVICE_RUNTIME=NOT_MEASURED' \
             'PROMOTION_GATE=NOT_RUN' \
             'CLEAN_REBUILD=PASS' \
             'CLAIM_ALLOWED=false' \
