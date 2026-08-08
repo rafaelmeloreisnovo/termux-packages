@@ -28,7 +28,7 @@ struct termux_job_scheduler {
   uint32_t num_threads;
   uint32_t layer_count;
   uint32_t layers_per_thread;
-  struct termux_layer_info layers[TERMUX_ORCHESTRATOR_TOTAL_STATES];
+  struct termux_layer_info layers[TERMUX_DAG_LAYERS];
   struct termux_scheduler_result results[TERMUX_MAX_THREADS];
   struct termux_phase_barrier barrier;
   termux_execute_fn execute_fn;

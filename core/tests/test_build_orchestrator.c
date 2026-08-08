@@ -7,7 +7,7 @@ static int test_orchestrator_init(void) {
   struct termux_orchestrator orch = {};
   int ret = termux_orchestrator_init(&orch);
   assert(ret == 0);
-  assert(orch.phase_handlers[TERMUX_PHASE_SETUP_VARS] != NULL);
+  assert(orch.phase_handlers[TERMUX_PHASE_SETUP] != NULL);
   assert(orch.attractor_table[0] != 0);
   printf("✓ test_orchestrator_init passed\n");
   return 0;
@@ -53,11 +53,11 @@ static int test_orchestrator_invariants_phi_overflow(void) {
 static int test_orchestrator_invariants_arch_bounds(void) {
   struct termux_build_state state = {};
   state.phase = 0;
-  state.arch_state = TERMUX_ORCHESTRATOR_ARCH_STATES;
+  state.arch_state = TERMUX_ARCH_STATES;
   int ret = termux_orchestrator_validate_invariants(&state);
   assert(ret == -3);
 
-  state.arch_state = TERMUX_ORCHESTRATOR_ARCH_STATES - 1;
+  state.arch_state = TERMUX_ARCH_STATES - 1;
   ret = termux_orchestrator_validate_invariants(&state);
   assert(ret == 0);
 
@@ -68,11 +68,11 @@ static int test_orchestrator_invariants_arch_bounds(void) {
 static int test_orchestrator_invariants_phase_bounds(void) {
   struct termux_build_state state = {};
   state.arch_state = 0;
-  state.phase = TERMUX_ORCHESTRATOR_PHASES;
+  state.phase = TERMUX_BUILD_PHASES;
   int ret = termux_orchestrator_validate_invariants(&state);
   assert(ret == -4);
 
-  state.phase = TERMUX_ORCHESTRATOR_PHASES - 1;
+  state.phase = TERMUX_BUILD_PHASES - 1;
   ret = termux_orchestrator_validate_invariants(&state);
   assert(ret == 0);
 
@@ -97,8 +97,8 @@ static int test_orchestrator_compute_phi(void) {
 }
 
 static int test_orchestrator_toroidal_coverage(void) {
-  for (uint32_t phase = 0; phase < TERMUX_ORCHESTRATOR_PHASES; phase++) {
-    for (uint32_t arch = 0; arch < TERMUX_ORCHESTRATOR_ARCH_STATES; arch++) {
+  for (uint32_t phase = 0; phase < TERMUX_BUILD_PHASES; phase++) {
+    for (uint32_t arch = 0; arch < TERMUX_ARCH_STATES; arch++) {
       struct termux_build_state state = {
         .phase = phase,
         .arch_state = arch,
@@ -121,7 +121,7 @@ static int test_orchestrator_transition(void) {
 
   ret = termux_orchestrator_execute(&orch, "test-package", 42);
   assert(ret == 0);
-  assert(orch.state.phase == TERMUX_ORCHESTRATOR_PHASES);
+  assert(orch.state.phase == TERMUX_BUILD_PHASES);
   assert(orch.state.coherence_phi > 0);
 
   printf("✓ test_orchestrator_transition passed (full build cycle)\n");

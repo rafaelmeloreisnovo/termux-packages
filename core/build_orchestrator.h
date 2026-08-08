@@ -23,20 +23,19 @@
 #define TERMUX_PHASE_MASSAGE    6
 #define TERMUX_PHASE_PACKAGE    7
 
-#define TERMUX_ORCHESTRATOR_STATE_BUFFER_SIZE 256
+#define TERMUX_ORCHESTRATOR_STATE_BUFFER_SIZE 224
 #define TERMUX_ORCHESTRATOR_STATE_SIZE 512
 
 struct termux_build_state {
-  uint32_t phase;           // 0..7 (TERMUX_BUILD_PHASES)
-  uint32_t arch_state;      // 0..3 (TERMUX_ARCH_STATES)
-  uint32_t pkg_idx;         // package index 0..2056
-  char pkg_name[256];       // current package name (256 bytes)
-  uint64_t coherence_phi;   // φ score (Q48.16 fixed-point)
-  uint32_t cycle_count;     // instruction counter
-  uint32_t flags;           // state flags (bit-packed)
-  uint32_t _pad0;
-  uint8_t state_buffer[256]; // pre-allocated output buffer (256 bytes)
-  uint8_t _pad1[4];         // alignment padding to 512 bytes
+  uint32_t phase;           // 0..7 (TERMUX_BUILD_PHASES) @ 0
+  uint32_t arch_state;      // 0..3 (TERMUX_ARCH_STATES) @ 4
+  uint32_t pkg_idx;         // package index 0..2056 @ 8
+  uint32_t _pad0;           // alignment padding @ 12
+  char pkg_name[256];       // current package name (256 bytes) @ 16
+  uint64_t coherence_phi;   // φ score (Q48.16 fixed-point) @ 272
+  uint32_t cycle_count;     // instruction counter @ 280
+  uint32_t flags;           // state flags (bit-packed) @ 284
+  uint8_t state_buffer[224]; // pre-allocated output buffer (224 bytes) @ 288
 } __attribute__((aligned(512)));
 
 _Static_assert(sizeof(struct termux_build_state) == 512,

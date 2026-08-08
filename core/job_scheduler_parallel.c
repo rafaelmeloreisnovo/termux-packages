@@ -26,7 +26,7 @@ static void* job_thread_worker(void *arg) {
   uint32_t layer_end = layer_start + sched->layers_per_thread;
 
   if (ctx->thread_id == sched->num_threads - 1) {
-    layer_end = TERMUX_ORCHESTRATOR_TOTAL_STATES;
+    layer_end = TERMUX_DAG_LAYERS;
   }
 
   ctx->total_cycles = 0;
@@ -68,7 +68,7 @@ int termux_job_scheduler_init(struct termux_job_scheduler *sched,
     return -1;
   }
 
-  if (!layers || layer_count != TERMUX_ORCHESTRATOR_TOTAL_STATES) {
+  if (!layers || layer_count != TERMUX_DAG_LAYERS) {
     return -1;
   }
 

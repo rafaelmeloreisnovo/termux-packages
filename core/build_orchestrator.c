@@ -115,9 +115,9 @@ int termux_orchestrator_validate_invariants(struct termux_build_state *state) {
 
   if (state->coherence_phi > ((1ULL << 48) - 1)) return -2;
 
-  if (state->arch_state >= TERMUX_ORCHESTRATOR_ARCH_STATES) return -3;
+  if (state->arch_state >= TERMUX_ARCH_STATES) return -3;
 
-  if (state->phase >= TERMUX_ORCHESTRATOR_PHASES) return -4;
+  if (state->phase >= TERMUX_BUILD_PHASES) return -4;
 
   return 0;
 }
@@ -127,16 +127,20 @@ int termux_orchestrator_init(struct termux_orchestrator *orch) {
 
   memset(orch, 0, sizeof(*orch));
 
-  orch->phase_handlers[TERMUX_PHASE_SETUP_VARS] = termux_orch_phase_setup_vars;
+  orch->phase_handlers[TERMUX_PHASE_SETUP] = termux_orch_phase_setup;
   orch->phase_handlers[TERMUX_PHASE_SOURCE] = termux_orch_phase_source;
   orch->phase_handlers[TERMUX_PHASE_PATCH] = termux_orch_phase_patch;
   orch->phase_handlers[TERMUX_PHASE_CONFIGURE] = termux_orch_phase_configure;
   orch->phase_handlers[TERMUX_PHASE_MAKE] = termux_orch_phase_make;
   orch->phase_handlers[TERMUX_PHASE_INSTALL] = termux_orch_phase_install;
+  orch->phase_handlers[TERMUX_PHASE_MASSAGE] = termux_orch_phase_massage;
   orch->phase_handlers[TERMUX_PHASE_PACKAGE] = termux_orch_phase_package;
 
-  for (size_t i = 0; i < TERMUX_ORCHESTRATOR_TOTAL_STATES; i++) {
-    orch->attractor_table[i] = termux_attractor_compute(i);
+  for (uint32_t phase = 0; phase < TERMUX_BUILD_PHASES; phase++) {
+    for (uint32_t arch = 0; arch < TERMUX_ARCH_STATES; arch++) {
+      uint32_t index = phase * TERMUX_ARCH_STATES + arch;
+      orch->attractor_table[index] = termux_attractor_compute(phase, arch);
+    }
   }
 
   orch->coherence_fn = termux_orchestrator_compute_phi;
@@ -152,7 +156,7 @@ int termux_orchestrator_transition(struct termux_orchestrator *orch) {
   int inv_check = termux_orchestrator_validate_invariants(state);
   if (inv_check != 0) return inv_check;
 
-  if (state->phase >= TERMUX_ORCHESTRATOR_PHASES) {
+  if (state->phase >= TERMUX_BUILD_PHASES) {
     return 0;
   }
 
@@ -165,10 +169,10 @@ int termux_orchestrator_transition(struct termux_orchestrator *orch) {
   state->coherence_phi = termux_orchestrator_compute_phi(state);
 
   uint32_t next_phase = state->phase + 1;
-  if (next_phase < TERMUX_ORCHESTRATOR_PHASES) {
+  if (next_phase < TERMUX_BUILD_PHASES) {
     state->phase = next_phase;
   } else {
-    state->phase = TERMUX_ORCHESTRATOR_PHASES;
+    state->phase = TERMUX_BUILD_PHASES;
   }
 
   return 0;
@@ -185,10 +189,10 @@ int termux_orchestrator_execute(struct termux_orchestrator *orch,
   strncpy(state->pkg_name, pkg_name, sizeof(state->pkg_name) - 1);
   state->pkg_name[sizeof(state->pkg_name) - 1] = '\0';
   state->pkg_idx = pkg_idx;
-  state->phase = TERMUX_PHASE_SETUP_VARS;
-  state->arch_state = TERMUX_ARCH_STATE_ARM64_SIMD_CRC;
+  state->phase = TERMUX_PHASE_SETUP;
+  state->arch_state = TERMUX_ARCH_STATE_ARM64;
 
-  while (state->phase < TERMUX_ORCHESTRATOR_PHASES) {
+  while (state->phase < TERMUX_BUILD_PHASES) {
     int ret = termux_orchestrator_transition(orch);
     if (ret != 0) {
       fprintf(stderr, "[ERROR] orchestrator transition failed phase=%u ret=%d\n",
@@ -210,7 +214,7 @@ void termux_orchestrator_print_state(struct termux_orchestrator *orch) {
   struct termux_build_state *state = &orch->state;
   printf("=== Orchestrator State ===\n");
   printf("Package: %s (idx=%u)\n", state->pkg_name, state->pkg_idx);
-  printf("Phase: %u/%u, Arch State: %u\n", state->phase, TERMUX_ORCHESTRATOR_PHASES,
+  printf("Phase: %u/%u, Arch State: %u\n", state->phase, TERMUX_BUILD_PHASES,
          state->arch_state);
   printf("Coherence Φ: %lu (Q48.16)\n", state->coherence_phi);
   printf("Cycle Count: %u\n", state->cycle_count);

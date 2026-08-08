@@ -196,15 +196,15 @@ int termux_orchestrator_execute_simd_4way(struct termux_orchestrator *orch,
   simd_batch_init(&batch, pkg_count);
 
   for (uint32_t i = 0; i < pkg_count; i++) {
-    batch.states.phase[i] = TERMUX_PHASE_SETUP_VARS;
-    batch.states.arch_state[i] = TERMUX_ARCH_STATE_ARM64_SIMD_CRC;
+    batch.states.phase[i] = TERMUX_PHASE_SETUP;
+    batch.states.arch_state[i] = TERMUX_ARCH_STATE_ARM64;
     batch.states.pkg_idx[i] = pkg_indices[i];
     batch.states.cycle_count[i] = 0;
   }
 
-  while (batch.states.phase[0] < TERMUX_ORCHESTRATOR_PHASES) {
+  while (batch.states.phase[0] < TERMUX_BUILD_PHASES) {
     for (uint32_t i = 0; i < pkg_count; i++) {
-      if (batch.states.phase[i] < TERMUX_ORCHESTRATOR_PHASES) {
+      if (batch.states.phase[i] < TERMUX_BUILD_PHASES) {
         batch.states.phase[i]++;
       }
     }

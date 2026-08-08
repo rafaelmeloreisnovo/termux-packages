@@ -37,7 +37,7 @@ static inline uint32_t gcd_compute(uint32_t a, uint32_t b) {
 }
 
 static inline int invariant_gcd_valid(uint32_t depth) {
-  uint32_t gcd_val = gcd_compute(depth, TERMUX_ORCHESTRATOR_TOTAL_STATES);
+  uint32_t gcd_val = gcd_compute(depth, TERMUX_DAG_LAYERS);
   uint8_t valid_gcds[] = {1, 2, 3, 6, 7, 14, 21, 42};
   for (size_t i = 0; i < 8; i++) {
     if (gcd_val == valid_gcds[i]) return 1;
@@ -50,17 +50,17 @@ static inline int invariant_phi_overflow(uint64_t phi) {
 }
 
 static inline int invariant_arch_bounds(uint32_t arch) {
-  return arch < TERMUX_ORCHESTRATOR_ARCH_STATES ? 1 : 0;
+  return arch < TERMUX_ARCH_STATES ? 1 : 0;
 }
 
 static inline int invariant_phase_bounds(uint32_t phase) {
-  return phase < TERMUX_ORCHESTRATOR_PHASES ? 1 : 0;
+  return phase < TERMUX_BUILD_PHASES ? 1 : 0;
 }
 
 int termux_orchestrator_validate_invariants(struct termux_build_state *state) {
   if (!state) return -1;
 
-  uint32_t depth = state->phase * TERMUX_ORCHESTRATOR_ARCH_STATES + state->arch_state;
+  uint32_t depth = state->phase * TERMUX_ARCH_STATES + state->arch_state;
 
   if (!invariant_gcd_valid(depth)) return -1;
   if (!invariant_phi_overflow(state->coherence_phi)) return -2;
@@ -74,11 +74,11 @@ uint64_t termux_orchestrator_compute_phi(struct termux_build_state *state) {
   if (!state) return 0;
 
   uint64_t overhead_penalty = state->cycle_count > 42 ? 1000ULL : 0ULL;
-  uint64_t depth_score = 42ULL - (state->phase * TERMUX_ORCHESTRATOR_ARCH_STATES + state->arch_state);
-  uint64_t coherence_base = (depth_score * PHI_SCALE) / TERMUX_ORCHESTRATOR_TOTAL_STATES;
+  uint64_t depth_score = 42ULL - (state->phase * TERMUX_ARCH_STATES + state->arch_state);
+  uint64_t coherence_base = (depth_score * PHI_SCALE) / TERMUX_DAG_LAYERS;
 
-  uint32_t gcd_val = gcd_compute(state->phase + 1, TERMUX_ORCHESTRATOR_PHASES);
-  uint64_t gcd_factor = (((uint64_t)gcd_val) * PHI_SCALE) / TERMUX_ORCHESTRATOR_PHASES;
+  uint32_t gcd_val = gcd_compute(state->phase + 1, TERMUX_BUILD_PHASES);
+  uint64_t gcd_factor = (((uint64_t)gcd_val) * PHI_SCALE) / TERMUX_BUILD_PHASES;
 
   uint64_t result = (coherence_base * gcd_factor / PHI_SCALE) - overhead_penalty;
   return result > ((1ULL << 48) - 1) ? ((1ULL << 48) - 1) : result;
@@ -95,11 +95,11 @@ int termux_orchestrator_init(struct termux_orchestrator *orch) {
 
   memzero(orch, sizeof(*orch));
 
-  for (size_t i = 0; i < TERMUX_ORCHESTRATOR_PHASES; i++) {
+  for (size_t i = 0; i < TERMUX_BUILD_PHASES; i++) {
     orch->phase_handlers[i] = phase_handler_noop;
   }
 
-  for (size_t i = 0; i < TERMUX_ORCHESTRATOR_TOTAL_STATES; i++) {
+  for (size_t i = 0; i < TERMUX_DAG_LAYERS; i++) {
     uint32_t golden_ratio_32 = 0x9E3779B9U;
     orch->attractor_table[i] = ((uint64_t)(golden_ratio_32 * (i + 1)) << 16) | i;
   }
@@ -117,7 +117,7 @@ int termux_orchestrator_transition(struct termux_orchestrator *orch) {
   int inv_check = termux_orchestrator_validate_invariants(state);
   if (inv_check != 0) return inv_check;
 
-  if (state->phase >= TERMUX_ORCHESTRATOR_PHASES) {
+  if (state->phase >= TERMUX_BUILD_PHASES) {
     return 0;
   }
 
@@ -130,10 +130,10 @@ int termux_orchestrator_transition(struct termux_orchestrator *orch) {
   state->coherence_phi = termux_orchestrator_compute_phi(state);
 
   uint32_t next_phase = state->phase + 1;
-  if (next_phase < TERMUX_ORCHESTRATOR_PHASES) {
+  if (next_phase < TERMUX_BUILD_PHASES) {
     state->phase = next_phase;
   } else {
-    state->phase = TERMUX_ORCHESTRATOR_PHASES;
+    state->phase = TERMUX_BUILD_PHASES;
   }
 
   return 0;
@@ -155,10 +155,10 @@ int termux_orchestrator_execute(struct termux_orchestrator *orch,
   state->pkg_name[255] = '\0';
 
   state->pkg_idx = pkg_idx;
-  state->phase = TERMUX_PHASE_SETUP_VARS;
-  state->arch_state = TERMUX_ARCH_STATE_ARM64_SIMD_CRC;
+  state->phase = TERMUX_PHASE_SETUP;
+  state->arch_state = TERMUX_ARCH_STATE_ARM64;
 
-  while (state->phase < TERMUX_ORCHESTRATOR_PHASES) {
+  while (state->phase < TERMUX_BUILD_PHASES) {
     int ret = termux_orchestrator_transition(orch);
     if (ret != 0) {
       return ret;
