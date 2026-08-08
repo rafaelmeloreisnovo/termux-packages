@@ -12,7 +12,7 @@ REAL_CFLAGS  := -Wall -Wextra -Wshadow -Werror -Wunused -Wunreachable-code \
                 -flto
 REAL_LDFLAGS := -Wl,--gc-sections -flto
 
-TARGETS := termux-build-core test-manifest manifest-dumper test-cycle2-1 test-cycle2-2 test-build-orchestrator test-dep-resolver test-manifest-v2 device-test-orchestrator perf-profiler perf-analyzer simd-benchmark multicore-benchmark advanced-simd-benchmark advanced-simd-test orchestrator-production-benchmark unified-benchmark test-sprint3 test-sprint4 test-sprint5 test-sprint6 test-sprint10 test-sprint11 test-sprint12 orchestrator-build-main test-bitraf64-integration test-bitraf64-simd-ops test-bitraf64-lut-cache test-bitraf64-coherence-monitor test-ascii-grafo test-e2e-build test-production-hardening test-orchestrator-v2 test-performance-opt test-distributed test-security-hardening test-integration-e2e pkg-real metrics-producer
+TARGETS := termux-build-core test-manifest manifest-dumper test-cycle2-1 test-cycle2-2 test-build-orchestrator test-dep-resolver test-manifest-v2 device-test-orchestrator perf-profiler perf-analyzer simd-benchmark multicore-benchmark advanced-simd-benchmark advanced-simd-test orchestrator-production-benchmark unified-benchmark test-sprint3 test-sprint4 test-sprint5 test-sprint6 test-sprint10 test-sprint11 test-sprint12 orchestrator-build-main test-bitraf64-integration test-bitraf64-simd-ops test-bitraf64-lut-cache test-bitraf64-coherence-monitor test-ascii-grafo test-e2e-build test-production-hardening test-orchestrator-v2 test-performance-opt test-distributed test-security-hardening test-integration-e2e pkg-real metrics-producer pkg-count-freestanding
 SOURCES := termux-build-core.c sysexec.c package_writer.c elf_writer.c friction_analyzer.c checkpoint.c parallel_jobs.c build_exec.c manifest_loader.c source_download.c build_orchestrator.c dep_resolver.c manifest_v2.c device_test_orchestrator.c perf_profiler.c build_orchestrator_optimized.c perf_analyzer.c build_orchestrator_simd.c phase_barrier_lockfree.c cpu_affinity.c job_scheduler_parallel.c hardware_tuning.c build_orchestrator_advanced_simd.c unified_orchestrator.c gpu_device.c cycle_budget.c workload_generator.c coherence_tuning.c profiler.c multicore_orchestrator.c advanced_vectorization.c work_stealing.c adaptive_dvfs.c gpu_integration.c orchestrator_build_main.c bitraf64_integration.c bitraf64_simd_ops.c bitraf64_lut_cache.c bitraf64_coherence_monitor.c ascii_grafo.c ascii_grafo_integration.c production_hardening.c build_orchestrator_v2.c dep_resolver_v2.c manifest_simd.c scheduler_adaptive.c alloc_pool.c dist_orchestrator.c rpc_coordinator.c dist_checkpoint.c load_balancer.c crypto_ed25519.c crypto_chacha20.c rate_limiter.c crypto_pqc.c
 TEST_SOURCES := test_manifest.c manifest_loader.c
 DUMPER_SOURCES := manifest_dumper.c
@@ -153,6 +153,19 @@ pkg_parser.real.o: pkg_parser.c pkg_parser.h
 
 pkg_dag.real.o: pkg_dag.c pkg_dag.h pkg_scanner.h pkg_parser.h
 	$(CC) $(REAL_CFLAGS) -c -o $@ $<
+
+# REAL freestanding: NO libc, NO CRT, direct syscalls only.
+# Warnings still act as linker commands via -fdata-sections + gc-sections.
+FREESTANDING_CFLAGS := -Wall -Wextra -Wshadow -Werror -O2 \
+                       -nostdlib -nostartfiles -ffreestanding -static \
+                       -fno-builtin -fno-stack-protector -no-pie \
+                       -fdata-sections -ffunction-sections \
+                       -fvisibility=hidden
+FREESTANDING_LDFLAGS := -nostdlib -nostartfiles -static -no-pie \
+                        -Wl,--gc-sections -Wl,--build-id=none
+
+pkg-count-freestanding: pkg_count_freestanding.c real_syscalls.h real_mem.h
+	$(CC) $(FREESTANDING_CFLAGS) -o $@ $< $(FREESTANDING_LDFLAGS)
 
 tests/test_cycle2_1_manifesto_v2.o: tests/test_cycle2_1_manifesto_v2.c manifest.h
 	$(CC) $(CFLAGS) -c -o $@ $<

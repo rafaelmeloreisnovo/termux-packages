@@ -44,6 +44,7 @@ test-integration-e2e
 pkg-real
 test-pkg-real
 metrics-producer
+pkg-count-freestanding
 *.real.o
 _checkpoints
 _build_cache
