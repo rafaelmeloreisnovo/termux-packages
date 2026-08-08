@@ -1,0 +1,333 @@
+name: Phase 9.15 Production Hardening CI/CD
+
+on:
+  push:
+    branches: [main, claude/sistema-nucleo-autoral-2bju50]
+    paths:
+      - 'core/production_hardening.*'
+      - 'core/tests/test_production_hardening.c'
+      - 'core/Makefile'
+      - '.github/workflows/phase915-hardening.yml'
+  pull_request:
+    branches: [main]
+
+jobs:
+  build-and-test:
+    name: Build & Test Production Hardening
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        include:
+          - cc: gcc
+            cflags: '-Wall -Wextra -Wshadow -Werror -g -O0'
+          - cc: clang
+            cflags: '-Wall -Wextra -Wshadow -Werror -g -O2'
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up build environment
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential
+
+      - name: Compile production_hardening
+        run: |
+          cd core
+          make clean test-production-hardening
+        env:
+          CC: ${{ matrix.cc }}
+          CFLAGS: ${{ matrix.cflags }}
+
+      - name: Run production hardening tests
+        run: |
+          cd core
+          ./test-production-hardening | tee hardening-test.log
+
+      - name: Parse coherence metrics
+        run: |
+          cd core
+          python3 << 'EOF'
+          import re
+
+          with open('hardening-test.log', 'r') as f:
+              output = f.read()
+
+          # Extract test results
+          passed_match = re.search(r'Passed: (\d+)/(\d+)', output)
+          if passed_match:
+              passed, total = int(passed_match.group(1)), int(passed_match.group(2))
+              print(f"Tests passed: {passed}/{total}")
+
+              if passed == total:
+                  print("✓ All tests PASSED")
+              else:
+                  print(f"✗ {total - passed} test(s) FAILED")
+                  exit(1)
+
+          # Extract coherence metrics
+          coherence_match = re.search(r'Coherence φ: ([\d.]+)', output)
+          if coherence_match:
+              phi = float(coherence_match.group(1))
+              print(f"Coherence φ: {phi:.4f}")
+
+              # Target: φ > 0.85
+              if phi >= 0.85:
+                  print("✓ Coherence target met (φ ≥ 0.85)")
+              elif phi >= 0.80:
+                  print("⚠ Coherence acceptable (φ ≥ 0.80)")
+              else:
+                  print(f"✗ Coherence below target (φ < 0.80)")
+
+          EOF
+        continue-on-error: true
+
+      - name: Check checkpoint/cache directories
+        run: |
+          if [ -d "core/_checkpoints" ]; then
+            echo "✓ Checkpoint directory created"
+            ls -la core/_checkpoints/ || true
+          fi
+
+          if [ -d "core/_build_cache" ]; then
+            echo "✓ Cache directory created"
+            ls -la core/_build_cache/ || true
+          fi
+
+      - name: Upload test artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: hardening-results-${{ matrix.cc }}
+          path: |
+            core/hardening-test.log
+            core/_checkpoints/
+            core/_build_cache/
+          retention-days: 30
+
+      - name: Generate test summary
+        if: always()
+        run: |
+          echo "## Phase 9.15 Production Hardening Test Results" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Compiler**: ${{ matrix.cc }}" >> $GITHUB_STEP_SUMMARY
+          echo "**Flags**: ${{ matrix.cflags }}" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### Test Output" >> $GITHUB_STEP_SUMMARY
+          echo '```' >> $GITHUB_STEP_SUMMARY
+          cat core/hardening-test.log >> $GITHUB_STEP_SUMMARY
+          echo '```' >> $GITHUB_STEP_SUMMARY
+
+  coherence-tracking:
+    name: Track Coherence Metrics
+    runs-on: ubuntu-latest
+    needs: build-and-test
+    if: always()
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Download test artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: hardening-results-gcc
+          path: artifacts/
+
+      - name: Analyze coherence metrics
+        run: |
+          python3 << 'EOF'
+          import re
+          import json
+          from datetime import datetime
+
+          # Parse test output
+          with open('artifacts/hardening-test.log', 'r') as f:
+              output = f.read()
+
+          metrics = {
+              'timestamp': datetime.utcnow().isoformat(),
+              'commit': '${{ github.sha }}',
+              'branch': '${{ github.ref }}',
+              'tests_passed': 0,
+              'tests_total': 0,
+              'coherence_phi': 0.0,
+              'status': 'UNKNOWN'
+          }
+
+          # Extract test results
+          passed_match = re.search(r'Passed: (\d+)/(\d+)', output)
+          if passed_match:
+              metrics['tests_passed'] = int(passed_match.group(1))
+              metrics['tests_total'] = int(passed_match.group(2))
+
+          # Extract coherence
+          coherence_match = re.search(r'Coherence φ: ([\d.]+)', output)
+          if coherence_match:
+              metrics['coherence_phi'] = float(coherence_match.group(1))
+
+          # Determine status
+          if metrics['tests_passed'] == metrics['tests_total']:
+              if metrics['coherence_phi'] >= 0.85:
+                  metrics['status'] = 'PASSED_TARGET'
+              elif metrics['coherence_phi'] >= 0.80:
+                  metrics['status'] = 'PASSED_ACCEPTABLE'
+              else:
+                  metrics['status'] = 'PASSED_DEGRADED'
+          else:
+              metrics['status'] = 'FAILED'
+
+          # Write metrics
+          with open('coherence-metrics.json', 'w') as f:
+              json.dump(metrics, f, indent=2)
+
+          print("Coherence Metrics:")
+          print(f"  Tests: {metrics['tests_passed']}/{metrics['tests_total']}")
+          print(f"  Coherence φ: {metrics['coherence_phi']:.4f}")
+          print(f"  Status: {metrics['status']}")
+
+          EOF
+
+      - name: Check for regressions
+        run: |
+          python3 << 'EOF'
+          import json
+
+          # Load current metrics
+          with open('coherence-metrics.json', 'r') as f:
+              current = json.load(f)
+
+          # Define thresholds
+          COHERENCE_MIN = 0.80
+          COHERENCE_TARGET = 0.85
+
+          print("Regression Detection:")
+          print(f"  Coherence φ: {current['coherence_phi']:.4f}")
+
+          if current['coherence_phi'] < COHERENCE_MIN:
+              print(f"  ✗ CRITICAL: φ below minimum ({COHERENCE_MIN})")
+              exit(1)
+          elif current['coherence_phi'] < COHERENCE_TARGET:
+              print(f"  ⚠ WARNING: φ below target ({COHERENCE_TARGET})")
+          else:
+              print(f"  ✓ PASS: φ meets target")
+
+          if current['tests_passed'] != current['tests_total']:
+              print(f"  ✗ CRITICAL: {current['tests_total'] - current['tests_passed']} test(s) failed")
+              exit(1)
+          else:
+              print(f"  ✓ PASS: All tests passed")
+
+          EOF
+
+      - name: Upload metrics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: coherence-metrics
+          path: coherence-metrics.json
+          retention-days: 90
+
+  source-contract:
+    name: Source Code Contract
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Verify source contract
+        run: |
+          cd core
+
+          echo "Checking Production Hardening Source Contract..."
+          echo "=================================================="
+          echo ""
+
+          # Check that required files exist
+          files=(
+            "production_hardening.c"
+            "production_hardening.h"
+            "tests/test_production_hardening.c"
+          )
+
+          for file in "${files[@]}"; do
+            if [ -f "$file" ]; then
+              lines=$(wc -l < "$file")
+              echo "✓ $file ($lines lines)"
+            else
+              echo "✗ $file (MISSING)"
+              exit 1
+            fi
+          done
+
+          echo ""
+          echo "Checking API contracts..."
+
+          # Verify critical functions exist
+          functions=(
+            "production_checkpoint_save"
+            "production_checkpoint_load"
+            "production_checkpoint_resume"
+            "production_partial_build_init"
+            "production_error_recovery_init"
+            "production_cache_lookup"
+            "production_parallel_arch_build"
+          )
+
+          for func in "${functions[@]}"; do
+            if grep -q "^int $func\|^void $func" production_hardening.c production_hardening.h; then
+              echo "✓ $func found"
+            else
+              echo "✗ $func (MISSING)"
+              exit 1
+            fi
+          done
+
+          echo ""
+          echo "✓ Source contract verified"
+
+  structural-gate:
+    name: Structural Validation
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Validate directory structure
+        run: |
+          cd core
+
+          echo "Validating directory structure..."
+          echo "==================================="
+          echo ""
+
+          # Check gitignore entries
+          if grep -q "test-production-hardening" .gitignore; then
+            echo "✓ test-production-hardening in .gitignore"
+          else
+            echo "✗ test-production-hardening missing from .gitignore"
+            exit 1
+          fi
+
+          if grep -q "_checkpoints" .gitignore; then
+            echo "✓ _checkpoints in .gitignore"
+          else
+            echo "✗ _checkpoints missing from .gitignore"
+            exit 1
+          fi
+
+          if grep -q "_build_cache" .gitignore; then
+            echo "✓ _build_cache in .gitignore"
+          else
+            echo "✗ _build_cache missing from .gitignore"
+            exit 1
+          fi
+
+          echo ""
+          echo "✓ Structural validation passed"
+
+---
+_Generated by [Claude Code](https://claude.ai/code)_
