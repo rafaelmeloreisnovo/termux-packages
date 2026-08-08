@@ -47,6 +47,8 @@ metrics-producer
 pkg-count-freestanding
 contract-validate
 arch-detect
+receipt-validate
 *.real.o
+*.receipt
 _checkpoints
 _build_cache

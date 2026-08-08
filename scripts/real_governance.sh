@@ -23,6 +23,7 @@ REPO_ROOT="${REPO_ROOT:-.}"
 BASELINE="${BASELINE:-core/tests/fixtures/real_dag_baseline.json}"
 PRODUCER="${PRODUCER:-core/metrics-producer}"
 VALIDATOR="${VALIDATOR:-core/contract-validate}"
+RECEIPT_VALIDATOR="${RECEIPT_VALIDATOR:-core/receipt-validate}"
 OUT_JSON="${OUT_JSON:-/tmp/real_gov_metrics.json}"
 
 log() { echo "[$(date +'%Y-%m-%d %H:%M:%S')] $*" >&2; }
@@ -57,32 +58,32 @@ require_bin "$PRODUCER"
 require_bin "$VALIDATOR"
 
 # 2) Producer runs
-log "step 1/5: run producer"
+log "step 1/6: run producer"
 if ! "$PRODUCER" "$REPO_ROOT" "$OUT_JSON" >/dev/null; then
     fail "producer failed to run"
 fi
 
 # 3) status=REAL
-log "step 2/5: check status=REAL"
+log "step 2/6: check status=REAL"
 if ! jq -e '.status == "REAL"' "$OUT_JSON" >/dev/null 2>&1; then
     fail "output is not status=REAL"
 fi
 
 # 4) Contract validation
-log "step 3/5: contract validation (pkg_metrics/1.0.0)"
+log "step 3/6: contract validation (pkg_metrics/1.0.0)"
 if ! "$VALIDATOR" "$OUT_JSON"; then
     fail "contract validation rejected the JSON"
 fi
 
 # 5) No TOKEN_VAZIO leaks
-log "step 4/5: scan for TOKEN_VAZIO"
+log "step 4/6: scan for TOKEN_VAZIO"
 if grep -q "TOKEN_VAZIO" "$OUT_JSON"; then
     grep "TOKEN_VAZIO" "$OUT_JSON" >&2
     fail "output contains TOKEN_VAZIO placeholders"
 fi
 
 # 6) Regression gate vs baseline
-log "step 5/5: regression gate vs $BASELINE"
+log "step 5/6: regression gate vs $BASELINE"
 if [ ! -f "$BASELINE" ]; then
     log "WARN: baseline missing; skipping regression gate"
 else
@@ -121,6 +122,16 @@ else
     fi
 
     log "regression gate passed"
+fi
+
+log "step 6/6: verify receipt for output"
+if [ -f "$RECEIPT_VALIDATOR" ] && [ -f "$OUT_JSON.receipt" ]; then
+    if ! "$RECEIPT_VALIDATOR" "$OUT_JSON.receipt" >/dev/null 2>&1; then
+        fail "receipt verification failed for $OUT_JSON.receipt"
+    fi
+    log "receipt signature valid"
+else
+    log "WARN: no receipt validator or receipt file; skipping"
 fi
 
 log "✓✓✓ REAL Governance Gate PASSED"
