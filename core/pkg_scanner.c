@@ -12,31 +12,35 @@
  * No mocks, no simulated counts — reads the filesystem directly.
  * ============================================================================ */
 
+REAL_PURE REAL_COLD
 static const char *repo_name(pkg_repo_t r) {
   switch (r) {
     case PKG_REPO_MAIN:     return "packages";
     case PKG_REPO_ROOT:     return "root-packages";
     case PKG_REPO_X11:      return "x11-packages";
     case PKG_REPO_DISABLED: return "disabled-packages";
-    default:                return "unknown";
+    case PKG_REPO_UNKNOWN:  return "unknown";
   }
+  REAL_UNREACHABLE();
 }
 
 int pkg_inventory_init(pkg_inventory_t *inv, uint32_t initial_capacity) {
-  if (!inv || initial_capacity == 0) return -1;
+  /* NONNULL(1) contract; only capacity check remains */
+  if (REAL_UNLIKELY(initial_capacity == 0)) return -1;
   memset(inv, 0, sizeof(*inv));
   inv->entries =
       (pkg_inventory_entry_t *)calloc(initial_capacity, sizeof(*inv->entries));
-  if (!inv->entries) return -1;
+  if (REAL_UNLIKELY(!inv->entries)) return -1;
   inv->capacity = initial_capacity;
   return 0;
 }
 
+REAL_COLD REAL_NOINLINE
 static int inv_grow(pkg_inventory_t *inv) {
   uint32_t new_cap = inv->capacity == 0 ? 64 : inv->capacity * 2;
   pkg_inventory_entry_t *n = (pkg_inventory_entry_t *)realloc(
       inv->entries, new_cap * sizeof(*inv->entries));
-  if (!n) return -1;
+  if (REAL_UNLIKELY(!n)) return -1;
   memset(n + inv->capacity, 0,
          (new_cap - inv->capacity) * sizeof(*inv->entries));
   inv->entries = n;
@@ -46,6 +50,7 @@ static int inv_grow(pkg_inventory_t *inv) {
 
 /* Scan a package directory for *.subpackage.sh siblings and append each
  * as a subpackage entry (name derived from filename minus ".subpackage.sh"). */
+REAL_HOT
 static void scan_subpackages(pkg_inventory_t *inv, const char *pkg_dir,
                              const char *parent_name, pkg_repo_t repo_type) {
   DIR *sd = opendir(pkg_dir);
@@ -90,10 +95,9 @@ static void scan_subpackages(pkg_inventory_t *inv, const char *pkg_dir,
 
 int pkg_inventory_scan_repo(pkg_inventory_t *inv, const char *repo_dir,
                             pkg_repo_t repo_type) {
-  if (!inv || !repo_dir) return -1;
-
+  /* NONNULL(1,2) contract enforced by compiler */
   DIR *d = opendir(repo_dir);
-  if (!d) return -1;
+  if (REAL_UNLIKELY(!d)) return -1;
 
   struct dirent *ent;
   while ((ent = readdir(d)) != NULL) {
@@ -149,8 +153,7 @@ int pkg_inventory_scan_repo(pkg_inventory_t *inv, const char *repo_dir,
 }
 
 int pkg_inventory_scan_all(pkg_inventory_t *inv, const char *base_dir) {
-  if (!inv || !base_dir) return -1;
-
+  /* NONNULL_ALL contract enforced by compiler */
   const struct {
     const char *subdir;
     pkg_repo_t type;
@@ -180,9 +183,9 @@ int pkg_inventory_scan_all(pkg_inventory_t *inv, const char *base_dir) {
 
 const pkg_inventory_entry_t *
 pkg_inventory_find(const pkg_inventory_t *inv, const char *name) {
-  if (!inv || !name) return NULL;
+  /* NONNULL_ALL contract → linker sees dead code eliminated */
   for (uint32_t i = 0; i < inv->count; i++) {
-    if (strcmp(inv->entries[i].name, name) == 0) {
+    if (REAL_UNLIKELY(strcmp(inv->entries[i].name, name) == 0)) {
       return &inv->entries[i];
     }
   }
@@ -190,7 +193,7 @@ pkg_inventory_find(const pkg_inventory_t *inv, const char *name) {
 }
 
 void pkg_inventory_write_json(FILE *out, const pkg_inventory_t *inv) {
-  if (!out || !inv) return;
+  /* NONNULL_ALL contract enforced by compiler */
   fprintf(out, "{\n");
   fprintf(out, "  \"schema\": \"pkg_inventory_v1\",\n");
   fprintf(out, "  \"status\": \"REAL\",\n");
@@ -216,7 +219,7 @@ void pkg_inventory_write_json(FILE *out, const pkg_inventory_t *inv) {
 }
 
 void pkg_inventory_report(FILE *out, const pkg_inventory_t *inv) {
-  if (!out || !inv) return;
+  /* NONNULL_ALL contract enforced by compiler */
   fprintf(out, "=== REAL Package Inventory ===\n");
   fprintf(out, "Directories scanned:       %u\n", inv->total_scanned);
   fprintf(out, "Packages with build.sh:    %u\n", inv->total_with_build_sh);

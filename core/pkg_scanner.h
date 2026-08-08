@@ -11,6 +11,7 @@
  * Item #1 from consolidation list: real inventory of packages.
  */
 
+#include "real_attrs.h"
 #include <stdint.h>
 #include <stdio.h>
 
@@ -47,25 +48,32 @@ typedef struct {
 } pkg_inventory_t;
 
 /* Initialize inventory (allocate initial capacity). */
+REAL_WARN_UNUSED REAL_NONNULL(1)
 int pkg_inventory_init(pkg_inventory_t *inv, uint32_t initial_capacity);
 
 /* Scan a single repo directory (e.g. "packages"). Appends to inventory. */
+REAL_HOT REAL_WARN_UNUSED REAL_NONNULL(1, 2)
 int pkg_inventory_scan_repo(pkg_inventory_t *inv, const char *repo_dir,
                             pkg_repo_t repo_type);
 
 /* Scan all known repos in the given base directory. */
+REAL_HOT REAL_WARN_UNUSED REAL_NONNULL_ALL
 int pkg_inventory_scan_all(pkg_inventory_t *inv, const char *base_dir);
 
 /* Print inventory as JSON to `out`. */
+REAL_COLD REAL_NONNULL_ALL
 void pkg_inventory_write_json(FILE *out, const pkg_inventory_t *inv);
 
 /* Print human summary to `out`. */
+REAL_COLD REAL_NONNULL_ALL
 void pkg_inventory_report(FILE *out, const pkg_inventory_t *inv);
 
 /* Find entry by name (linear scan). Returns NULL if not found. */
+REAL_PURE REAL_NONNULL_ALL
 const pkg_inventory_entry_t *
 pkg_inventory_find(const pkg_inventory_t *inv, const char *name);
 
+/* free-style convention: accepts NULL as no-op, so no NONNULL here */
 void pkg_inventory_free(pkg_inventory_t *inv);
 
 #endif /* PKG_SCANNER_H */

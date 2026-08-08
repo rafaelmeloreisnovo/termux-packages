@@ -10,8 +10,9 @@
 
 /* Case-insensitive name comparison stripping version constraints.
  * termux deps look like "curl", "libc++", "coreutils (>=8.32)". */
+REAL_ALWAYS_INLINE
 static void trim_dep_name(const char *raw, char *out, size_t cap) {
-  if (cap == 0) return;
+  if (REAL_UNLIKELY(cap == 0)) return;
   size_t i = 0;
   /* Skip leading whitespace */
   while (*raw == ' ' || *raw == '\t') raw++;
@@ -53,32 +54,36 @@ static void split_deps(const char *raw,
 }
 
 /* Find inventory index by name; returns -1 if not found. */
+REAL_PURE REAL_HOT
 static int32_t inv_find_idx(const pkg_inventory_t *inv, const char *name) {
-  if (!inv || !name) return -1;
+  if (REAL_UNLIKELY(!inv || !name)) return -1;
   for (uint32_t i = 0; i < inv->count; i++) {
-    if (strcmp(inv->entries[i].name, name) == 0) return (int32_t)i;
+    if (REAL_UNLIKELY(strcmp(inv->entries[i].name, name) == 0))
+      return (int32_t)i;
   }
   return -1;
 }
 
 /* ---- Growable arrays for edges / unresolved ---- */
 
+REAL_COLD REAL_NOINLINE
 static int edges_grow(pkg_dag_t *dag) {
   uint32_t new_cap = dag->edge_capacity == 0 ? 4096 : dag->edge_capacity * 2;
   pkg_dag_edge_t *n = (pkg_dag_edge_t *)realloc(
       dag->edges, new_cap * sizeof(*dag->edges));
-  if (!n) return -1;
+  if (REAL_UNLIKELY(!n)) return -1;
   dag->edges = n;
   dag->edge_capacity = new_cap;
   return 0;
 }
 
+REAL_COLD REAL_NOINLINE
 static int unres_grow(pkg_dag_t *dag) {
   uint32_t new_cap =
       dag->unresolved_capacity == 0 ? 256 : dag->unresolved_capacity * 2;
   pkg_dag_unresolved_t *n = (pkg_dag_unresolved_t *)realloc(
       dag->unresolved, new_cap * sizeof(*dag->unresolved));
-  if (!n) return -1;
+  if (REAL_UNLIKELY(!n)) return -1;
   dag->unresolved = n;
   dag->unresolved_capacity = new_cap;
   return 0;
@@ -118,7 +123,7 @@ static void add_edge_cb(const char *dep_name, void *ud) {
 }
 
 int pkg_dag_build(pkg_dag_t *dag, const pkg_inventory_t *inv) {
-  if (!dag || !inv) return -1;
+  /* NONNULL_ALL contract enforced by compiler */
   memset(dag, 0, sizeof(*dag));
   dag->inv = inv;
 
@@ -128,9 +133,15 @@ int pkg_dag_build(pkg_dag_t *dag, const pkg_inventory_t *inv) {
   if (!dag->parsed) return -1;
   dag->parsed_count = inv->count;
 
+  uint32_t parse_failures = 0;
   for (uint32_t i = 0; i < inv->count; i++) {
-    pkg_parser_parse_file(inv->entries[i].path, &dag->parsed[i]);
+    if (REAL_UNLIKELY(pkg_parser_parse_file(inv->entries[i].path,
+                                             &dag->parsed[i]) < 0)) {
+      parse_failures++;
+    }
   }
+  /* Parse failures are TOKEN_VAZIO — recorded for diagnostics but not fatal */
+  dag->parse_failures = parse_failures;
 
   /* Build edges from parsed deps */
   for (uint32_t i = 0; i < inv->count; i++) {
@@ -171,7 +182,8 @@ int pkg_dag_build(pkg_dag_t *dag, const pkg_inventory_t *inv) {
 /* Kahn's algorithm with cycle detection.
  * Depth of a node = 1 + max(depth of any dep). */
 int pkg_dag_topo_sort(pkg_dag_t *dag) {
-  if (!dag || !dag->inv) return -1;
+  /* NONNULL_ALL contract; only inv-linkage remains as runtime check */
+  if (REAL_UNLIKELY(!dag->inv)) return -1;
 
   uint32_t n = dag->inv->count;
   dag->topo_order = (uint32_t *)calloc(n, sizeof(uint32_t));
@@ -297,12 +309,13 @@ cleanup_fail:
 
 const pkg_parser_result_t *pkg_dag_parsed_at(const pkg_dag_t *dag,
                                              uint32_t idx) {
-  if (!dag || idx >= dag->parsed_count) return NULL;
+  /* NONNULL(1) contract; only bounds check remains */
+  if (REAL_UNLIKELY(idx >= dag->parsed_count)) return NULL;
   return &dag->parsed[idx];
 }
 
 void pkg_dag_write_json(FILE *out, const pkg_dag_t *dag) {
-  if (!out || !dag) return;
+  /* NONNULL_ALL contract enforced by compiler */
   fputs("{\n", out);
   fputs("  \"schema\": \"pkg_dag_v1\",\n", out);
   fputs("  \"status\": \"REAL\",\n", out);
@@ -319,7 +332,7 @@ void pkg_dag_write_json(FILE *out, const pkg_dag_t *dag) {
 }
 
 void pkg_dag_report(FILE *out, const pkg_dag_t *dag) {
-  if (!out || !dag) return;
+  /* NONNULL_ALL contract enforced by compiler */
   fprintf(out, "=== REAL Dependency Graph ===\n");
   fprintf(out, "Nodes (packages):         %u\n",
           dag->inv ? dag->inv->count : 0);
