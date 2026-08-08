@@ -41,5 +41,7 @@ test-performance-opt
 test-distributed
 test-security-hardening
 test-integration-e2e
+pkg-real
+test-pkg-real
 _checkpoints
 _build_cache

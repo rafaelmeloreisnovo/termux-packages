@@ -1,0 +1,12 @@
+{
+  "schema": "pkg_dag_v1",
+  "status": "REAL",
+  "node_count": 3396,
+  "edge_count": 14456,
+  "depends_edges": 12679,
+  "build_dep_edges": 1777,
+  "unresolved_count": 56,
+  "cycle_count": 0,
+  "topo_ordered": 3396,
+  "max_depth": 28
+}
