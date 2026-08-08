@@ -12,6 +12,7 @@ on:
       - 'core/Makefile'
       - 'core/tests/test_rafcodephi_prefix_contract.py'
       - 'core/tests/test_source_phase_integration.py'
+      - 'core/tests/test_source_acquisition_runtime.c'
       - '.github/workflows/rafcodephi-prefix-source-contract.yml'
   push:
     branches: [ main ]
@@ -24,6 +25,7 @@ on:
       - 'core/Makefile'
       - 'core/tests/test_rafcodephi_prefix_contract.py'
       - 'core/tests/test_source_phase_integration.py'
+      - 'core/tests/test_source_acquisition_runtime.c'
       - '.github/workflows/rafcodephi-prefix-source-contract.yml'
   workflow_dispatch:
 
@@ -48,6 +50,8 @@ jobs:
           cc --version | head -n 1
           make --version | head -n 1
           python3 --version
+          curl --version | head -n 1
+          tar --version | head -n 1
 
       - name: Verify RAFCODEPhi runtime-prefix and source-phase contracts
         working-directory: core
@@ -55,6 +59,15 @@ jobs:
           set -eux
           python3 tests/test_rafcodephi_prefix_contract.py
           python3 tests/test_source_phase_integration.py
+
+      - name: Exercise source acquisition locally
+        working-directory: core
+        run: |
+          set -eux
+          cc -Wall -Wextra -Wshadow -Werror -g -O0 -I. \
+            tests/test_source_acquisition_runtime.c source_download.c \
+            -o test-source-acquisition-runtime
+          ./test-source-acquisition-runtime
 
       - name: Compile clean build core
         working-directory: core
@@ -69,9 +82,10 @@ jobs:
           printf '%s\n' \
             'RAFCODEPHI_PREFIX_SOURCE_CONTRACT=PASS' \
             'SOURCE_PHASE_INTEGRATION_CONTRACT=PASS' \
+            'SOURCE_ACQUISITION_LOCAL_RUNTIME=PASS' \
+            'SOURCE_ACQUISITION_REMOTE_NETWORK=NOT_MEASURED' \
             'TARGET_PREFIX=/data/data/com.termux.rafacodephi/files/usr' \
             'STAGING_MODEL=DESTDIR' \
-            'SOURCE_ACQUISITION_RUNTIME=NOT_MEASURED' \
             'PACKAGE_REBUILD_RUNTIME=NOT_MEASURED' \
             'ARM32_ARTIFACT=TOKEN_VAZIO' \
             'ARM64_ARTIFACT=TOKEN_VAZIO' \
