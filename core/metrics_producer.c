@@ -25,6 +25,8 @@
 #include "pkg_dag.h"
 #include "pkg_parser.h"
 #include "pkg_scanner.h"
+#include "real_contract.h"
+#include "real_provenance.h"
 #include <errno.h>
 #include <inttypes.h>
 #include <stdint.h>
@@ -52,6 +54,13 @@ int main(int argc, char **argv) {
   }
   const char *base = argv[1];
   const char *out_path = argv[2];
+
+  /* Capture provenance FIRST — if we can't establish who we are, refuse. */
+  real_provenance_t prov;
+  if (real_provenance_capture(&prov, argv[0], REAL_CONTRACT_SCHEMA_VERSION) < 0) {
+    fprintf(stderr, "REAL_ERROR: provenance capture failed\n");
+    return 2;
+  }
 
   uint64_t t_start = monotonic_ns();
 
@@ -111,12 +120,13 @@ int main(int argc, char **argv) {
   }
 
   fprintf(f, "{\n");
-  fprintf(f, "  \"schema\": \"metrics_v1\",\n");
+  fprintf(f, "  \"schema\": \"" REAL_CONTRACT_SCHEMA_VERSION "\",\n");
   fprintf(f, "  \"status\": \"REAL\",\n");
   fprintf(f, "  \"generated_unix_ms\": %" PRIu64 ",\n", now_unix_ms());
-  fprintf(f, "  \"source\": \"metrics_producer\",\n");
   fprintf(f, "  \"repo_base\": \"%s\",\n", base);
   fprintf(f, "\n");
+  real_provenance_write_json(f, &prov);
+  fprintf(f, ",\n\n");
   fprintf(f, "  \"node_count\": %u,\n", nodes);
   fprintf(f, "  \"edge_count\": %u,\n", edges);
   fprintf(f, "  \"depends_edges\": %u,\n", dag.total_depends_edges);
