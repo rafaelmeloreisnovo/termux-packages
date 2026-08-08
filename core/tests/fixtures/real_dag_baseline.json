@@ -1,12 +1,35 @@
 {
-  "schema": "pkg_dag_v1",
+  "schema": "pkg_metrics/1.0.0",
   "status": "REAL",
+  "generated_unix_ms": 1786216920434,
+  "repo_base": ".",
+
+  "provenance": {
+    "schema_version": "pkg_metrics/1.0.0",
+    "git_commit": "6f6ac67ac562c5e77daee95f82f82787649c7243",
+    "build_timestamp_utc": "2026-08-08T19:19:46Z",
+    "cflags_fingerprint": "24a1b1ac69ca8960",
+    "toolchain_id": "gcc 13.3.0",
+    "producer_name": "metrics-producer",
+    "run_timestamp_unix_ms": 1786216920029,
+    "host_uname": "Linux 6.18.5-fc-v20 x86_64"
+  },
+
   "node_count": 3396,
   "edge_count": 14456,
   "depends_edges": 12679,
   "build_dep_edges": 1777,
-  "unresolved_count": 56,
+  "unresolved_count": 55,
   "cycle_count": 0,
+  "max_depth": 28,
   "topo_ordered": 3396,
-  "max_depth": 28
+
+  "coherence_phi": 0.996195,
+  "graph_completeness": 0.996195,
+  "graph_acyclicity": 1.000000,
+  "avg_deps_per_pkg": 4.256773,
+
+  "inventory_latency_us": 20601,
+  "dag_latency_us": 384190,
+  "total_latency_us": 404804
 }
