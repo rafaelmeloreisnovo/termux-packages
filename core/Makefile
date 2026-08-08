@@ -2,8 +2,8 @@ CC ?= cc
 CFLAGS ?= -Wall -Wextra -Wshadow -Werror -g -O0
 LDFLAGS ?=
 
-TARGETS := termux-build-core test-manifest manifest-dumper test-cycle2-1 test-cycle2-2 test-build-orchestrator test-dep-resolver test-manifest-v2 device-test-orchestrator perf-profiler perf-analyzer simd-benchmark multicore-benchmark advanced-simd-benchmark advanced-simd-test orchestrator-production-benchmark unified-benchmark test-sprint3
-SOURCES := termux-build-core.c sysexec.c package_writer.c elf_writer.c friction_analyzer.c checkpoint.c parallel_jobs.c build_exec.c manifest_loader.c source_download.c build_orchestrator.c dep_resolver.c manifest_v2.c device_test_orchestrator.c perf_profiler.c build_orchestrator_optimized.c perf_analyzer.c build_orchestrator_simd.c phase_barrier_lockfree.c cpu_affinity.c job_scheduler_parallel.c hardware_tuning.c build_orchestrator_advanced_simd.c unified_orchestrator.c gpu_device.c cycle_budget.c workload_generator.c coherence_tuning.c profiler.c
+TARGETS := termux-build-core test-manifest manifest-dumper test-cycle2-1 test-cycle2-2 test-build-orchestrator test-dep-resolver test-manifest-v2 device-test-orchestrator perf-profiler perf-analyzer simd-benchmark multicore-benchmark advanced-simd-benchmark advanced-simd-test orchestrator-production-benchmark unified-benchmark test-sprint3 test-sprint4 test-sprint5 test-sprint6
+SOURCES := termux-build-core.c sysexec.c package_writer.c elf_writer.c friction_analyzer.c checkpoint.c parallel_jobs.c build_exec.c manifest_loader.c source_download.c build_orchestrator.c dep_resolver.c manifest_v2.c device_test_orchestrator.c perf_profiler.c build_orchestrator_optimized.c perf_analyzer.c build_orchestrator_simd.c phase_barrier_lockfree.c cpu_affinity.c job_scheduler_parallel.c hardware_tuning.c build_orchestrator_advanced_simd.c unified_orchestrator.c gpu_device.c cycle_budget.c workload_generator.c coherence_tuning.c profiler.c multicore_orchestrator.c advanced_vectorization.c
 TEST_SOURCES := test_manifest.c manifest_loader.c
 DUMPER_SOURCES := manifest_dumper.c
 OBJECTS := $(SOURCES:.c=.o)
@@ -104,9 +104,36 @@ test: clean all
 	@echo "All tests completed successfully"
 	./test-sprint3
 	@echo "✓ Sprint 3 tests passed"
+	./test-sprint4
+	@echo "✓ Sprint 4 (multicore) tests passed"
+	./test-sprint5
+	@echo "✓ Sprint 5 (hardware tuning) tests passed"
+	./test-sprint6
+	@echo "✓ Sprint 6 (vectorization) tests passed"
 
 test-sprint3: tests/test_sprint3.o cycle_budget.o workload_generator.o coherence_tuning.o profiler.o build_orchestrator.o dep_resolver.o
 	$(CC) $(CFLAGS) $(LDFLAGS) -o $@ $^ -lm
+
+test-sprint4: tests/test_sprint4.o multicore_orchestrator.o build_orchestrator.o phase_barrier_lockfree.o dep_resolver.o profiler.o cycle_budget.o coherence_tuning.o workload_generator.o
+	$(CC) $(CFLAGS) $(LDFLAGS) -o $@ $^ -lpthread -lm
+
+test-sprint5: tests/test_sprint5.o hardware_tuning.o cpu_affinity.o
+	$(CC) $(CFLAGS) $(LDFLAGS) -o $@ $^ -lm
+
+test-sprint6: tests/test_sprint6.o advanced_vectorization.o
+	$(CC) $(CFLAGS) $(LDFLAGS) -o $@ $^ -lm
+
+tests/test_sprint3.o: tests/test_sprint3.c cycle_budget.h workload_generator.h coherence_tuning.h profiler.h
+	$(CC) $(CFLAGS) -c -o $@ $<
+
+tests/test_sprint4.o: tests/test_sprint4.c multicore_orchestrator.h build_orchestrator.h dep_resolver.h
+	$(CC) $(CFLAGS) -c -o $@ $<
+
+tests/test_sprint5.o: tests/test_sprint5.c hardware_tuning.h
+	$(CC) $(CFLAGS) -c -o $@ $<
+
+tests/test_sprint6.o: tests/test_sprint6.c advanced_vectorization.h
+	$(CC) $(CFLAGS) -c -o $@ $<
 
 clean:
 	rm -f $(OBJECTS) $(TEST_OBJECTS) $(DUMPER_OBJECTS) tests/test_manifest_v2.o build_orchestrator_optimized.o perf_analyzer.o $(TARGETS) manifest.bin
