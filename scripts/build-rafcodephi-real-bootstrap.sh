@@ -123,6 +123,7 @@ printf 'package_name=%s\n' "$PACKAGE_NAME" >> "$manifest"
 printf 'prefix=%s\n' "$TARGET_PREFIX" >> "$manifest"
 printf 'builder=termux-packages/scripts/generate-bootstraps.sh --build\n' >> "$manifest"
 printf 'bridge_allowed=false\nlegacy_prefix_allowed=false\n' >> "$manifest"
+printf 'package_repo_runtime_state=BLOCKED_CUSTOM_REPOSITORY_NOT_PUBLISHED\n' >> "$manifest"
 
 IFS=',' read -r -a arch_list <<< "$ARCHITECTURES"
 for arch in "${arch_list[@]}"; do
@@ -130,13 +131,92 @@ for arch in "${arch_list[@]}"; do
     zip_path="$ROOT/bootstrap-${arch}.zip"
     [[ -s "$zip_path" ]] || { echo "missing generated $zip_path" >&2; exit 1; }
 
+    # Seal the upstream-generated bootstrap with the app-side fail-closed profile
+    # contract before hashing or publication. The ZIP that passes below is the ZIP
+    # intended to be consumed by the RAFCODEPHI Wizard/installer.
+    python3 - "$zip_path" "$PACKAGE_NAME" "$TARGET_PREFIX" "$arch" <<'PY'
+import json
+import sys
+import zipfile
+from pathlib import Path
+
+zip_path = Path(sys.argv[1])
+package_name = sys.argv[2]
+prefix = sys.argv[3]
+arch = sys.argv[4]
+required = [
+    "bin/sh",
+    "bin/pkg",
+    "bin/apt",
+    "bin/apt-get",
+    "bin/dpkg",
+    "bin/bash",
+    "bin/busybox",
+    "bin/proot",
+    "etc/apt/sources.list",
+    "SYMLINKS.txt",
+]
+with zipfile.ZipFile(zip_path, "r") as zf:
+    names = set(zf.namelist())
+if "BOOTSTRAP_PROFILE.json" in names:
+    raise SystemExit("refusing to overwrite pre-existing BOOTSTRAP_PROFILE.json")
+missing = [name for name in required if name not in names]
+if missing:
+    raise SystemExit("cannot seal profile; missing entries: " + ",".join(missing))
+profile = {
+    "schema": "rafcodephi-bootstrap-profile/v1",
+    "profile": "real-pkg",
+    "package_layer": "real-pkg",
+    "source": "termux-packages-sourcebuild",
+    "package_name": package_name,
+    "prefix": prefix,
+    "arch": arch,
+    "required_entries": required,
+    "claim_allowed": False,
+    "release_allowed": False,
+    "device_validation": "TOKEN_VAZIO",
+    "real_pkg_relocation_claim_allowed": False,
+    "package_repo_runtime_state": "BLOCKED_CUSTOM_REPOSITORY_NOT_PUBLISHED",
+}
+info = zipfile.ZipInfo("BOOTSTRAP_PROFILE.json")
+info.date_time = (1980, 1, 1, 0, 0, 0)
+info.external_attr = 0o100600 << 16
+payload = (json.dumps(profile, sort_keys=True, separators=(",", ":")) + "\n").encode("utf-8")
+with zipfile.ZipFile(zip_path, "a", compression=zipfile.ZIP_DEFLATED, compresslevel=9) as zf:
+    zf.writestr(info, payload)
+PY
+
     extract="$validation_root/$arch"
     mkdir -p "$extract"
     unzip -q "$zip_path" -d "$extract"
 
-    for required in bin/apt bin/apt-get bin/dpkg bin/bash bin/pkg bin/busybox bin/proot; do
+    for required in bin/sh bin/apt bin/apt-get bin/dpkg bin/bash bin/pkg bin/busybox bin/proot SYMLINKS.txt BOOTSTRAP_PROFILE.json; do
         [[ -f "$extract/$required" ]] || { echo "$arch missing real bootstrap target: $required" >&2; exit 1; }
     done
+
+    python3 - "$extract/BOOTSTRAP_PROFILE.json" "$PACKAGE_NAME" "$TARGET_PREFIX" "$arch" <<'PY'
+import json
+import sys
+from pathlib import Path
+p = json.loads(Path(sys.argv[1]).read_text(encoding="utf-8"))
+expected = {
+    "schema": "rafcodephi-bootstrap-profile/v1",
+    "profile": "real-pkg",
+    "package_layer": "real-pkg",
+    "package_name": sys.argv[2],
+    "prefix": sys.argv[3],
+    "arch": sys.argv[4],
+    "claim_allowed": False,
+    "release_allowed": False,
+    "device_validation": "TOKEN_VAZIO",
+    "real_pkg_relocation_claim_allowed": False,
+}
+for key, value in expected.items():
+    if p.get(key) != value:
+        raise SystemExit(f"profile contract mismatch {key}: {p.get(key)!r} != {value!r}")
+if not p.get("required_entries"):
+    raise SystemExit("profile required_entries empty")
+PY
 
     for elf in bin/apt bin/apt-get bin/dpkg bin/bash bin/busybox bin/proot; do
         desc="$(file -b "$extract/$elf")"
@@ -156,8 +236,8 @@ for arch in "${arch_list[@]}"; do
         exit 1
     fi
 
-    if grep -R -aFq "$LEGACY_PREFIX" "$extract/etc/apt" "$extract/bin/pkg" 2>/dev/null; then
-        echo "$arch apt/pkg configuration still contains legacy prefix" >&2
+    if grep -R -aFq "$LEGACY_PREFIX" "$extract/etc/apt" "$extract/bin/pkg" "$extract/bin/termux-setup-package-manager" 2>/dev/null; then
+        echo "$arch apt/pkg tooling still contains legacy prefix" >&2
         exit 1
     fi
 
