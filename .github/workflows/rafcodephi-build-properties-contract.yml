@@ -1,0 +1,160 @@
+name: rafcodephi-build-properties-contract
+
+on:
+  pull_request:
+    branches: [ main ]
+    paths:
+      - 'scripts/properties.sh'
+      - 'scripts/apply-rafcodephi-build-properties.py'
+      - 'scripts/validate-rafcodephi-build-properties.sh'
+      - 'scripts/tests/test_rafcodephi_build_properties_overlay.py'
+      - 'build-package-rafcodephi.sh'
+      - '.github/workflows/rafcodephi-build-properties-contract.yml'
+  push:
+    branches: [ main ]
+    paths:
+      - 'scripts/properties.sh'
+      - 'scripts/apply-rafcodephi-build-properties.py'
+      - 'scripts/validate-rafcodephi-build-properties.sh'
+      - 'scripts/tests/test_rafcodephi_build_properties_overlay.py'
+      - 'build-package-rafcodephi.sh'
+      - '.github/workflows/rafcodephi-build-properties-contract.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: rafcodephi-build-properties-contract-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  properties-contract:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    env:
+      EXPECTED_SOURCE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+    steps:
+      - name: Checkout exact source revision
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          fetch-depth: 1
+
+      - name: Prove exact HEAD and record immutable input
+        run: |
+          set -euo pipefail
+          mkdir -p build/reports
+          observed="$(git rev-parse HEAD)"
+          printf '%s\n' "$observed" | tee build/reports/head.txt
+          printf '%s\n' "$EXPECTED_SOURCE_SHA" | tee build/reports/expected-head.txt
+          if [[ "$observed" != "$EXPECTED_SOURCE_SHA" ]]; then
+            printf 'SAME_SOURCE_REVISION=FAIL expected=%s observed=%s\n' "$EXPECTED_SOURCE_SHA" "$observed" >&2
+            exit 1
+          fi
+          printf 'SAME_SOURCE_REVISION=PASS sha=%s\n' "$observed" | tee build/reports/source-revision.txt
+          sha256sum scripts/properties.sh | tee build/reports/properties-before.sha256
+          python3 --version
+          bash --version | head -n 1
+
+      - name: Static syntax gates
+        run: |
+          set -euo pipefail
+          python3 -m py_compile scripts/apply-rafcodephi-build-properties.py
+          bash -n scripts/validate-rafcodephi-build-properties.sh
+          bash -n build-package-rafcodephi.sh
+
+      - name: Adversarial overlay unit tests
+        run: |
+          set -euo pipefail
+          python3 -m pip install --disable-pip-version-check pytest
+          python3 -m pytest -q scripts/tests/test_rafcodephi_build_properties_overlay.py
+
+      - name: Apply exact source overlay and emit receipt
+        run: |
+          set -euo pipefail
+          python3 scripts/apply-rafcodephi-build-properties.py \
+            --properties scripts/properties.sh \
+            --receipt build/reports/rafcodephi-build-properties-overlay.json
+          sha256sum scripts/properties.sh | tee build/reports/properties-after.sha256
+
+      - name: Prove one-line mutation only
+        run: |
+          set -euo pipefail
+          git diff -- scripts/properties.sh | tee build/reports/properties.diff
+          python3 - <<'PY'
+          import json
+          import subprocess
+          from pathlib import Path
+
+          receipt = json.loads(Path('build/reports/rafcodephi-build-properties-overlay.json').read_text())
+          assert receipt['state'] == 'PASS'
+          assert receipt['changed'] is True
+          assert receipt['binary_rewrite_performed'] is False
+          assert receipt['repository_identity_preserved'] is True
+          assert receipt['target_package'] == 'com.termux.rafacodephi'
+          assert receipt['target_prefix'] == '/data/data/com.termux.rafacodephi/files/usr'
+          assert receipt['repository_package_identity'] == 'com.termux'
+          assert receipt['repository_prefix'] == '/data/data/com.termux/files/usr'
+          assert receipt['claim_allowed'] is False
+          assert receipt['release_allowed'] is False
+
+          diff = subprocess.check_output(
+              ['git', 'diff', '--unified=0', '--', 'scripts/properties.sh'],
+              text=True,
+          )
+          removed = [line for line in diff.splitlines() if line.startswith('-') and not line.startswith('---')]
+          added = [line for line in diff.splitlines() if line.startswith('+') and not line.startswith('+++')]
+          assert removed == ['-TERMUX_APP__PACKAGE_NAME="com.termux"'], removed
+          assert added == ['+TERMUX_APP__PACKAGE_NAME="com.termux.rafacodephi"'], added
+          print('RAFCODEPHI_PROPERTIES_EXACT_DIFF=PASS removed=1 added=1 binary_rewrite=false')
+          PY
+
+      - name: Execute derived properties runtime assertions
+        run: |
+          set -euo pipefail
+          bash scripts/validate-rafcodephi-build-properties.sh \
+            | tee build/reports/rafcodephi-build-properties-runtime.txt
+
+      - name: Prove same observation before package entrypoint
+        run: |
+          set -euo pipefail
+          observed="$(sha256sum scripts/properties.sh | awk '{print $1}')"
+          receipt="$(python3 - <<'PY'
+          import json
+          print(json.load(open('build/reports/rafcodephi-build-properties-overlay.json'))['sha256_after'])
+          PY
+          )"
+          test "$observed" = "$receipt"
+          printf 'RAFCODEPHI_SAME_OBSERVATION=PASS properties_sha256=%s\n' "$observed" \
+            | tee build/reports/same-observation.txt
+
+      - name: Emit fail-closed status receipt
+        if: success()
+        run: |
+          set -euo pipefail
+          observed_head="$(git rev-parse HEAD)"
+          cat > build/reports/status.txt <<EOF
+          RAFCODEPHI_BUILD_PROPERTIES_CONTRACT=PASS
+          SAME_SOURCE_REVISION=PASS
+          SOURCE_COMMIT=${observed_head}
+          STANDARD_BUILD_PREFIX=/data/data/com.termux.rafacodephi/files/usr
+          REPO_BINARY_PREFIX=/data/data/com.termux/files/usr
+          REPO_BINARY_REUSE_COMPATIBLE=false
+          BINARY_REWRITE_PERFORMED=false
+          ARM32_PACKAGE_REBUILD=TOKEN_VAZIO
+          ARM64_PACKAGE_REBUILD=TOKEN_VAZIO
+          APK_RUNTIME=NOT_MEASURED
+          PHYSICAL_DEVICE=NOT_MEASURED
+          CLAIM_ALLOWED=false
+          RELEASE_ALLOWED=false
+          EOF
+          cat build/reports/status.txt
+
+      - name: Upload audit evidence
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: rafcodephi-build-properties-${{ github.event.pull_request.head.sha || github.sha }}
+          path: build/reports/
+          if-no-files-found: error
