@@ -26,12 +26,17 @@ class RafcodephiDeliveryGateTests(unittest.TestCase):
         self.assertEqual(doc["package_format"], "debian")
         self.assertEqual(doc["source_contract"]["bash_recipe"], "PASS")
         self.assertEqual(doc["source_contract"]["termux_tools_recipe"], "PASS")
+        self.assertEqual(doc["source_contract"]["product_surface_contract"], "PASS")
+        self.assertFalse(doc["source_contract"]["broad_make_install_used_by_governed_route"])
+        self.assertFalse(doc["source_contract"]["toy_crypto_product_dependency"])
+        self.assertFalse(doc["source_contract"]["gpu_fixture_product_dependency"])
+        self.assertFalse(doc["source_contract"]["distributed_prototype_product_dependency"])
         self.assertEqual(doc["artifact"], "NOT_MEASURED")
         self.assertEqual(doc["physical_device_runtime"], "NOT_MEASURED")
 
     def test_source_manifest_hashes_are_complete_sha256(self) -> None:
         doc = mod.source_gate(ROOT)
-        self.assertGreaterEqual(len(doc["sources"]), 5)
+        self.assertGreaterEqual(len(doc["sources"]), 7)
         for name, record in doc["sources"].items():
             with self.subTest(name=name):
                 digest = record["sha256"]
@@ -62,6 +67,8 @@ class RafcodephiDeliveryGateTests(unittest.TestCase):
                 "packages/termux-tools/build.sh",
                 "scripts/emit_rafcodephi_bootstrap_source_manifest.py",
                 "repo.json",
+                "core/product_surface.v1.json",
+                "scripts/install_core_governed.sh",
             ):
                 src = ROOT / rel
                 dst = clone / rel
@@ -75,6 +82,31 @@ class RafcodephiDeliveryGateTests(unittest.TestCase):
             with self.assertRaises(mod.GateError) as ctx:
                 mod.source_gate(clone)
             self.assertIn("bash essential flag", str(ctx.exception))
+
+    def test_product_surface_drift_is_rejected(self) -> None:
+        with tempfile.TemporaryDirectory() as td:
+            clone = Path(td)
+            for rel in (
+                "build-package.sh",
+                "packages/bash/build.sh",
+                "packages/termux-tools/build.sh",
+                "scripts/emit_rafcodephi_bootstrap_source_manifest.py",
+                "repo.json",
+                "core/product_surface.v1.json",
+                "scripts/install_core_governed.sh",
+            ):
+                src = ROOT / rel
+                dst = clone / rel
+                dst.parent.mkdir(parents=True, exist_ok=True)
+                dst.write_bytes(src.read_bytes())
+            surface = clone / "core/product_surface.v1.json"
+            text = surface.read_text(encoding="utf-8").replace(
+                '"manifest-dumper"', '"test-security-hardening"', 1
+            )
+            surface.write_text(text, encoding="utf-8")
+            with self.assertRaises(mod.GateError) as ctx:
+                mod.source_gate(clone)
+            self.assertIn("unexpected governed product binaries", str(ctx.exception))
 
 
 if __name__ == "__main__":
