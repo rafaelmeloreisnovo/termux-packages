@@ -9,3 +9,10 @@ manifest-dumper
 manifest.bin
 build/
 clean
+test-build-orchestrator
+test-dep-resolver
+test-manifest-v2
+device-test-orchestrator
+perf-profiler
+perf-analyzer
+simd-benchmark
