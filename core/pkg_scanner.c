@@ -67,8 +67,6 @@ static int inv_grow(pkg_inventory_t *inv) {
   return 0;
 }
 
-/* Scan one package directory for *.subpackage.sh files. Any collection failure
- * propagates to the caller and increments the inventory ledger. */
 REAL_HOT
 static int scan_subpackages(pkg_inventory_t *inv, const char *pkg_dir,
                             const char *parent_name, pkg_repo_t repo_type) {
@@ -79,9 +77,18 @@ static int scan_subpackages(pkg_inventory_t *inv, const char *pkg_dir,
     return -1;
   }
 
-  errno = 0;
-  struct dirent *se;
-  while ((se = readdir(sd)) != NULL) {
+  for (;;) {
+    errno = 0;
+    struct dirent *se = readdir(sd);
+    if (!se) {
+      if (errno != 0) {
+        inv->io_errors++;
+        inv->subpackage_scan_failures++;
+        closedir(sd);
+        return -1;
+      }
+      break;
+    }
     if (se->d_name[0] == '.') continue;
     size_t len = strlen(se->d_name);
     const char *suffix = ".subpackage.sh";
@@ -135,12 +142,6 @@ static int scan_subpackages(pkg_inventory_t *inv, const char *pkg_dir,
     inv->total_subpackages++;
   }
 
-  if (errno != 0) {
-    inv->io_errors++;
-    inv->subpackage_scan_failures++;
-    closedir(sd);
-    return -1;
-  }
   if (closedir(sd) != 0) {
     inv->io_errors++;
     inv->subpackage_scan_failures++;
@@ -157,9 +158,17 @@ int pkg_inventory_scan_repo(pkg_inventory_t *inv, const char *repo_dir,
     return -1;
   }
 
-  errno = 0;
-  struct dirent *ent;
-  while ((ent = readdir(d)) != NULL) {
+  for (;;) {
+    errno = 0;
+    struct dirent *ent = readdir(d);
+    if (!ent) {
+      if (errno != 0) {
+        inv->io_errors++;
+        closedir(d);
+        return -1;
+      }
+      break;
+    }
     if (ent->d_name[0] == '.') continue;
 
     if (strlen(ent->d_name) >= PKG_NAME_MAX) {
@@ -234,11 +243,6 @@ int pkg_inventory_scan_repo(pkg_inventory_t *inv, const char *repo_dir,
     }
   }
 
-  if (errno != 0) {
-    inv->io_errors++;
-    closedir(d);
-    return -1;
-  }
   if (closedir(d) != 0) {
     inv->io_errors++;
     return -1;
