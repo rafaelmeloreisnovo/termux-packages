@@ -56,3 +56,4 @@ scripts/apt-packages-list-*.txt
 /core/advanced-simd-benchmark
 /core/advanced-simd-test
 /core/orchestrator-production-benchmark
+/core/unified-benchmark
