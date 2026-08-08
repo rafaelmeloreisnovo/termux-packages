@@ -17,6 +17,8 @@ Usage: $0 [--architectures arm|aarch64|arm,aarch64] [--out DIR]
 
 Builds a REAL RAFCODEPHI bootstrap from termux-packages source using
 scripts/generate-bootstraps.sh --build. Bridge-only payloads are rejected.
+The package-name override may be pre-materialized by CI before entering a
+read-only builder mount; direct writable checkouts are patched transactionally.
 EOF
 }
 
@@ -46,7 +48,6 @@ case ",$ARCHITECTURES," in
     *,arm,*|*,aarch64,*) ;;
     *) echo "Only arm and aarch64 are supported by this RAFCODEPHI bootstrap builder." >&2; exit 2 ;;
 esac
-
 if [[ "$ARCHITECTURES" == *x86* ]]; then
     echo "x86/x86_64 are intentionally not part of the first RAFCODEPHI real-bootstrap gate." >&2
     exit 2
@@ -56,19 +57,32 @@ for cmd in python3 unzip zip file strings sha256sum grep sed; do
     command -v "$cmd" >/dev/null || { echo "missing required command: $cmd" >&2; exit 127; }
 done
 [[ -f "$PROPERTIES" ]] || { echo "missing $PROPERTIES" >&2; exit 2; }
-[[ -x "$ROOT/scripts/generate-bootstraps.sh" ]] || chmod +x "$ROOT/scripts/generate-bootstraps.sh"
+[[ -x "$ROOT/scripts/generate-bootstraps.sh" ]] || chmod +x "$ROOT/scripts/generate-bootstraps.sh" 2>/dev/null || true
 
-backup="$(mktemp "${TMPDIR:-/tmp}/rafcodephi-properties.XXXXXX")"
 validation_root="$(mktemp -d "${TMPDIR:-/tmp}/rafcodephi-bootstrap-validate.XXXXXX")"
-cp "$PROPERTIES" "$backup"
+backup=""
+modified_properties=false
 restore() {
-    cp "$backup" "$PROPERTIES" || true
-    rm -f "$backup"
+    if [[ "$modified_properties" == true && -n "$backup" && -w "$PROPERTIES" ]]; then
+        cp "$backup" "$PROPERTIES" || true
+    fi
+    [[ -z "$backup" ]] || rm -f "$backup"
     rm -rf "$validation_root"
 }
 trap restore EXIT INT TERM
 
-python3 - "$PROPERTIES" "$PACKAGE_NAME" <<'PY'
+target_assignment="TERMUX_APP__PACKAGE_NAME=\"${PACKAGE_NAME}\""
+default_assignment='TERMUX_APP__PACKAGE_NAME="com.termux"'
+if grep -Fxq "$target_assignment" "$PROPERTIES"; then
+    echo "RAFCODEPHI package override already materialized; treating source tree as read-only."
+elif grep -Fxq "$default_assignment" "$PROPERTIES"; then
+    [[ -w "$PROPERTIES" ]] || {
+        echo "properties.sh is read-only and RAFCODEPHI package override was not pre-materialized" >&2
+        exit 1
+    }
+    backup="$(mktemp "${TMPDIR:-/tmp}/rafcodephi-properties.XXXXXX")"
+    cp "$PROPERTIES" "$backup"
+    python3 - "$PROPERTIES" "$PACKAGE_NAME" <<'PY'
 from pathlib import Path
 import sys
 path = Path(sys.argv[1])
@@ -81,6 +95,11 @@ if count != 1:
     raise SystemExit(f"expected exactly one canonical TERMUX_APP__PACKAGE_NAME assignment, found {count}")
 path.write_text(text.replace(old, new, 1), encoding="utf-8")
 PY
+    modified_properties=true
+else
+    echo "properties.sh has neither canonical default nor expected RAFCODEPHI package assignment" >&2
+    exit 1
+fi
 
 resolved="$(bash -c 'set -euo pipefail; source scripts/properties.sh; printf "%s\n%s\n" "$TERMUX_APP__PACKAGE_NAME" "$TERMUX__PREFIX"')"
 resolved_package="$(printf '%s\n' "$resolved" | sed -n '1p')"
