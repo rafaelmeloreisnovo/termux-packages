@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # REAL: end-to-end governance test — provenance + contract + regression.
-# Status: REAL — runs real producer, real validator, real gate.
+# Status: OBSERVED_LIMITED — exercises producer/validator/gate on current host.
 set -uo pipefail
 
 PASSED=0
@@ -92,6 +92,43 @@ if bash scripts/real_governance.sh >/dev/null 2>&1; then
     pass "governance gate PASS end-to-end"
 else
     fail "governance gate FAIL"
+fi
+
+# 11) negative — missing baseline must block, never skip regression
+if ! BASELINE="$SCRATCH/does-not-exist.json" \
+     bash scripts/real_governance.sh >/dev/null 2>&1; then
+    pass "negative: missing baseline blocks gate"
+else
+    fail "negative: missing baseline was silently accepted"
+fi
+
+# 12) negative — invalid baseline JSON must block
+printf '{broken\n' > "$SCRATCH/bad-baseline.json"
+if ! BASELINE="$SCRATCH/bad-baseline.json" \
+     bash scripts/real_governance.sh >/dev/null 2>&1; then
+    pass "negative: invalid baseline JSON blocks gate"
+else
+    fail "negative: invalid baseline JSON accepted"
+fi
+
+# 13) negative — non-REAL baseline must block
+cp core/tests/fixtures/real_dag_baseline.json "$SCRATCH/sim-baseline.json"
+sed -i 's/"status": "REAL"/"status": "SIMULATED"/' "$SCRATCH/sim-baseline.json"
+if ! BASELINE="$SCRATCH/sim-baseline.json" \
+     bash scripts/real_governance.sh >/dev/null 2>&1; then
+    pass "negative: non-REAL baseline blocks gate"
+else
+    fail "negative: non-REAL baseline accepted"
+fi
+
+# 14) negative — TOKEN_VAZIO in baseline provenance must block
+cp core/tests/fixtures/real_dag_baseline.json "$SCRATCH/tv-baseline.json"
+sed -i 's/"git_commit": "[^"]*"/"git_commit": "TOKEN_VAZIO_baseline"/' "$SCRATCH/tv-baseline.json"
+if ! BASELINE="$SCRATCH/tv-baseline.json" \
+     bash scripts/real_governance.sh >/dev/null 2>&1; then
+    pass "negative: TOKEN_VAZIO baseline blocks gate"
+else
+    fail "negative: TOKEN_VAZIO baseline accepted"
 fi
 
 echo ""

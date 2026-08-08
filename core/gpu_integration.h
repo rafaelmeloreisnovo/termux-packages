@@ -1,18 +1,30 @@
 #ifndef TERMUX_GPU_INTEGRATION_H
 #define TERMUX_GPU_INTEGRATION_H
 
-#include <stdint.h>
+/*
+ * SIMULATED GPU FIXTURE API.
+ *
+ * This interface currently provides CPU-backed deterministic fixture behavior,
+ * not GPU enumeration, GPU memory, GPU kernel compilation or GPU benchmarks.
+ * Fixture behavior is available only with RAF_ENABLE_GPU_FIXTURE=1 in the
+ * process environment; otherwise simulated runtime operations fail closed.
+ *
+ * claim_allowed=false
+ * physical_gpu_verified=false
+ */
+
 #include <stdbool.h>
 #include <stddef.h>
+#include <stdint.h>
 
 #define TERMUX_MAX_GPU_DEVICES 4
 #define TERMUX_MAX_GPU_KERNELS 16
 #define TERMUX_GPU_MEMORY_LIMIT (512 * 1024 * 1024)
 
 typedef enum {
-  GPU_DEVICE_ADRENO = 0,     // Qualcomm Adreno
-  GPU_DEVICE_MALI = 1,       // ARM Mali
-  GPU_DEVICE_BIONIC = 2,     // Snapdragon Bionic
+  GPU_DEVICE_ADRENO = 0,
+  GPU_DEVICE_MALI = 1,
+  GPU_DEVICE_BIONIC = 2,
   GPU_DEVICE_UNKNOWN = 3
 } gpu_device_type_t;
 
@@ -42,7 +54,7 @@ typedef struct {
 } gpu_kernel_t;
 
 typedef struct {
-  uint8_t *device_ptr;
+  uint8_t *device_ptr; /* host-memory fixture pointer, not GPU memory */
   size_t size;
   bool pinned;
   uint32_t ref_count;
@@ -61,50 +73,34 @@ typedef struct {
   uint64_t total_gpu_memory_used;
   uint64_t peak_gpu_memory;
 
-  // Performance metrics
   uint64_t total_gpu_kernel_calls;
   uint64_t gpu_operations_completed;
   double total_gpu_time_ms;
 
-  // Thresholds
-  size_t min_transfer_size;  // Minimum size to offload
-  double offload_threshold;   // Min speedup to offload (1.5x)
+  size_t min_transfer_size;
+  double offload_threshold;
 } gpu_integration_t;
 
 int termux_gpu_integration_init(gpu_integration_t *gpu);
-
 void termux_gpu_integration_destroy(gpu_integration_t *gpu);
-
 int termux_gpu_detect_devices(gpu_integration_t *gpu);
-
 int termux_gpu_select_device(gpu_integration_t *gpu, uint32_t device_id);
-
 int termux_gpu_compile_kernel(gpu_integration_t *gpu, gpu_kernel_type_t kernel_type);
-
 int termux_gpu_allocate_memory(gpu_integration_t *gpu, size_t size, gpu_memory_t *mem);
-
 int termux_gpu_free_memory(gpu_integration_t *gpu, gpu_memory_t *mem);
-
 int termux_gpu_copy_to_device(gpu_integration_t *gpu, const void *host_ptr,
                               gpu_memory_t *device_mem, size_t size);
-
 int termux_gpu_copy_from_device(gpu_integration_t *gpu, gpu_memory_t *device_mem,
                                 void *host_ptr, size_t size);
-
 uint32_t termux_gpu_crc32c_kernel(gpu_integration_t *gpu, const uint8_t *data,
                                   size_t len, uint32_t crc);
-
 uint64_t termux_gpu_reduction_kernel(gpu_integration_t *gpu, const uint32_t *values,
                                      uint32_t count);
-
 double termux_gpu_coherence_kernel(gpu_integration_t *gpu, const uint64_t *scores,
                                    uint32_t count);
-
 bool termux_gpu_should_offload(gpu_integration_t *gpu, size_t data_size,
-                              double expected_speedup);
-
+                               double expected_speedup);
 double termux_gpu_efficiency(const gpu_integration_t *gpu);
-
 void termux_gpu_print_stats(const gpu_integration_t *gpu);
 
 #endif
