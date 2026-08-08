@@ -16,3 +16,14 @@ device-test-orchestrator
 perf-profiler
 perf-analyzer
 simd-benchmark
+multicore-benchmark
+advanced-simd-benchmark
+advanced-simd-test
+orchestrator-production-benchmark
+unified-benchmark
+test-sprint3
+test-sprint10
+test-sprint11
+test-sprint12
+orchestrator-build-main
+test-bitraf64-integration
