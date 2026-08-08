@@ -25,6 +25,7 @@
 #include "real_arch.h"
 #include "real_contract.h"
 #include "real_provenance.h"
+#include "real_receipt.h"
 #include <errno.h>
 #include <inttypes.h>
 #include <stdint.h>
@@ -52,6 +53,11 @@ int main(int argc, char **argv) {
   }
   const char *base = argv[1];
   const char *out_path = argv[2];
+
+  /* Begin receipt at the very start of the operation. */
+  real_receipt_t receipt;
+  int have_receipt = (real_receipt_begin(&receipt, "produce_metrics",
+                                          argv[0]) == 0);
 
   real_provenance_t prov;
   if (real_provenance_capture(&prov, argv[0], REAL_CONTRACT_SCHEMA_VERSION) < 0) {
@@ -222,6 +228,22 @@ int main(int argc, char **argv) {
           out_path, nodes, edges, coherence_phi, cycles, dag.cycle_nodes, unres,
           dag.alternative_dep_fields, inv.roots_present, inv.roots_expected,
           dag.parse_failures);
+
+  /* Emit receipt alongside the JSON output (path.receipt). */
+  if (have_receipt) {
+    if (real_receipt_add_output(&receipt, out_path) == 0 &&
+        real_receipt_seal(&receipt, 0) == 0) {
+      char rcpt_path[512];
+      snprintf(rcpt_path, sizeof(rcpt_path), "%s.receipt", out_path);
+      if (real_receipt_write(&receipt, rcpt_path) == 0) {
+        fprintf(stdout, "REAL receipt sealed: %s (sha=%.16s...)\n",
+                rcpt_path, receipt.content_sha256_hex);
+      } else {
+        fprintf(stderr, "REAL_WARN: could not write receipt to %s\n",
+                rcpt_path);
+      }
+    }
+  }
 
   pkg_dag_free(&dag);
   pkg_inventory_free(&inv);
