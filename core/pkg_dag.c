@@ -38,12 +38,13 @@ static int edges_grow(pkg_dag_t *dag) {
     return -1;
   }
   uint32_t new_cap = dag->edge_capacity == 0 ? 4096U : dag->edge_capacity * 2U;
-  if ((size_t)new_cap > SIZE_MAX / sizeof(*dag->edges)) {
+  size_t count = (size_t)new_cap;
+  if (count != 0 && sizeof(*dag->edges) > SIZE_MAX / count) {
     dag->allocation_failures++;
     return -1;
   }
-  pkg_dag_edge_t *n =
-      (pkg_dag_edge_t *)realloc(dag->edges, (size_t)new_cap * sizeof(*dag->edges));
+  size_t bytes = count * sizeof(*dag->edges);
+  pkg_dag_edge_t *n = (pkg_dag_edge_t *)realloc(dag->edges, bytes);
   if (REAL_UNLIKELY(!n)) {
     dag->allocation_failures++;
     return -1;
@@ -61,12 +62,14 @@ static int unres_grow(pkg_dag_t *dag) {
   }
   uint32_t new_cap =
       dag->unresolved_capacity == 0 ? 256U : dag->unresolved_capacity * 2U;
-  if ((size_t)new_cap > SIZE_MAX / sizeof(*dag->unresolved)) {
+  size_t count = (size_t)new_cap;
+  if (count != 0 && sizeof(*dag->unresolved) > SIZE_MAX / count) {
     dag->allocation_failures++;
     return -1;
   }
-  pkg_dag_unresolved_t *n = (pkg_dag_unresolved_t *)realloc(
-      dag->unresolved, (size_t)new_cap * sizeof(*dag->unresolved));
+  size_t bytes = count * sizeof(*dag->unresolved);
+  pkg_dag_unresolved_t *n =
+      (pkg_dag_unresolved_t *)realloc(dag->unresolved, bytes);
   if (REAL_UNLIKELY(!n)) {
     dag->allocation_failures++;
     return -1;
@@ -172,11 +175,12 @@ int pkg_dag_build(pkg_dag_t *dag, const pkg_inventory_t *inv) {
 
   for (uint32_t i = 0; i < inv->count; i++) {
     if (dag->adj_len[i] == 0) continue;
-    if ((size_t)dag->adj_len[i] > SIZE_MAX / sizeof(uint32_t)) {
+    size_t count = (size_t)dag->adj_len[i];
+    if (count != 0 && sizeof(uint32_t) > SIZE_MAX / count) {
       dag->allocation_failures++;
       return -1;
     }
-    dag->adj[i] = (uint32_t *)malloc((size_t)dag->adj_len[i] * sizeof(uint32_t));
+    dag->adj[i] = (uint32_t *)malloc(count * sizeof(uint32_t));
     if (!dag->adj[i]) {
       dag->allocation_failures++;
       return -1;
