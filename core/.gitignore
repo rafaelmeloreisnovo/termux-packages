@@ -37,5 +37,7 @@ test-ascii-grafo
 test-e2e-build
 test-production-hardening
 test-orchestrator-v2
+test-performance-opt
+test-distributed
 _checkpoints
 _build_cache
