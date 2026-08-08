@@ -3,6 +3,8 @@
 *.so
 termux-build-core
 test-manifest
+test-cycle2-1
+test-cycle2-2
 manifest-dumper
 manifest.bin
 build/
