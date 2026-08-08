@@ -1,0 +1,83 @@
+{
+  "schema": "reality_audit_v1",
+  "generated_by": "audit_reality.sh",
+  "totals": {
+    "REAL": 18,
+    "SIMULATED": 51,
+    "STUB": 1,
+    "TOKEN_VAZIO": 0,
+    "total": 70
+  },
+  "modules": [
+    {"file":"adaptive_dvfs.c","status":"SIMULATED","sim":0,"stub":0,"mock":0,"hard":0,"rand":0,"io":0}
+    ,{"file":"advanced_vectorization.c","status":"SIMULATED","sim":0,"stub":0,"mock":0,"hard":0,"rand":0,"io":0}
+    ,{"file":"alloc_pool.c","status":"SIMULATED","sim":0,"stub":0,"mock":0,"hard":0,"rand":0,"io":0}
+    ,{"file":"ascii_grafo.c","status":"SIMULATED","sim":0,"stub":0,"mock":0,"hard":0,"rand":0,"io":0}
+    ,{"file":"ascii_grafo_integration.c","status":"SIMULATED","sim":0,"stub":0,"mock":0,"hard":0,"rand":0,"io":0}
+    ,{"file":"bitraf64_coherence_monitor.c","status":"SIMULATED","sim":0,"stub":0,"mock":0,"hard":0,"rand":0,"io":0}
+    ,{"file":"bitraf64_integration.c","status":"SIMULATED","sim":0,"stub":0,"mock":0,"hard":0,"rand":0,"io":0}
+    ,{"file":"bitraf64_lut_cache.c","status":"SIMULATED","sim":0,"stub":0,"mock":0,"hard":0,"rand":0,"io":0}
+    ,{"file":"bitraf64_simd_ops.c","status":"SIMULATED","sim":0,"stub":0,"mock":0,"hard":0,"rand":0,"io":0}
+    ,{"file":"build_exec.c","status":"SIMULATED","sim":0,"stub":0,"mock":0,"hard":0,"rand":0,"io":0}
+    ,{"file":"build_orchestrator.c","status":"SIMULATED","sim":0,"stub":0,"mock":0,"hard":0,"rand":0,"io":0}
+    ,{"file":"build_orchestrator_advanced_simd.c","status":"SIMULATED","sim":0,"stub":0,"mock":0,"hard":0,"rand":0,"io":0}
+    ,{"file":"build_orchestrator_freestanding.c","status":"SIMULATED","sim":0,"stub":0,"mock":0,"hard":0,"rand":0,"io":0}
+    ,{"file":"build_orchestrator_optimized.c","status":"SIMULATED","sim":0,"stub":0,"mock":0,"hard":0,"rand":0,"io":0}
+    ,{"file":"build_orchestrator_production.c","status":"SIMULATED","sim":0,"stub":0,"mock":0,"hard":0,"rand":0,"io":0}
+    ,{"file":"build_orchestrator_simd.c","status":"SIMULATED","sim":0,"stub":0,"mock":0,"hard":0,"rand":0,"io":0}
+    ,{"file":"build_orchestrator_v2.c","status":"SIMULATED","sim":7,"stub":0,"mock":0,"hard":0,"rand":0,"io":0}
+    ,{"file":"checkpoint.c","status":"REAL","sim":0,"stub":0,"mock":0,"hard":0,"rand":0,"io":10}
+    ,{"file":"coherence_tuning.c","status":"SIMULATED","sim":0,"stub":0,"mock":0,"hard":0,"rand":0,"io":0}
+    ,{"file":"cpu_affinity.c","status":"SIMULATED","sim":0,"stub":0,"mock":0,"hard":0,"rand":0,"io":0}
+    ,{"file":"crypto_chacha20.c","status":"SIMULATED","sim":3,"stub":0,"mock":0,"hard":0,"rand":2,"io":1}
+    ,{"file":"crypto_ed25519.c","status":"SIMULATED","sim":3,"stub":0,"mock":0,"hard":0,"rand":0,"io":0}
+    ,{"file":"crypto_pqc.c","status":"SIMULATED","sim":7,"stub":0,"mock":0,"hard":0,"rand":5,"io":0}
+    ,{"file":"cycle_budget.c","status":"SIMULATED","sim":0,"stub":0,"mock":0,"hard":0,"rand":0,"io":0}
+    ,{"file":"dep_resolver.c","status":"SIMULATED","sim":0,"stub":0,"mock":0,"hard":0,"rand":0,"io":0}
+    ,{"file":"dep_resolver_freestanding.c","status":"SIMULATED","sim":0,"stub":0,"mock":0,"hard":0,"rand":0,"io":0}
+    ,{"file":"dep_resolver_v2.c","status":"SIMULATED","sim":0,"stub":0,"mock":0,"hard":0,"rand":0,"io":0}
+    ,{"file":"device_test_orchestrator.c","status":"SIMULATED","sim":0,"stub":0,"mock":0,"hard":0,"rand":0,"io":0}
+    ,{"file":"dist_checkpoint.c","status":"REAL","sim":0,"stub":0,"mock":0,"hard":0,"rand":0,"io":3}
+    ,{"file":"dist_orchestrator.c","status":"SIMULATED","sim":0,"stub":0,"mock":0,"hard":0,"rand":0,"io":0}
+    ,{"file":"elf_writer.c","status":"REAL","sim":0,"stub":0,"mock":0,"hard":0,"rand":0,"io":7}
+    ,{"file":"friction_analyzer.c","status":"REAL","sim":0,"stub":0,"mock":0,"hard":0,"rand":0,"io":8}
+    ,{"file":"gpu_device.c","status":"SIMULATED","sim":0,"stub":0,"mock":0,"hard":0,"rand":0,"io":0}
+    ,{"file":"gpu_integration.c","status":"SIMULATED","sim":0,"stub":0,"mock":0,"hard":0,"rand":0,"io":0}
+    ,{"file":"hardware_tuning.c","status":"REAL","sim":0,"stub":0,"mock":0,"hard":0,"rand":0,"io":1}
+    ,{"file":"job_scheduler_parallel.c","status":"SIMULATED","sim":0,"stub":0,"mock":0,"hard":0,"rand":0,"io":0}
+    ,{"file":"load_balancer.c","status":"SIMULATED","sim":0,"stub":0,"mock":0,"hard":0,"rand":0,"io":0}
+    ,{"file":"manifest_dumper.c","status":"REAL","sim":0,"stub":0,"mock":0,"hard":0,"rand":0,"io":3}
+    ,{"file":"manifest_loader.c","status":"REAL","sim":0,"stub":0,"mock":0,"hard":0,"rand":0,"io":3}
+    ,{"file":"manifest_simd.c","status":"SIMULATED","sim":0,"stub":0,"mock":0,"hard":0,"rand":0,"io":0}
+    ,{"file":"manifest_v2.c","status":"SIMULATED","sim":0,"stub":0,"mock":0,"hard":0,"rand":0,"io":0}
+    ,{"file":"multicore_benchmark.c","status":"STUB","sim":0,"stub":0,"mock":3,"hard":0,"rand":0,"io":0}
+    ,{"file":"multicore_orchestrator.c","status":"SIMULATED","sim":0,"stub":0,"mock":0,"hard":0,"rand":0,"io":0}
+    ,{"file":"orchestrator_build_main.c","status":"SIMULATED","sim":0,"stub":0,"mock":0,"hard":0,"rand":0,"io":0}
+    ,{"file":"orchestrator_production_benchmark.c","status":"SIMULATED","sim":0,"stub":0,"mock":0,"hard":0,"rand":0,"io":0}
+    ,{"file":"package_writer.c","status":"REAL","sim":0,"stub":0,"mock":0,"hard":0,"rand":0,"io":8}
+    ,{"file":"parallel_jobs.c","status":"SIMULATED","sim":0,"stub":0,"mock":0,"hard":0,"rand":0,"io":0}
+    ,{"file":"perf_analyzer.c","status":"SIMULATED","sim":0,"stub":0,"mock":0,"hard":0,"rand":0,"io":0}
+    ,{"file":"perf_profiler.c","status":"SIMULATED","sim":0,"stub":0,"mock":0,"hard":0,"rand":0,"io":0}
+    ,{"file":"phase_barrier_lockfree.c","status":"SIMULATED","sim":0,"stub":0,"mock":0,"hard":0,"rand":0,"io":0}
+    ,{"file":"pkg_dag.c","status":"REAL","sim":0,"stub":0,"mock":0,"hard":0,"rand":0,"io":0}
+    ,{"file":"pkg_parser.c","status":"REAL","sim":0,"stub":0,"mock":0,"hard":0,"rand":0,"io":1}
+    ,{"file":"pkg_real_cli.c","status":"REAL","sim":0,"stub":0,"mock":0,"hard":0,"rand":0,"io":0}
+    ,{"file":"pkg_scanner.c","status":"REAL","sim":1,"stub":0,"mock":1,"hard":0,"rand":0,"io":3}
+    ,{"file":"production_hardening.c","status":"REAL","sim":0,"stub":0,"mock":0,"hard":0,"rand":0,"io":5}
+    ,{"file":"profiler.c","status":"REAL","sim":0,"stub":0,"mock":0,"hard":0,"rand":0,"io":1}
+    ,{"file":"rate_limiter.c","status":"SIMULATED","sim":0,"stub":0,"mock":0,"hard":0,"rand":0,"io":0}
+    ,{"file":"rpc_coordinator.c","status":"SIMULATED","sim":0,"stub":0,"mock":0,"hard":0,"rand":0,"io":0}
+    ,{"file":"scheduler_adaptive.c","status":"SIMULATED","sim":0,"stub":0,"mock":0,"hard":0,"rand":0,"io":0}
+    ,{"file":"simd_benchmark.c","status":"SIMULATED","sim":0,"stub":0,"mock":0,"hard":0,"rand":0,"io":0}
+    ,{"file":"simple_workload_test.c","status":"SIMULATED","sim":0,"stub":0,"mock":0,"hard":0,"rand":0,"io":0}
+    ,{"file":"source_download.c","status":"REAL","sim":0,"stub":0,"mock":0,"hard":0,"rand":0,"io":3}
+    ,{"file":"sysexec.c","status":"REAL","sim":0,"stub":0,"mock":0,"hard":0,"rand":0,"io":7}
+    ,{"file":"termux-build-core.c","status":"REAL","sim":0,"stub":0,"mock":0,"hard":0,"rand":0,"io":3}
+    ,{"file":"test_manifest.c","status":"SIMULATED","sim":0,"stub":0,"mock":0,"hard":0,"rand":0,"io":0}
+    ,{"file":"test_orchestrator_integration.c","status":"SIMULATED","sim":1,"stub":0,"mock":0,"hard":0,"rand":0,"io":0}
+    ,{"file":"unified_benchmark.c","status":"REAL","sim":0,"stub":0,"mock":0,"hard":0,"rand":0,"io":3}
+    ,{"file":"unified_orchestrator.c","status":"SIMULATED","sim":0,"stub":0,"mock":0,"hard":0,"rand":0,"io":0}
+    ,{"file":"work_stealing.c","status":"SIMULATED","sim":0,"stub":0,"mock":0,"hard":0,"rand":0,"io":0}
+    ,{"file":"workload_generator.c","status":"SIMULATED","sim":0,"stub":0,"mock":0,"hard":0,"rand":0,"io":0}
+  ]
+}
