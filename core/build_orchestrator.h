@@ -72,4 +72,12 @@ uint64_t termux_orchestrator_predict_phi(uint32_t phase, uint32_t arch_state,
                                          uint32_t measured_cycles,
                                          uint32_t baseline_cycles);
 
+int termux_orchestrator_execute_simd_4way(struct termux_orchestrator *orch,
+                                          const char *pkg_names[4],
+                                          uint32_t pkg_indices[4],
+                                          uint32_t pkg_count);
+uint32_t termux_orchestrator_estimate_simd_speedup(uint32_t baseline_cycles);
+int termux_orchestrator_has_simd_support(void);
+const char *termux_orchestrator_simd_backend(void);
+
 #endif // TERMUX_BUILD_ORCHESTRATOR_H
