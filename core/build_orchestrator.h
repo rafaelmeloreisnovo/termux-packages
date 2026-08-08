@@ -55,4 +55,21 @@ int termux_orchestrator_transition(struct termux_orchestrator *orch);
 uint64_t termux_orchestrator_compute_phi(struct termux_build_state *state);
 int termux_orchestrator_validate_invariants(struct termux_build_state *state);
 
+int termux_orchestrator_init_optimized(struct termux_orchestrator *orch);
+int termux_orchestrator_execute_optimized(struct termux_orchestrator *orch,
+                                           const char *pkg_name,
+                                           uint32_t pkg_idx);
+int termux_orchestrator_execute_batched(struct termux_orchestrator *orch,
+                                        const char *pkg_name,
+                                        uint32_t pkg_idx);
+int termux_orchestrator_execute_warmup(struct termux_orchestrator *orch,
+                                       const char *pkg_name,
+                                       uint32_t pkg_idx);
+uint32_t termux_orchestrator_estimate_overhead(struct termux_orchestrator *orch);
+double termux_orchestrator_calculate_efficiency(uint32_t wall_cycles,
+                                                uint32_t overhead_cycles);
+uint64_t termux_orchestrator_predict_phi(uint32_t phase, uint32_t arch_state,
+                                         uint32_t measured_cycles,
+                                         uint32_t baseline_cycles);
+
 #endif // TERMUX_BUILD_ORCHESTRATOR_H
