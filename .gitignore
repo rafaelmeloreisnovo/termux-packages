@@ -53,3 +53,6 @@ scripts/apt-packages-list-*.txt
 /core/test-build-orchestrator
 /core/test-dep-resolver
 /core/test-manifest-v2
+/core/advanced-simd-benchmark
+/core/advanced-simd-test
+/core/orchestrator-production-benchmark
