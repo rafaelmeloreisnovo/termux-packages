@@ -43,3 +43,13 @@ scripts/apt-packages-list-*.txt
 
 # Generated on GitHub Actions CI when building kernel modules
 /scripts/*.ko.zst
+
+# Phase 9 test and benchmark binaries (only source files tracked)
+/core/perf-profiler
+/core/perf-analyzer
+/core/simd-benchmark
+/core/multicore-benchmark
+/core/device-test-orchestrator
+/core/test-build-orchestrator
+/core/test-dep-resolver
+/core/test-manifest-v2
