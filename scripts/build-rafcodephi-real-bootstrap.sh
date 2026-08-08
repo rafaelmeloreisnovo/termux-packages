@@ -132,8 +132,8 @@ for arch in "${arch_list[@]}"; do
     [[ -s "$zip_path" ]] || { echo "missing generated $zip_path" >&2; exit 1; }
 
     # Seal the upstream-generated bootstrap with the app-side fail-closed profile
-    # contract before hashing or publication. The ZIP that passes below is the ZIP
-    # intended to be consumed by the RAFCODEPHI Wizard/installer.
+    # contract before hashing/publication. Canonical Termux bootstrap symlinks are
+    # represented in SYMLINKS.txt and count as required installed entries.
     python3 - "$zip_path" "$PACKAGE_NAME" "$TARGET_PREFIX" "$arch" <<'PY'
 import json
 import sys
@@ -158,11 +158,26 @@ required = [
 ]
 with zipfile.ZipFile(zip_path, "r") as zf:
     names = set(zf.namelist())
+    if "SYMLINKS.txt" not in names:
+        raise SystemExit("cannot seal profile; SYMLINKS.txt missing")
+    symlink_text = zf.read("SYMLINKS.txt").decode("utf-8")
+symlink_destinations = set()
+for number, line in enumerate(symlink_text.splitlines(), 1):
+    if not line:
+        continue
+    parts = line.split("←")
+    if len(parts) != 2 or not parts[0] or not parts[1]:
+        raise SystemExit(f"malformed SYMLINKS.txt line {number}: {line!r}")
+    target, link = parts
+    if link.startswith("/") or ".." in link or "\\" in link:
+        raise SystemExit(f"unsafe symlink destination line {number}: {link!r}")
+    symlink_destinations.add(link)
+available = names | symlink_destinations
 if "BOOTSTRAP_PROFILE.json" in names:
     raise SystemExit("refusing to overwrite pre-existing BOOTSTRAP_PROFILE.json")
-missing = [name for name in required if name not in names]
+missing = [name for name in required if name not in available]
 if missing:
-    raise SystemExit("cannot seal profile; missing entries: " + ",".join(missing))
+    raise SystemExit("cannot seal profile; missing installed entries: " + ",".join(missing))
 profile = {
     "schema": "rafcodephi-bootstrap-profile/v1",
     "profile": "real-pkg",
@@ -190,13 +205,14 @@ PY
     mkdir -p "$extract"
     unzip -q "$zip_path" -d "$extract"
 
-    for required in bin/sh bin/apt bin/apt-get bin/dpkg bin/bash bin/pkg bin/busybox bin/proot SYMLINKS.txt BOOTSTRAP_PROFILE.json; do
-        [[ -f "$extract/$required" ]] || { echo "$arch missing real bootstrap target: $required" >&2; exit 1; }
+    for required in bin/apt bin/apt-get bin/dpkg bin/bash bin/pkg bin/busybox bin/proot SYMLINKS.txt BOOTSTRAP_PROFILE.json; do
+        [[ -f "$extract/$required" ]] || { echo "$arch missing real bootstrap archive target: $required" >&2; exit 1; }
     done
 
-    python3 - "$extract/BOOTSTRAP_PROFILE.json" "$PACKAGE_NAME" "$TARGET_PREFIX" "$arch" <<'PY'
+    python3 - "$extract/BOOTSTRAP_PROFILE.json" "$PACKAGE_NAME" "$TARGET_PREFIX" "$arch" "$zip_path" <<'PY'
 import json
 import sys
+import zipfile
 from pathlib import Path
 p = json.loads(Path(sys.argv[1]).read_text(encoding="utf-8"))
 expected = {
@@ -214,8 +230,26 @@ expected = {
 for key, value in expected.items():
     if p.get(key) != value:
         raise SystemExit(f"profile contract mismatch {key}: {p.get(key)!r} != {value!r}")
-if not p.get("required_entries"):
+required = p.get("required_entries")
+if not isinstance(required, list) or not required:
     raise SystemExit("profile required_entries empty")
+with zipfile.ZipFile(sys.argv[5], "r") as zf:
+    names = set(zf.namelist())
+    symlinks = zf.read("SYMLINKS.txt").decode("utf-8").splitlines()
+links = set()
+for line in symlinks:
+    if not line:
+        continue
+    parts = line.split("←")
+    if len(parts) != 2:
+        raise SystemExit(f"malformed symlink line: {line!r}")
+    links.add(parts[1])
+available = names | links
+missing = [name for name in required if name not in available]
+if missing:
+    raise SystemExit("profile required entries unresolved by archive/symlinks: " + ",".join(missing))
+if "bin/sh" not in available:
+    raise SystemExit("installed bin/sh is not represented by archive or symlink")
 PY
 
     for elf in bin/apt bin/apt-get bin/dpkg bin/bash bin/busybox bin/proot; do
