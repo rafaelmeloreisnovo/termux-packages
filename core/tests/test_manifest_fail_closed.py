@@ -98,7 +98,9 @@ def main():
             str(td / "out"),
         )
         assert no_source.returncode != 0
-        assert "TOKEN_VAZIO_SOURCE_DIR_NOT_MATERIALIZED" in no_source.stdout, no_source.stdout
+        assert "mode=MANIFEST_ACQUIRE" in no_source.stdout, no_source.stdout
+        assert "SOURCE_URL_MISSING" in no_source.stdout, no_source.stdout
+        assert "[SUCCESS]" not in no_source.stdout, no_source.stdout
 
         resume = run(
             str(CORE),
