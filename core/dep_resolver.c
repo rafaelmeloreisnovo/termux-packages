@@ -3,11 +3,7 @@
 #include <string.h>
 #include <stdio.h>
 
-#define GCD_SAFE(a, b) ((b) == 0 ? (a) : gcd_recursive((a), (b)))
-
-static uint32_t gcd_recursive(uint32_t a, uint32_t b) {
-  return b == 0 ? a : gcd_recursive(b, a % b);
-}
+#define GCD_SAFE(a, b) ({ uint32_t _a = (a), _b = (b); while (_b) { uint32_t _t = _b; _b = _a % _b; _a = _t; } _a; })
 
 static uint32_t crc32c_byte(uint32_t crc, uint8_t byte) {
   const uint32_t poly = 0x82F63B78U;
@@ -31,6 +27,7 @@ int termux_dep_graph_init(struct termux_dep_graph *graph, uint32_t pkg_count) {
 
   graph->pkg_count = pkg_count;
   graph->total_edges = 0;
+  graph->edges_finalized = 0;
 
   graph->deps_row = (uint16_t *)calloc(pkg_count + 1, sizeof(uint16_t));
   if (!graph->deps_row) return -2;
@@ -48,23 +45,82 @@ int termux_dep_graph_init(struct termux_dep_graph *graph, uint32_t pkg_count) {
     return -2;
   }
 
+  graph->edges_from = (uint16_t *)calloc(TERMUX_MAX_DEPS_TOTAL, sizeof(uint16_t));
+  if (!graph->edges_from) {
+    free(graph->deps_row);
+    free(graph->deps_col);
+    free(graph->depths);
+    return -2;
+  }
+
+  graph->edges_to = (uint16_t *)calloc(TERMUX_MAX_DEPS_TOTAL, sizeof(uint16_t));
+  if (!graph->edges_to) {
+    free(graph->deps_row);
+    free(graph->deps_col);
+    free(graph->depths);
+    free(graph->edges_from);
+    return -2;
+  }
+
   graph->crc32c_checksum = 0;
   return 0;
+}
+
+void termux_dep_graph_free(struct termux_dep_graph *graph) {
+  if (!graph) return;
+  if (graph->deps_row) free(graph->deps_row);
+  if (graph->deps_col) free(graph->deps_col);
+  if (graph->depths) free(graph->depths);
+  if (graph->edges_from) free(graph->edges_from);
+  if (graph->edges_to) free(graph->edges_to);
 }
 
 int termux_dep_graph_add_edge(struct termux_dep_graph *graph,
                                uint16_t from, uint16_t to) {
   if (!graph || from >= graph->pkg_count || to >= graph->pkg_count) return -1;
   if (graph->total_edges >= TERMUX_MAX_DEPS_TOTAL) return -2;
+  if (graph->edges_finalized) return -3;
 
-  graph->deps_col[graph->total_edges] = to;
+  graph->edges_from[graph->total_edges] = from;
+  graph->edges_to[graph->total_edges] = to;
   graph->total_edges++;
 
   return 0;
 }
 
+int termux_dep_graph_finalize_csr(struct termux_dep_graph *graph) {
+  if (!graph || graph->edges_finalized) return -1;
+  if (graph->total_edges > TERMUX_MAX_DEPS_TOTAL) return -2;
+
+  uint16_t *counts = (uint16_t *)calloc(graph->pkg_count, sizeof(uint16_t));
+  if (!counts) return -3;
+
+  for (uint32_t i = 0; i < graph->total_edges; i++) {
+    counts[graph->edges_from[i]]++;
+  }
+
+  uint16_t offset = 0;
+  for (uint32_t i = 0; i < graph->pkg_count; i++) {
+    graph->deps_row[i] = offset;
+    offset += counts[i];
+    counts[i] = 0;
+  }
+  graph->deps_row[graph->pkg_count] = offset;
+
+  for (uint32_t i = 0; i < graph->total_edges; i++) {
+    uint16_t from = graph->edges_from[i];
+    uint16_t pos = graph->deps_row[from] + counts[from];
+    graph->deps_col[pos] = graph->edges_to[i];
+    counts[from]++;
+  }
+
+  free(counts);
+  graph->edges_finalized = 1;
+  return 0;
+}
+
 int termux_dep_graph_compute_depths(struct termux_dep_graph *graph) {
-  if (!graph || !graph->depths || !graph->deps_row) return -1;
+  if (!graph || !graph->depths || !graph->deps_row || !graph->edges_finalized) return -1;
 
   uint8_t *in_degree = (uint8_t *)calloc(graph->pkg_count, sizeof(uint8_t));
   if (!in_degree) return -2;
@@ -127,11 +183,13 @@ int termux_dep_graph_validate(struct termux_dep_graph *graph) {
   if (!graph || !graph->depths || !graph->deps_col) return -1;
 
   for (uint32_t pkg = 0; pkg < graph->pkg_count; pkg++) {
-    uint8_t gcd_depth_42 = GCD_SAFE(graph->depths[pkg], TERMUX_TOROIDAL_LAYERS);
-    uint8_t valid_gcds[] = {1, 2, 3, 6, 7, 14, 21, 42};
+    if (graph->depths[pkg] >= TERMUX_TOROIDAL_LAYERS) return -3;
+
+    uint32_t gcd_depth_32 = GCD_SAFE(graph->depths[pkg], TERMUX_TOROIDAL_LAYERS);
+    uint8_t valid_gcds[] = {1, 2, 4, 8, 16, 32};
     int valid = 0;
-    for (size_t i = 0; i < sizeof(valid_gcds) / sizeof(valid_gcds[0]); i++) {
-      if (gcd_depth_42 == valid_gcds[i]) {
+    for (size_t i = 0; i < 6; i++) {
+      if (gcd_depth_32 == valid_gcds[i]) {
         valid = 1;
         break;
       }
@@ -218,9 +276,7 @@ int termux_dep_resolver_compute_layer_phi(struct termux_layer_batch *layer,
 
 void termux_dep_resolver_destroy(struct termux_dep_resolver *resolver) {
   if (!resolver) return;
-  if (resolver->graph.deps_row) free(resolver->graph.deps_row);
-  if (resolver->graph.deps_col) free(resolver->graph.deps_col);
-  if (resolver->graph.depths) free(resolver->graph.depths);
+  termux_dep_graph_free(&resolver->graph);
   memset(resolver, 0, sizeof(*resolver));
 }
 
