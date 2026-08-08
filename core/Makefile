@@ -2,8 +2,8 @@ CC ?= cc
 CFLAGS ?= -Wall -Wextra -Wshadow -Werror -g -O0
 LDFLAGS ?=
 
-TARGETS := termux-build-core test-manifest manifest-dumper test-cycle2-1 test-cycle2-2 test-build-orchestrator test-dep-resolver test-manifest-v2
-SOURCES := termux-build-core.c sysexec.c package_writer.c elf_writer.c friction_analyzer.c checkpoint.c parallel_jobs.c build_exec.c manifest_loader.c source_download.c build_orchestrator.c dep_resolver.c manifest_v2.c
+TARGETS := termux-build-core test-manifest manifest-dumper test-cycle2-1 test-cycle2-2 test-build-orchestrator test-dep-resolver test-manifest-v2 device-test-orchestrator perf-profiler
+SOURCES := termux-build-core.c sysexec.c package_writer.c elf_writer.c friction_analyzer.c checkpoint.c parallel_jobs.c build_exec.c manifest_loader.c source_download.c build_orchestrator.c dep_resolver.c manifest_v2.c device_test_orchestrator.c perf_profiler.c
 TEST_SOURCES := test_manifest.c manifest_loader.c
 DUMPER_SOURCES := manifest_dumper.c
 OBJECTS := $(SOURCES:.c=.o)
@@ -36,6 +36,12 @@ test-dep-resolver: tests/test_dep_resolver.o dep_resolver.o
 	$(CC) $(CFLAGS) $(LDFLAGS) -o $@ $^
 
 test-manifest-v2: tests/test_manifest_v2.o manifest_v2.o
+	$(CC) $(CFLAGS) $(LDFLAGS) -o $@ $^
+
+device-test-orchestrator: device_test_orchestrator.o build_orchestrator.o manifest_v2.o
+	$(CC) $(CFLAGS) $(LDFLAGS) -o $@ $^
+
+perf-profiler: perf_profiler.o build_orchestrator.o
 	$(CC) $(CFLAGS) $(LDFLAGS) -o $@ $^
 
 tests/test_cycle2_1_manifesto_v2.o: tests/test_cycle2_1_manifesto_v2.c manifest.h
