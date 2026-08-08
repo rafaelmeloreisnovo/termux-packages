@@ -4,12 +4,16 @@ on:
   pull_request:
     paths:
       - 'core/**'
+      - 'scripts/real_governance.sh'
+      - 'scripts/run_governance_v2.sh'
       - '.github/workflows/manifest-fail-closed.yml'
   push:
     branches:
       - main
     paths:
       - 'core/**'
+      - 'scripts/real_governance.sh'
+      - 'scripts/run_governance_v2.sh'
       - '.github/workflows/manifest-fail-closed.yml'
   workflow_dispatch:
 
@@ -34,12 +38,18 @@ jobs:
           cc --version | head -n 1
           make --version | head -n 1
           python3 --version
+          jq --version
 
       - name: Compile and execute fail-closed manifest tests
         working-directory: core
         run: |
           set -eux
           make test
+
+      - name: Validate Reality Evidence Vector V2
+        run: |
+          set -eux
+          bash scripts/run_governance_v2.sh validate
 
       - name: Enforce clean rebuild
         working-directory: core
@@ -56,7 +66,8 @@ jobs:
         run: |
           printf '%s\n' \
             'MANIFEST_CI_GATE=PASS' \
-            'CASES=5' \
+            'REALITY_EVIDENCE_VECTOR_V2=VALIDATED' \
+            'PROMOTION_GATE=NOT_RUN' \
             'CLEAN_REBUILD=PASS' \
             'CLAIM_ALLOWED=false' \
             "COMMIT=${GITHUB_SHA}"
