@@ -27,3 +27,9 @@ test-sprint11
 test-sprint12
 orchestrator-build-main
 test-bitraf64-integration
+test-bitraf64-simd-ops
+test-bitraf64-lut-cache
+test-bitraf64-coherence-monitor
+test-sprint4
+test-sprint5
+test-sprint6
