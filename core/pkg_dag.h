@@ -13,6 +13,7 @@
 
 #include "pkg_scanner.h"
 #include "pkg_parser.h"
+#include "real_attrs.h"
 #include <stdint.h>
 #include <stdio.h>
 
@@ -69,24 +70,31 @@ typedef struct {
   uint32_t total_depends_edges;
   uint32_t total_build_dep_edges;
   uint32_t max_depth;
+  uint32_t parse_failures;  /* TOKEN_VAZIO count: build.sh files that failed to parse */
 } pkg_dag_t;
 
 /* Initialize DAG using the given inventory (not owned). Parses every build.sh. */
+REAL_HOT REAL_WARN_UNUSED REAL_NONNULL_ALL
 int pkg_dag_build(pkg_dag_t *dag, const pkg_inventory_t *inv);
 
 /* Compute topological order and depths. Fills unresolved[] / cycles[]. */
+REAL_HOT REAL_WARN_UNUSED REAL_NONNULL_ALL
 int pkg_dag_topo_sort(pkg_dag_t *dag);
 
 /* Write summary + counts as JSON. */
+REAL_COLD REAL_NONNULL_ALL
 void pkg_dag_write_json(FILE *out, const pkg_dag_t *dag);
 
 /* Human report. */
+REAL_COLD REAL_NONNULL_ALL
 void pkg_dag_report(FILE *out, const pkg_dag_t *dag);
 
 /* Get parsed data for a package by inventory index. */
+REAL_PURE REAL_NONNULL(1)
 const pkg_parser_result_t *pkg_dag_parsed_at(const pkg_dag_t *dag,
                                              uint32_t idx);
 
+/* free-style convention: accepts NULL as no-op */
 void pkg_dag_free(pkg_dag_t *dag);
 
 #endif /* PKG_DAG_H */

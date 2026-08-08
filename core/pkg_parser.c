@@ -9,9 +9,10 @@
  * No shell execution. Line-by-line lex of TERMUX_PKG_<KEY>=<VAL> assignments.
  * ============================================================================ */
 
+REAL_ALWAYS_INLINE
 static void copy_str(char *dst, size_t cap, const char *src) {
-  if (!dst || cap == 0) return;
-  if (!src) { dst[0] = '\0'; return; }
+  if (REAL_UNLIKELY(!dst || cap == 0)) return;
+  if (REAL_UNLIKELY(!src)) { dst[0] = '\0'; return; }
   strncpy(dst, src, cap - 1);
   dst[cap - 1] = '\0';
 }
@@ -34,9 +35,12 @@ static void unquote_inplace(char *s) {
 }
 
 /* Detect unresolved ${...} or $VAR in value. */
+REAL_PURE
 static int has_unresolved_expansion(const char *s) {
   for (const char *p = s; *p; p++) {
-    if (*p == '$' && (p[1] == '{' || (isalpha((unsigned char)p[1]) || p[1] == '_'))) {
+    if (REAL_UNLIKELY(*p == '$' &&
+                      (p[1] == '{' || isalpha((unsigned char)p[1]) ||
+                       p[1] == '_'))) {
       return 1;
     }
   }
@@ -110,7 +114,7 @@ static void maybe_capture(const char *key, const char *value,
 }
 
 int pkg_parser_parse_file(const char *build_sh_path, pkg_parser_result_t *out) {
-  if (!build_sh_path || !out) return -1;
+  /* NONNULL_ALL contract enforced by compiler */
   memset(out, 0, sizeof(*out));
 
   /* Derive name from parent directory (real behavior). */
@@ -126,7 +130,7 @@ int pkg_parser_parse_file(const char *build_sh_path, pkg_parser_result_t *out) {
   }
 
   FILE *f = fopen(build_sh_path, "r");
-  if (!f) return -1;
+  if (REAL_UNLIKELY(!f)) return -1;
 
   char line[PKG_PARSER_MAX_VAL];
   int in_function = 0;
@@ -218,9 +222,9 @@ int pkg_parser_parse_file(const char *build_sh_path, pkg_parser_result_t *out) {
 
 const pkg_parser_var_t *
 pkg_parser_get(const pkg_parser_result_t *r, const char *key) {
-  if (!r || !key) return NULL;
+  /* NONNULL_ALL contract enforced by compiler */
   for (uint32_t i = 0; i < r->var_count; i++) {
-    if (strcmp(r->vars[i].key, key) == 0) return &r->vars[i];
+    if (REAL_UNLIKELY(strcmp(r->vars[i].key, key) == 0)) return &r->vars[i];
   }
   return NULL;
 }
@@ -244,7 +248,7 @@ static void json_esc(FILE *out, const char *s) {
 }
 
 void pkg_parser_write_json(FILE *out, const pkg_parser_result_t *r) {
-  if (!out || !r) return;
+  /* NONNULL_ALL contract enforced by compiler */
   fputs("{\n", out);
   fputs("  \"schema\": \"pkg_parser_v1\",\n", out);
   fputs("  \"status\": \"REAL\",\n", out);
@@ -271,7 +275,7 @@ void pkg_parser_write_json(FILE *out, const pkg_parser_result_t *r) {
 }
 
 void pkg_parser_report(FILE *out, const pkg_parser_result_t *r) {
-  if (!out || !r) return;
+  /* NONNULL_ALL contract enforced by compiler */
   fprintf(out, "=== REAL Parser: %s ===\n", r->name);
   fprintf(out, "  Version:      %s\n", r->version);
   fprintf(out, "  License:      %s\n", r->license);

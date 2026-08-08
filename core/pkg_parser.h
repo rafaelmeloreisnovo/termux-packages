@@ -17,6 +17,7 @@
  *  - Ignores content inside shell functions (termux_step_*() { ... }).
  */
 
+#include "real_attrs.h"
 #include <stdint.h>
 #include <stddef.h>
 #include <stdio.h>
@@ -76,16 +77,20 @@ typedef struct {
 } pkg_parser_result_t;
 
 /* Parse a single build.sh into `out`. Zeros out `out` first. */
+REAL_HOT REAL_WARN_UNUSED REAL_NONNULL_ALL
 int pkg_parser_parse_file(const char *build_sh_path, pkg_parser_result_t *out);
 
 /* Look up a variable by key; returns NULL if not found. */
+REAL_PURE REAL_NONNULL_ALL
 const pkg_parser_var_t *
 pkg_parser_get(const pkg_parser_result_t *r, const char *key);
 
 /* Emit parsed result as JSON to `out`. */
+REAL_COLD REAL_NONNULL_ALL
 void pkg_parser_write_json(FILE *out, const pkg_parser_result_t *r);
 
 /* Human summary. */
+REAL_COLD REAL_NONNULL_ALL
 void pkg_parser_report(FILE *out, const pkg_parser_result_t *r);
 
 #endif /* PKG_PARSER_H */
