@@ -1,0 +1,158 @@
+name: RAFCODEPHI D4 APT Repository Metadata
+
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/rafcodephi-d4-apt-repo.yml'
+      - 'scripts/rafcodephi_apt_repo_gate.py'
+      - 'core/tests/test_rafcodephi_apt_repo_gate.py'
+      - 'scripts/rafcodephi_delivery_gate.py'
+      - '.github/workflows/rafcodephi-d3-bash-aarch64.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: rafcodephi-d4-apt-repo-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  validate-d4-mechanism:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - name: Checkout pinned revision
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+
+      - name: Record toolchain
+        run: |
+          set -eux
+          python3 --version
+          dpkg-deb --version | head -n 1
+          git rev-parse HEAD
+
+      - name: Run D4 provenance and determinism tests
+        run: |
+          set -eux
+          python3 -m unittest core/tests/test_rafcodephi_apt_repo_gate.py
+          printf '%s\n' \
+            'D4_MECHANISM=PASS' \
+            'FIXTURE_ONLY=true' \
+            'D4_REAL_ARTIFACT=NOT_PROVEN_BY_THIS_JOB' \
+            'CLAIM_ALLOWED=false'
+
+  promote-d4-from-d3:
+    needs: validate-d4-mechanism
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    env:
+      GH_TOKEN: ${{ github.token }}
+      D3_BRANCH: delivery/d3-custom-prefix-closure-20260808
+      D3_WORKFLOW: RAFCODEPHI D3 Bash AArch64 Artifact
+    steps:
+      - name: Checkout D4 revision with history
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+        with:
+          fetch-depth: 0
+
+      - name: Resolve exact D3 branch head
+        id: d3
+        run: |
+          set -euxo pipefail
+          git fetch --no-tags origin "$D3_BRANCH:refs/remotes/origin/$D3_BRANCH"
+          d3_head="$(git rev-parse "refs/remotes/origin/$D3_BRANCH")"
+          printf 'head=%s\n' "$d3_head" >> "$GITHUB_OUTPUT"
+          if ! git merge-base --is-ancestor "$d3_head" HEAD; then
+            printf 'D4_GATE=BLOCKED reason=current D3 head is not an ancestor of this D4 revision\n' >&2
+            printf 'D3_HEAD=%s\nD4_HEAD=%s\n' "$d3_head" "$(git rev-parse HEAD)" >&2
+            exit 1
+          fi
+          printf 'D3_HEAD_ANCESTRY=PASS\n'
+
+      - name: Locate SUCCESS D3 run for exact head
+        id: run
+        run: |
+          set -euxo pipefail
+          d3_head='${{ steps.d3.outputs.head }}'
+          runs="$(gh run list \
+            --repo "$GITHUB_REPOSITORY" \
+            --branch "$D3_BRANCH" \
+            --workflow "$D3_WORKFLOW" \
+            --status success \
+            --limit 20 \
+            --json databaseId,headSha,conclusion,createdAt)"
+          run_id="$(python3 - "$d3_head" <<'PY' <<<"$runs"
+          import json, sys
+          head=sys.argv[1]
+          rows=json.load(sys.stdin)
+          exact=[r for r in rows if r.get('headSha') == head and r.get('conclusion') == 'success']
+          if not exact:
+              raise SystemExit(3)
+          exact.sort(key=lambda r:r.get('createdAt',''), reverse=True)
+          print(exact[0]['databaseId'])
+          PY
+          )" || {
+            printf 'D4_GATE=BLOCKED reason=no SUCCESS D3 run for exact D3 head=%s\n' "$d3_head" >&2
+            exit 1
+          }
+          [ -n "$run_id" ] || { echo 'D4_GATE=BLOCKED empty D3 run id' >&2; exit 1; }
+          printf 'run_id=%s\n' "$run_id" >> "$GITHUB_OUTPUT"
+          printf 'D3_SUCCESS_RUN_ID=%s\n' "$run_id"
+
+      - name: Download exact D3 artifact bundle
+        run: |
+          set -euxo pipefail
+          run_id='${{ steps.run.outputs.run_id }}'
+          mkdir -p /tmp/d3
+          gh run download "$run_id" \
+            --repo "$GITHUB_REPOSITORY" \
+            --name "rafcodephi-bash-aarch64-d3-$run_id" \
+            --dir /tmp/d3
+          find /tmp/d3 -maxdepth 6 -type f -print | sort
+          test "$(find /tmp/d3 -type f -name '*.deb' | wc -l)" -ge 1
+          test "$(find /tmp/d3 -type f -name 'rafcodephi-d3-receipt.json' | wc -l)" -eq 1
+
+      - name: Generate D4 metadata from D3-bound artifacts
+        run: |
+          set -euxo pipefail
+          rm -rf /tmp/d4-repo
+          python3 scripts/rafcodephi_apt_repo_gate.py \
+            --artifacts-dir /tmp/d3 \
+            --receipts-dir /tmp/d3 \
+            --out-dir /tmp/d4-repo \
+            --arch aarch64 \
+            --suite stable \
+            --component main \
+            --epoch 0 \
+            --receipt /tmp/rafcodephi-d4-receipt.json
+          find /tmp/d4-repo -type f -print0 | sort -z | xargs -0 sha256sum
+
+      - name: Emit scoped D4 receipt
+        run: |
+          set -eux
+          python3 - <<'PY'
+          import json, os
+          p='/tmp/rafcodephi-d4-receipt.json'
+          d=json.load(open(p))
+          assert d['state']=='PASS'
+          assert d['claim_allowed'] is False
+          assert d['artifact_count'] >= 1
+          print('D3_BOUND_ARTIFACTS=PASS')
+          print('D4_REPOSITORY_METADATA=PASS')
+          print('D4_SIGNATURE=NOT_MEASURED')
+          print('D7_APT_UPDATE_INSTALL=NOT_MEASURED')
+          print('D8_PHYSICAL_DEVICE=NOT_MEASURED')
+          print('CLAIM_ALLOWED=false')
+          PY
+
+      - name: Upload D4 repository metadata and receipt
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: rafcodephi-d4-apt-repo-${{ github.run_id }}
+          path: |
+            /tmp/d4-repo
+            /tmp/rafcodephi-d4-receipt.json
+          if-no-files-found: error
+          retention-days: 14
