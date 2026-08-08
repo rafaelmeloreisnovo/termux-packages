@@ -6,8 +6,8 @@
 #include <time.h>
 
 #define DEVICE_TEST_PKG_COUNT 16
-#define CYCLE_BUDGET_MAX 42
-#define STATE_FOOTPRINT 256
+#define CYCLE_BUDGET_MAX 336
+#define STATE_FOOTPRINT 512
 
 typedef struct {
   uint64_t timestamp_ns;
@@ -34,7 +34,7 @@ static inline void measure_cycle(struct termux_orchestrator *orch, uint32_t phas
   m->timestamp_ns = get_time_ns();
   m->cycle_count = orch->state.cycle_count;
   m->coherence_phi = orch->state.coherence_phi;
-  m->depth = orch->state.phase * 6 + orch->state.arch_state;
+  m->depth = orch->state.phase * 4 + orch->state.arch_state;
   m->arch_state = orch->state.arch_state;
   m->phase = phase;
 }
@@ -110,10 +110,10 @@ static int test_coherence_phi_degradation(void) {
   struct termux_orchestrator orch = {};
   termux_orchestrator_init(&orch);
 
-  uint64_t phi_values[7] = {};
+  uint64_t phi_values[8] = {};
   uint32_t degradations = 0;
 
-  for (uint32_t phase = 0; phase < 7; phase++) {
+  for (uint32_t phase = 0; phase < 8; phase++) {
     orch.state.phase = phase;
     orch.state.arch_state = 3;
     orch.state.cycle_count = 42 + (phase * 5);
@@ -129,7 +129,7 @@ static int test_coherence_phi_degradation(void) {
     }
   }
 
-  printf("\n  Degradation events: %u/6\n", degradations);
+  printf("\n  Degradation events: %u/7\n", degradations);
   printf("  Expected: smooth φ trajectory\n");
   printf("  Result: %s\n\n", degradations <= 2 ? "✓ PASS" : "⚠ WARNING");
 
@@ -142,9 +142,9 @@ static int test_arch_state_transitions(void) {
   struct termux_orchestrator orch = {};
   termux_orchestrator_init(&orch);
 
-  uint32_t state_coverage[6] = {};
+  uint32_t state_coverage[4] = {};
 
-  for (uint32_t arch = 0; arch < 6; arch++) {
+  for (uint32_t arch = 0; arch < 4; arch++) {
     orch.state.arch_state = arch;
     orch.state.phase = 0;
     orch.state.cycle_count = 0;
@@ -159,14 +159,14 @@ static int test_arch_state_transitions(void) {
   }
 
   uint32_t valid_states = 0;
-  for (size_t i = 0; i < 6; i++) {
+  for (size_t i = 0; i < 4; i++) {
     valid_states += state_coverage[i];
   }
 
-  printf("\n  Valid arch states: %u/6\n", valid_states);
-  printf("  Result: %s\n\n", valid_states == 6 ? "✓ PASS" : "✗ FAIL");
+  printf("\n  Valid arch states: %u/4\n", valid_states);
+  printf("  Result: %s\n\n", valid_states == 4 ? "✓ PASS" : "✗ FAIL");
 
-  return valid_states == 6 ? 0 : -1;
+  return valid_states == 4 ? 0 : -1;
 }
 
 static int test_manifest_integration(void) {
@@ -176,7 +176,7 @@ static int test_manifest_integration(void) {
   for (int i = 0; i < DEVICE_TEST_PKG_COUNT; i++) {
     entries[i] = (struct termux_manifest_entry_v2){};
     snprintf(entries[i].name, TERMUX_MANIFEST_PKG_NAME_LEN, "pkg-%d", i);
-    entries[i].toroidal_depth = i % 42;
+    entries[i].toroidal_depth = i % 32;
     termux_manifest_v2_entry_compute_phi(&entries[i], entries[i].toroidal_depth);
     termux_manifest_v2_entry_compute_crc32c(&entries[i]);
   }

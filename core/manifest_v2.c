@@ -35,37 +35,37 @@ int termux_manifest_v2_entry_validate_invariants(struct termux_manifest_entry_v2
                                                    uint32_t total_entries) {
   if (!entry || total_entries == 0) return -1;
 
-  uint32_t gcd_depth_42 = GCD_COMPUTE(entry->toroidal_depth, 42);
-  uint8_t valid_gcds[] = {1, 2, 3, 6, 7, 14, 21, 42};
-  int gcd_valid = 0;
-  for (size_t i = 0; i < 8; i++) {
-    if (gcd_depth_42 == valid_gcds[i]) {
-      gcd_valid = 1;
-      break;
-    }
-  }
-  if (!gcd_valid) return -2;
-
+  if (entry->dep_count > TERMUX_MANIFEST_MAX_DEPS) return -5;
+  if (entry->toroidal_depth >= 32) return -7;
   if (entry->coherence_phi > ((1ULL << 48) - 1)) return -3;
 
   for (uint16_t i = 0; i < entry->dep_count; i++) {
     if (entry->deps[i] >= total_entries) return -4;
   }
 
-  if (entry->dep_count > TERMUX_MANIFEST_MAX_DEPS) return -5;
+  uint32_t gcd_depth_32 = GCD_COMPUTE(entry->toroidal_depth, 32);
+  uint8_t valid_gcds[] = {1, 2, 4, 8, 16, 32};
+  int gcd_valid = 0;
+  for (size_t i = 0; i < 6; i++) {
+    if (gcd_depth_32 == valid_gcds[i]) {
+      gcd_valid = 1;
+      break;
+    }
+  }
+  if (!gcd_valid) return -2;
 
   return 0;
 }
 
 int termux_manifest_v2_entry_compute_phi(struct termux_manifest_entry_v2 *entry,
                                           uint32_t toroidal_depth) {
-  if (!entry) return -1;
+  if (!entry || toroidal_depth >= 32) return -1;
 
-  uint64_t depth_score = 42ULL - toroidal_depth;
-  uint32_t gcd_val = GCD_COMPUTE(toroidal_depth + 1, 42);
+  uint64_t depth_score = 32ULL - toroidal_depth;
+  uint32_t gcd_val = GCD_COMPUTE(toroidal_depth + 1, 32);
 
-  uint64_t coherence_base = (depth_score * (1ULL << PHI_SCALE_BITS)) / 42;
-  uint64_t gcd_factor = (((uint64_t)gcd_val) * (1ULL << PHI_SCALE_BITS)) / 42;
+  uint64_t coherence_base = (depth_score * (1ULL << PHI_SCALE_BITS)) / 32;
+  uint64_t gcd_factor = (((uint64_t)gcd_val) * (1ULL << PHI_SCALE_BITS)) / 32;
 
   uint64_t phi = (coherence_base * gcd_factor) >> PHI_SCALE_BITS;
 
@@ -80,8 +80,15 @@ uint32_t termux_manifest_v2_entry_compute_crc32c(struct termux_manifest_entry_v2
 
   uint32_t crc = 0xFFFFFFFFU;
 
+  crc = crc32c_buffer_v2(entry->name, TERMUX_MANIFEST_PKG_NAME_LEN, crc);
+  crc = crc32c_buffer_v2(entry->version, TERMUX_MANIFEST_PKG_VERSION_LEN, crc);
+  crc = crc32c_buffer_v2(&entry->arch_flags, sizeof(entry->arch_flags), crc);
+  crc = crc32c_buffer_v2(&entry->api_level, sizeof(entry->api_level), crc);
+  crc = crc32c_buffer_v2(&entry->build_flags, sizeof(entry->build_flags), crc);
+  crc = crc32c_buffer_v2(entry->sha256, TERMUX_MANIFEST_SHA256_LEN, crc);
   crc = crc32c_buffer_v2(entry->deps, entry->dep_count * sizeof(uint16_t), crc);
   crc = crc32c_buffer_v2(&entry->toroidal_depth, sizeof(entry->toroidal_depth), crc);
+  crc = crc32c_buffer_v2(&entry->dep_count, sizeof(entry->dep_count), crc);
   crc = crc32c_buffer_v2(&entry->coherence_phi, sizeof(entry->coherence_phi), crc);
 
   entry->crc32c = crc ^ 0xFFFFFFFFU;
@@ -100,12 +107,19 @@ int termux_manifest_v2_validate_all(struct termux_manifest_entry_v2 *entries,
 
     uint32_t crc_stored = entries[i].crc32c;
     uint32_t crc_computed = 0xFFFFFFFFU;
+    crc_computed = crc32c_buffer_v2(entries[i].name, TERMUX_MANIFEST_PKG_NAME_LEN, crc_computed);
+    crc_computed = crc32c_buffer_v2(entries[i].version, TERMUX_MANIFEST_PKG_VERSION_LEN, crc_computed);
+    crc_computed = crc32c_buffer_v2(&entries[i].arch_flags, sizeof(entries[i].arch_flags), crc_computed);
+    crc_computed = crc32c_buffer_v2(&entries[i].api_level, sizeof(entries[i].api_level), crc_computed);
+    crc_computed = crc32c_buffer_v2(&entries[i].build_flags, sizeof(entries[i].build_flags), crc_computed);
+    crc_computed = crc32c_buffer_v2(entries[i].sha256, TERMUX_MANIFEST_SHA256_LEN, crc_computed);
     crc_computed = crc32c_buffer_v2(entries[i].deps,
                                      entries[i].dep_count * sizeof(uint16_t),
                                      crc_computed);
     crc_computed = crc32c_buffer_v2(&entries[i].toroidal_depth,
                                      sizeof(entries[i].toroidal_depth),
                                      crc_computed);
+    crc_computed = crc32c_buffer_v2(&entries[i].dep_count, sizeof(entries[i].dep_count), crc_computed);
     crc_computed = crc32c_buffer_v2(&entries[i].coherence_phi,
                                      sizeof(entries[i].coherence_phi),
                                      crc_computed);
@@ -119,12 +133,19 @@ int termux_manifest_v2_validate_all(struct termux_manifest_entry_v2 *entries,
 
 uint32_t termux_manifest_v2_compute_global_crc32c(struct termux_manifest_entry_v2 *entries,
                                                    uint32_t entry_count) {
-  if (!entries || entry_count == 0) return 0;
+  if (!entries || entry_count == 0 || entry_count > TERMUX_MANIFEST_MAX_ENTRIES) {
+    return 0;
+  }
 
   uint32_t crc = 0xFFFFFFFFU;
 
   for (uint32_t i = 0; i < entry_count; i++) {
     crc = crc32c_buffer_v2(entries[i].name, TERMUX_MANIFEST_PKG_NAME_LEN, crc);
+    crc = crc32c_buffer_v2(entries[i].version, TERMUX_MANIFEST_PKG_VERSION_LEN, crc);
+    crc = crc32c_buffer_v2(&entries[i].arch_flags, sizeof(entries[i].arch_flags), crc);
+    crc = crc32c_buffer_v2(&entries[i].api_level, sizeof(entries[i].api_level), crc);
+    crc = crc32c_buffer_v2(&entries[i].build_flags, sizeof(entries[i].build_flags), crc);
+    crc = crc32c_buffer_v2(entries[i].sha256, TERMUX_MANIFEST_SHA256_LEN, crc);
     crc = crc32c_buffer_v2(&entries[i].coherence_phi, sizeof(entries[i].coherence_phi), crc);
     crc = crc32c_buffer_v2(&entries[i].toroidal_depth, sizeof(entries[i].toroidal_depth), crc);
   }

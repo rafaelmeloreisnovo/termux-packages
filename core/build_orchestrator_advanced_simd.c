@@ -78,15 +78,15 @@ int termux_orchestrator_execute_avx512_8way(struct termux_orchestrator *orch,
   memset(&state, 0, sizeof(state));
 
   for (uint32_t i = 0; i < pkg_count; i++) {
-    state.phase[i] = TERMUX_PHASE_SETUP_VARS;
-    state.arch_state[i] = TERMUX_ARCH_STATE_X86_64_AVX2;
+    state.phase[i] = TERMUX_PHASE_SETUP;
+    state.arch_state[i] = TERMUX_ARCH_STATE_X86_64;
     state.pkg_idx[i] = pkg_indices[i];
     state.cycle_count[i] = 0;
   }
 
-  while (state.phase[0] < TERMUX_ORCHESTRATOR_PHASES) {
+  while (state.phase[0] < TERMUX_BUILD_PHASES) {
     for (uint32_t i = 0; i < pkg_count; i++) {
-      if (state.phase[i] < TERMUX_ORCHESTRATOR_PHASES) {
+      if (state.phase[i] < TERMUX_BUILD_PHASES) {
         state.phase[i]++;
       }
     }
@@ -130,14 +130,14 @@ int termux_orchestrator_execute_sve_vectorized(struct termux_orchestrator *orch,
   memset(coherence_phi, 0, sizeof(coherence_phi));
 
   for (uint32_t i = 0; i < vector_factor; i++) {
-    phases[i] = TERMUX_PHASE_SETUP_VARS;
-    arch_states[i] = TERMUX_ARCH_STATE_ARM64_SIMD_CRC;
+    phases[i] = TERMUX_PHASE_SETUP;
+    arch_states[i] = TERMUX_ARCH_STATE_ARM64;
     cycle_counts[i] = 0;
   }
 
-  while (phases[0] < TERMUX_ORCHESTRATOR_PHASES) {
+  while (phases[0] < TERMUX_BUILD_PHASES) {
     for (uint32_t i = 0; i < vector_factor; i++) {
-      if (phases[i] < TERMUX_ORCHESTRATOR_PHASES) {
+      if (phases[i] < TERMUX_BUILD_PHASES) {
         phases[i]++;
       }
     }

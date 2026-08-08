@@ -43,14 +43,14 @@ static int test_manifest_entry_compute_phi(void) {
   assert(entry.toroidal_depth == 0);
   assert(entry.coherence_phi > 0);
 
-  ret = termux_manifest_v2_entry_compute_phi(&entry, 21);
+  ret = termux_manifest_v2_entry_compute_phi(&entry, 16);
   assert(ret == 0);
-  assert(entry.toroidal_depth == 21);
+  assert(entry.toroidal_depth == 16);
   assert(entry.coherence_phi <= ((1ULL << 48) - 1));
 
-  ret = termux_manifest_v2_entry_compute_phi(&entry, 41);
+  ret = termux_manifest_v2_entry_compute_phi(&entry, 31);
   assert(ret == 0);
-  assert(entry.toroidal_depth == 41);
+  assert(entry.toroidal_depth == 31);
   assert(entry.coherence_phi <= ((1ULL << 48) - 1));
 
   printf("✓ test_manifest_entry_compute_phi passed\n");
@@ -77,17 +77,17 @@ static int test_manifest_entry_compute_crc32c(void) {
 }
 
 static int test_manifest_gcd_invariant_coverage(void) {
-  uint8_t valid_gcds[] = {1, 2, 3, 6, 7, 14, 21, 42};
+  uint8_t valid_gcds[] = {1, 2, 4, 8, 16, 32};
 
-  for (uint32_t depth = 0; depth < 42; depth++) {
-    uint32_t a = depth, b = 42;
+  for (uint32_t depth = 0; depth < 32; depth++) {
+    uint32_t a = depth, b = 32;
     while (b) {
       uint32_t tmp = b;
       b = a % b;
       a = tmp;
     }
     int is_valid = 0;
-    for (size_t i = 0; i < 8; i++) {
+    for (size_t i = 0; i < 6; i++) {
       if (valid_gcds[i] == a) {
         is_valid = 1;
         break;
@@ -96,7 +96,7 @@ static int test_manifest_gcd_invariant_coverage(void) {
     assert(is_valid);
   }
 
-  printf("✓ test_manifest_gcd_invariant_coverage passed (all depths 0..41 have valid gcd)\n");
+  printf("✓ test_manifest_gcd_invariant_coverage passed (all depths 0..31 have valid gcd)\n");
   return 0;
 }
 

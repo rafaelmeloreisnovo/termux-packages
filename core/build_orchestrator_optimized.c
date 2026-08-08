@@ -32,9 +32,9 @@ static inline uint32_t gcd_compute_branchless(uint32_t a, uint32_t b) {
 }
 
 static inline int invariant_gcd_valid(uint32_t depth) {
-  uint32_t gcd_val = gcd_compute_branchless(depth, TERMUX_ORCHESTRATOR_TOTAL_STATES);
-  uint8_t valid_gcds[] = {1, 2, 3, 6, 7, 14, 21, 42};
-  for (size_t i = 0; i < 8; i++) {
+  uint32_t gcd_val = gcd_compute_branchless(depth, TERMUX_DAG_LAYERS);
+  uint8_t valid_gcds[] = {1, 2, 4, 8, 16, 32};
+  for (size_t i = 0; i < 6; i++) {
     if (gcd_val == valid_gcds[i]) return 1;
   }
   return 0;
@@ -45,21 +45,21 @@ static inline int invariant_phi_overflow(uint64_t phi) {
 }
 
 static inline int invariant_arch_bounds(uint32_t arch) {
-  return arch < TERMUX_ORCHESTRATOR_ARCH_STATES ? 1 : 0;
+  return arch < TERMUX_ARCH_STATES ? 1 : 0;
 }
 
 static inline int invariant_phase_bounds(uint32_t phase) {
-  return phase < TERMUX_ORCHESTRATOR_PHASES ? 1 : 0;
+  return phase < TERMUX_BUILD_PHASES ? 1 : 0;
 }
 
 static inline uint64_t phi_compute_inline(uint32_t phase, uint32_t arch_state,
                                           uint32_t cycle_count) {
   uint64_t overhead_penalty = cycle_count > 42 ? 1000ULL : 0ULL;
-  uint64_t depth_score = 42ULL - (phase * TERMUX_ORCHESTRATOR_ARCH_STATES + arch_state);
-  uint64_t coherence_base = (depth_score * PHI_SCALE) / TERMUX_ORCHESTRATOR_TOTAL_STATES;
+  uint64_t depth_score = 42ULL - (phase * TERMUX_ARCH_STATES + arch_state);
+  uint64_t coherence_base = (depth_score * PHI_SCALE) / TERMUX_DAG_LAYERS;
 
-  uint32_t gcd_val = gcd_compute_branchless(phase + 1, TERMUX_ORCHESTRATOR_PHASES);
-  uint64_t gcd_factor = (((uint64_t)gcd_val) * PHI_SCALE) / TERMUX_ORCHESTRATOR_PHASES;
+  uint32_t gcd_val = gcd_compute_branchless(phase + 1, TERMUX_BUILD_PHASES);
+  uint64_t gcd_factor = (((uint64_t)gcd_val) * PHI_SCALE) / TERMUX_BUILD_PHASES;
 
   uint64_t result = (coherence_base * gcd_factor / PHI_SCALE) - overhead_penalty;
   return result > ((1ULL << 48) - 1) ? ((1ULL << 48) - 1) : result;
@@ -70,11 +70,11 @@ int termux_orchestrator_init_optimized(struct termux_orchestrator *orch) {
 
   memset(orch, 0, sizeof(*orch));
 
-  for (size_t i = 0; i < TERMUX_ORCHESTRATOR_PHASES; i++) {
+  for (size_t i = 0; i < TERMUX_BUILD_PHASES; i++) {
     orch->phase_handlers[i] = NULL;
   }
 
-  for (size_t i = 0; i < TERMUX_ORCHESTRATOR_TOTAL_STATES; i++) {
+  for (size_t i = 0; i < TERMUX_DAG_LAYERS; i++) {
     uint32_t golden_ratio_32 = 0x9E3779B9U;
     orch->attractor_table[i] = ((uint64_t)(golden_ratio_32 * (i + 1)) << 16) | i;
   }
@@ -100,11 +100,11 @@ int termux_orchestrator_execute_optimized(struct termux_orchestrator *orch,
   state->pkg_name[name_idx] = '\0';
 
   state->pkg_idx = pkg_idx;
-  state->phase = TERMUX_PHASE_SETUP_VARS;
-  state->arch_state = TERMUX_ARCH_STATE_ARM64_SIMD_CRC;
+  state->phase = TERMUX_PHASE_SETUP;
+  state->arch_state = TERMUX_ARCH_STATE_ARM64;
 
-  while (state->phase < TERMUX_ORCHESTRATOR_PHASES) {
-    uint32_t depth = state->phase * TERMUX_ORCHESTRATOR_ARCH_STATES + state->arch_state;
+  while (state->phase < TERMUX_BUILD_PHASES) {
+    uint32_t depth = state->phase * TERMUX_ARCH_STATES + state->arch_state;
 
     if (!invariant_gcd_valid(depth)) return -1;
     if (!invariant_phi_overflow(state->coherence_phi)) return -2;
@@ -114,7 +114,7 @@ int termux_orchestrator_execute_optimized(struct termux_orchestrator *orch,
     state->coherence_phi = phi_compute_inline(state->phase, state->arch_state, state->cycle_count);
 
     uint32_t next_phase = state->phase + 1;
-    state->phase = (next_phase < TERMUX_ORCHESTRATOR_PHASES) ? next_phase : TERMUX_ORCHESTRATOR_PHASES;
+    state->phase = (next_phase < TERMUX_BUILD_PHASES) ? next_phase : TERMUX_BUILD_PHASES;
 
     state->cycle_count += 42;
   }
@@ -127,9 +127,10 @@ static inline void transition_batch_optimized(struct termux_build_state *state,
   for (uint32_t i = 0; i < batch_size; i++) {
     state->coherence_phi = phi_compute_inline(state->phase, state->arch_state, state->cycle_count);
 
-    if (state->phase < TERMUX_ORCHESTRATOR_PHASES - 1) {
+    if (state->phase < TERMUX_BUILD_PHASES - 1) {
       state->phase++;
     } else {
+      state->phase = TERMUX_BUILD_PHASES;
       break;
     }
   }
@@ -151,10 +152,10 @@ int termux_orchestrator_execute_batched(struct termux_orchestrator *orch,
   state->pkg_name[name_idx] = '\0';
 
   state->pkg_idx = pkg_idx;
-  state->phase = TERMUX_PHASE_SETUP_VARS;
-  state->arch_state = TERMUX_ARCH_STATE_ARM64_SIMD_CRC;
+  state->phase = TERMUX_PHASE_SETUP;
+  state->arch_state = TERMUX_ARCH_STATE_ARM64;
 
-  while (state->phase < TERMUX_ORCHESTRATOR_PHASES) {
+  while (state->phase < TERMUX_BUILD_PHASES) {
     prefetch((const void *)state);
 
     transition_batch_optimized(state, 1);
@@ -165,14 +166,14 @@ int termux_orchestrator_execute_batched(struct termux_orchestrator *orch,
 }
 
 static inline uint32_t phase_transition_count(void) {
-  return TERMUX_ORCHESTRATOR_PHASES;
+  return TERMUX_BUILD_PHASES;
 }
 
 static inline void warmup_cache(struct termux_orchestrator *orch) {
   struct termux_build_state *state = &orch->state;
   memset(state, 0, sizeof(*state));
 
-  for (uint32_t i = 0; i < TERMUX_ORCHESTRATOR_TOTAL_STATES; i++) {
+  for (uint32_t i = 0; i < TERMUX_DAG_LAYERS; i++) {
     prefetch(&orch->attractor_table[i]);
   }
 }
@@ -186,11 +187,11 @@ int termux_orchestrator_execute_warmup(struct termux_orchestrator *orch,
 }
 
 static inline uint64_t measure_cycle_latency(uint32_t phase, uint32_t arch_state) {
-  uint64_t depth_score = 42ULL - (phase * TERMUX_ORCHESTRATOR_ARCH_STATES + arch_state);
-  uint64_t coherence_base = (depth_score * PHI_SCALE) / TERMUX_ORCHESTRATOR_TOTAL_STATES;
+  uint64_t depth_score = 42ULL - (phase * TERMUX_ARCH_STATES + arch_state);
+  uint64_t coherence_base = (depth_score * PHI_SCALE) / TERMUX_DAG_LAYERS;
 
-  uint32_t gcd_val = gcd_compute_branchless(phase + 1, TERMUX_ORCHESTRATOR_PHASES);
-  uint64_t gcd_factor = (((uint64_t)gcd_val) * PHI_SCALE) / TERMUX_ORCHESTRATOR_PHASES;
+  uint32_t gcd_val = gcd_compute_branchless(phase + 1, TERMUX_BUILD_PHASES);
+  uint64_t gcd_factor = (((uint64_t)gcd_val) * PHI_SCALE) / TERMUX_BUILD_PHASES;
 
   return (coherence_base * gcd_factor / PHI_SCALE);
 }
@@ -199,14 +200,14 @@ uint32_t termux_orchestrator_estimate_overhead(struct termux_orchestrator *orch)
   if (!orch) return 0;
 
   uint32_t total_cycles = 0;
-  for (uint32_t phase = 0; phase < TERMUX_ORCHESTRATOR_PHASES; phase++) {
-    for (uint32_t arch = 0; arch < TERMUX_ORCHESTRATOR_ARCH_STATES; arch++) {
+  for (uint32_t phase = 0; phase < TERMUX_BUILD_PHASES; phase++) {
+    for (uint32_t arch = 0; arch < TERMUX_ARCH_STATES; arch++) {
       uint64_t phi = measure_cycle_latency(phase, arch);
       total_cycles += (phi > 0 ? 1 : 0) + 42;
     }
   }
 
-  return total_cycles / TERMUX_ORCHESTRATOR_TOTAL_STATES;
+  return total_cycles / TERMUX_DAG_LAYERS;
 }
 
 double termux_orchestrator_calculate_efficiency(uint32_t wall_cycles,

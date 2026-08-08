@@ -8,7 +8,7 @@
 #include "gpu_device.h"
 
 #define UNIFIED_MAX_DEVICES 16
-#define UNIFIED_MAX_LAYERS 42
+#define UNIFIED_MAX_LAYERS 32
 #define UNIFIED_TASK_QUEUE_SIZE 4096
 
 typedef struct {
@@ -81,7 +81,7 @@ typedef struct {
 typedef struct {
   char build_id[64];
   uint64_t timestamp_start;
-  double wall_time_phases[9];
+  double wall_time_phases[8];
   volatile uint32_t ci_reported;
   double overall_speedup;
 } cicd_module_t;

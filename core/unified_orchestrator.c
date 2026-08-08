@@ -10,10 +10,6 @@
 #include <unistd.h>
 #include <stdatomic.h>
 
-#define UNIFIED_TASK_QUEUE_SIZE 4096
-#define UNIFIED_MAX_DEVICES 16
-#define UNIFIED_MAX_LAYERS 42
-
 static inline uint64_t get_time_ns(void) {
   struct timespec ts;
   clock_gettime(CLOCK_MONOTONIC, &ts);

@@ -86,10 +86,22 @@ tests/test_manifest_v2.o: tests/test_manifest_v2.c manifest_v2.h
 manifest: manifest_generator.py
 	python3 manifest_generator.py ../packages manifest.bin
 
-test: clean all test-cycle2-1
+test: clean all
 	python3 tests/test_manifest_fail_closed.py
+	@echo "✓ Python manifest validation passed"
 	./test-cycle2-1
-	@echo "Structural and fixture manifest gates passed. Cycle 2.1 validation complete."
+	@echo "✓ Cycle 2.1 (manifest) validation passed"
+	./test-cycle2-2
+	@echo "✓ Cycle 2.2 (source download) validation passed"
+	./test-build-orchestrator
+	@echo "✓ Build orchestrator tests passed"
+	./test-dep-resolver
+	@echo "✓ Dependency resolver tests passed"
+	./test-manifest-v2
+	@echo "✓ Manifest V2 tests passed"
+	./device-test-orchestrator
+	@echo "✓ Device orchestrator tests passed"
+	@echo "All tests completed successfully"
 
 clean:
 	rm -f $(OBJECTS) $(TEST_OBJECTS) $(DUMPER_OBJECTS) tests/test_manifest_v2.o build_orchestrator_optimized.o perf_analyzer.o $(TARGETS) manifest.bin
