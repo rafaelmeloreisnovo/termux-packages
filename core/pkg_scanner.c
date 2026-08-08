@@ -51,14 +51,12 @@ static int inv_grow(pkg_inventory_t *inv) {
   }
   uint32_t new_cap = inv->capacity == 0 ? 64U : inv->capacity * 2U;
   size_t new_cap_size = (size_t)new_cap;
-  if (new_cap_size != 0 &&
-      sizeof(*inv->entries) > SIZE_MAX / new_cap_size) {
+  if (new_cap_size != 0 && sizeof(*inv->entries) > SIZE_MAX / new_cap_size) {
     inv->allocation_errors++;
     return -1;
   }
-  size_t allocation_size = new_cap_size * sizeof(*inv->entries);
-  pkg_inventory_entry_t *n =
-      (pkg_inventory_entry_t *)realloc(inv->entries, allocation_size);
+  pkg_inventory_entry_t *n = (pkg_inventory_entry_t *)realloc(
+      inv->entries, new_cap_size * sizeof(*inv->entries));
   if (REAL_UNLIKELY(!n)) {
     inv->allocation_errors++;
     return -1;
@@ -93,14 +91,16 @@ static int scan_subpackages(pkg_inventory_t *inv, const char *pkg_dir,
       break;
     }
     if (se->d_name[0] == '.') continue;
+
     size_t len = strlen(se->d_name);
     const char *suffix = ".subpackage.sh";
     size_t suflen = strlen(suffix);
-    if (len <= suflen) continue;
-    if (strcmp(se->d_name + len - suflen, suffix) != 0) continue;
+    if (len <= suflen || strcmp(se->d_name + len - suflen, suffix) != 0)
+      continue;
 
     size_t nm_len = len - suflen;
-    if (nm_len == 0 || nm_len >= PKG_NAME_MAX || strlen(parent_name) >= PKG_NAME_MAX) {
+    if (nm_len == 0 || nm_len >= PKG_NAME_MAX ||
+        strlen(parent_name) >= PKG_NAME_MAX) {
       inv->path_errors++;
       closedir(sd);
       return -1;
@@ -121,161 +121,295 @@ static int scan_subpackages(pkg_inventory_t *inv, const char *pkg_dir,
       closedir(sd);
       return -1;
     }
-    if (!S_ISREG(st.st_mode)) continue;
+    if (!S_ISREG(st.st_mode)) {
+      inv->non_regular_subpackages++;
+      continue;
+    }
 
-    if (inv->count >= inv->capacity && inv_grow(inv) != 0) {
+    if (inv->count >= inv->capacity && inv_grow(inv) < 0) {
+      inv->subpackage_scan_failures++;
       closedir(sd);
       return -1;
     }
-    pkg_inventory_entry_t *entry = &inv->entries[inv->count++];
-    memset(entry, 0, sizeof(*entry));
-    entry->repo_type = repo_type;
-    entry->is_subpackage = 1;
-    if (snprintf(entry->name, sizeof(entry->name), "%s:%.*s", parent_name,
-                 (int)nm_len, se->d_name) <= 0 ||
-        snprintf(entry->build_sh, sizeof(entry->build_sh), "%s", sub_path) <= 0) {
-      inv->path_errors++;
-      closedir(sd);
-      return -1;
-    }
+
+    pkg_inventory_entry_t *e = &inv->entries[inv->count];
+    memset(e, 0, sizeof(*e));
+    memcpy(e->name, se->d_name, nm_len);
+    e->name[nm_len] = '\0';
+    memcpy(e->path, sub_path, (size_t)n + 1U);
+    strcpy(e->parent, parent_name);
+    e->repo = repo_type;
+    e->build_sh_size = (uint64_t)st.st_size;
+    e->has_build_sh = 1;
+    e->is_subpackage = 1;
+    inv->count++;
+    inv->total_subpackages++;
   }
 
-  closedir(sd);
+  if (closedir(sd) != 0) {
+    inv->io_errors++;
+    inv->subpackage_scan_failures++;
+    return -1;
+  }
   return 0;
 }
 
-static int scan_repo_root(pkg_inventory_t *inv, const char *root,
-                          pkg_repo_t repo_type) {
-  DIR *dir = opendir(root);
-  if (!dir) {
-    inv->roots_failed++;
+int pkg_inventory_scan_repo(pkg_inventory_t *inv, const char *repo_dir,
+                            pkg_repo_t repo_type) {
+  DIR *d = opendir(repo_dir);
+  if (REAL_UNLIKELY(!d)) {
     inv->io_errors++;
     return -1;
   }
-  inv->roots_scanned++;
 
   for (;;) {
     errno = 0;
-    struct dirent *de = readdir(dir);
-    if (!de) {
+    struct dirent *ent = readdir(d);
+    if (!ent) {
       if (errno != 0) {
         inv->io_errors++;
-        inv->roots_failed++;
-        closedir(dir);
+        closedir(d);
         return -1;
       }
       break;
     }
-    if (de->d_name[0] == '.') continue;
+    if (ent->d_name[0] == '.') continue;
+
+    if (strlen(ent->d_name) >= PKG_NAME_MAX) {
+      inv->path_errors++;
+      closedir(d);
+      return -1;
+    }
 
     char pkg_dir[PKG_PATH_MAX];
-    char build_sh[PKG_PATH_MAX];
-    int n1 = snprintf(pkg_dir, sizeof(pkg_dir), "%s/%s", root, de->d_name);
-    int n2 = snprintf(build_sh, sizeof(build_sh), "%s/build.sh", pkg_dir);
-    if (n1 <= 0 || (size_t)n1 >= sizeof(pkg_dir) || n2 <= 0 ||
-        (size_t)n2 >= sizeof(build_sh)) {
+    int nd = snprintf(pkg_dir, sizeof(pkg_dir), "%s/%s", repo_dir, ent->d_name);
+    if (nd <= 0 || (size_t)nd >= sizeof(pkg_dir)) {
       inv->path_errors++;
-      closedir(dir);
+      closedir(d);
       return -1;
     }
 
-    struct stat st_dir;
-    if (stat(pkg_dir, &st_dir) != 0) {
+    struct stat pkg_st;
+    if (stat(pkg_dir, &pkg_st) != 0) {
       inv->io_errors++;
-      closedir(dir);
+      closedir(d);
       return -1;
     }
-    if (!S_ISDIR(st_dir.st_mode)) continue;
-
-    struct stat st_build;
-    if (stat(build_sh, &st_build) != 0) {
-      if (errno == ENOENT) continue;
-      inv->io_errors++;
-      closedir(dir);
-      return -1;
-    }
-    if (!S_ISREG(st_build.st_mode)) continue;
-
-    if (inv->count >= inv->capacity && inv_grow(inv) != 0) {
-      closedir(dir);
-      return -1;
-    }
-    pkg_inventory_entry_t *entry = &inv->entries[inv->count++];
-    memset(entry, 0, sizeof(*entry));
-    entry->repo_type = repo_type;
-    if (snprintf(entry->name, sizeof(entry->name), "%s", de->d_name) <= 0 ||
-        snprintf(entry->build_sh, sizeof(entry->build_sh), "%s", build_sh) <= 0) {
-      inv->path_errors++;
-      closedir(dir);
-      return -1;
-    }
-
-    if (scan_subpackages(inv, pkg_dir, de->d_name, repo_type) != 0) {
-      closedir(dir);
-      return -1;
-    }
-  }
-  closedir(dir);
-  return 0;
-}
-
-int pkg_inventory_scan(pkg_inventory_t *inv, const char *repo_root) {
-  struct {
-    const char *path;
-    pkg_repo_t type;
-  } roots[] = {
-      {"packages", PKG_REPO_MAIN},
-      {"root-packages", PKG_REPO_ROOT},
-      {"x11-packages", PKG_REPO_X11},
-      {"disabled-packages", PKG_REPO_DISABLED},
-  };
-
-  char full[PKG_PATH_MAX];
-  for (size_t i = 0; i < sizeof(roots) / sizeof(roots[0]); ++i) {
-    int n = snprintf(full, sizeof(full), "%s/%s", repo_root, roots[i].path);
-    if (n <= 0 || (size_t)n >= sizeof(full)) {
-      inv->path_errors++;
-      inv->roots_failed++;
+    if (!S_ISDIR(pkg_st.st_mode)) {
+      inv->non_directory_entries++;
       continue;
     }
-    if (scan_repo_root(inv, full, roots[i].type) != 0) continue;
+
+    char build_sh_path[PKG_PATH_MAX];
+    int n = snprintf(build_sh_path, sizeof(build_sh_path), "%s/build.sh", pkg_dir);
+    if (n <= 0 || (size_t)n >= sizeof(build_sh_path)) {
+      inv->path_errors++;
+      closedir(d);
+      return -1;
+    }
+
+    inv->total_scanned++;
+
+    struct stat st;
+    if (stat(build_sh_path, &st) != 0) {
+      if (errno == ENOENT || errno == ENOTDIR) {
+        inv->total_missing++;
+        continue;
+      }
+      inv->io_errors++;
+      closedir(d);
+      return -1;
+    }
+    if (!S_ISREG(st.st_mode)) {
+      inv->total_missing++;
+      continue;
+    }
+
+    if (inv->count >= inv->capacity && inv_grow(inv) < 0) {
+      closedir(d);
+      return -1;
+    }
+
+    pkg_inventory_entry_t *e = &inv->entries[inv->count];
+    memset(e, 0, sizeof(*e));
+    strcpy(e->name, ent->d_name);
+    memcpy(e->path, build_sh_path, (size_t)n + 1U);
+    strcpy(e->parent, ent->d_name);
+    e->repo = repo_type;
+    e->build_sh_size = (uint64_t)st.st_size;
+    e->has_build_sh = 1;
+    e->is_subpackage = 0;
+    inv->count++;
+    inv->total_with_build_sh++;
+
+    if (scan_subpackages(inv, pkg_dir, ent->d_name, repo_type) < 0) {
+      closedir(d);
+      return -1;
+    }
   }
 
-  if (inv->roots_scanned == 0 || inv->count == 0 || inv->roots_failed != 0 ||
-      inv->io_errors != 0 || inv->path_errors != 0 ||
-      inv->subpackage_scan_failures != 0 || inv->allocation_errors != 0) {
+  if (closedir(d) != 0) {
+    inv->io_errors++;
     return -1;
   }
   return 0;
 }
 
-void pkg_inventory_destroy(pkg_inventory_t *inv) {
+int pkg_inventory_scan_all(pkg_inventory_t *inv, const char *base_dir) {
+  const struct {
+    const char *subdir;
+    pkg_repo_t type;
+  } repos[] = {
+      {"packages",          PKG_REPO_MAIN},
+      {"root-packages",     PKG_REPO_ROOT},
+      {"x11-packages",      PKG_REPO_X11},
+      {"disabled-packages", PKG_REPO_DISABLED},
+  };
+
+  inv->roots_expected = (uint32_t)(sizeof(repos) / sizeof(repos[0]));
+  inv->roots_present = 0;
+  inv->roots_absent = 0;
+  inv->roots_failed = 0;
+
+  for (size_t i = 0; i < sizeof(repos) / sizeof(repos[0]); i++) {
+    char full_path[PKG_PATH_MAX];
+    int n = snprintf(full_path, sizeof(full_path), "%s/%s", base_dir,
+                     repos[i].subdir);
+    if (n <= 0 || (size_t)n >= sizeof(full_path)) {
+      inv->path_errors++;
+      inv->roots_failed++;
+      return -1;
+    }
+
+    struct stat st;
+    if (stat(full_path, &st) != 0) {
+      if (errno == ENOENT || errno == ENOTDIR) {
+        inv->roots_absent++;
+        continue;
+      }
+      inv->io_errors++;
+      inv->roots_failed++;
+      return -1;
+    }
+    if (!S_ISDIR(st.st_mode)) {
+      inv->roots_failed++;
+      return -1;
+    }
+
+    inv->roots_present++;
+    if (pkg_inventory_scan_repo(inv, full_path, repos[i].type) < 0) {
+      inv->roots_failed++;
+      return -1;
+    }
+  }
+  return 0;
+}
+
+int pkg_inventory_scan(pkg_inventory_t *inv, const char *repo_root) {
+  if (pkg_inventory_scan_all(inv, repo_root) < 0) return -1;
+  return pkg_inventory_is_complete(inv) && inv->count > 0 ? 0 : -1;
+}
+
+int pkg_inventory_is_complete(const pkg_inventory_t *inv) {
+  if (inv->roots_expected == 0 || inv->roots_present != inv->roots_expected)
+    return 0;
+  if (inv->roots_absent != 0 || inv->roots_failed != 0 ||
+      inv->path_errors != 0 || inv->io_errors != 0 ||
+      inv->allocation_errors != 0 || inv->subpackage_scan_failures != 0)
+    return 0;
+  return 1;
+}
+
+const pkg_inventory_entry_t *
+pkg_inventory_find(const pkg_inventory_t *inv, const char *name) {
+  for (uint32_t i = 0; i < inv->count; i++) {
+    if (REAL_UNLIKELY(strcmp(inv->entries[i].name, name) == 0))
+      return &inv->entries[i];
+  }
+  return NULL;
+}
+
+void pkg_inventory_write_json(FILE *out, const pkg_inventory_t *inv) {
+  const int complete = pkg_inventory_is_complete(inv);
+  fprintf(out, "{\n");
+  fprintf(out, "  \"schema\": \"pkg_inventory/2.0.0\",\n");
+  fprintf(out, "  \"status\": \"%s\",\n", complete ? "OBSERVED" : "OBSERVED_LIMITED");
+  fprintf(out, "  \"claim_allowed\": false,\n");
+  fprintf(out, "  \"coverage_complete\": %s,\n", complete ? "true" : "false");
+  fprintf(out, "  \"coverage\": {\n");
+  fprintf(out, "    \"roots_expected\": %u,\n", inv->roots_expected);
+  fprintf(out, "    \"roots_present\": %u,\n", inv->roots_present);
+  fprintf(out, "    \"roots_absent\": %u,\n", inv->roots_absent);
+  fprintf(out, "    \"roots_failed\": %u,\n", inv->roots_failed);
+  fprintf(out, "    \"path_errors\": %u,\n", inv->path_errors);
+  fprintf(out, "    \"io_errors\": %u,\n", inv->io_errors);
+  fprintf(out, "    \"allocation_errors\": %u,\n", inv->allocation_errors);
+  fprintf(out, "    \"subpackage_scan_failures\": %u\n", inv->subpackage_scan_failures);
+  fprintf(out, "  },\n");
+  fprintf(out, "  \"totals\": {\n");
+  fprintf(out, "    \"scanned\": %u,\n", inv->total_scanned);
+  fprintf(out, "    \"with_build_sh\": %u,\n", inv->total_with_build_sh);
+  fprintf(out, "    \"subpackages\": %u,\n", inv->total_subpackages);
+  fprintf(out, "    \"missing_build_sh\": %u,\n", inv->total_missing);
+  fprintf(out, "    \"non_directory_entries\": %u,\n", inv->non_directory_entries);
+  fprintf(out, "    \"non_regular_subpackages\": %u\n", inv->non_regular_subpackages);
+  fprintf(out, "  },\n");
+  fprintf(out, "  \"packages\": [\n");
+  for (uint32_t i = 0; i < inv->count; i++) {
+    const pkg_inventory_entry_t *e = &inv->entries[i];
+    fprintf(out,
+            "    {\"name\":\"%s\",\"parent\":\"%s\",\"repo\":\"%s\","
+            "\"path\":\"%s\",\"build_sh_size\":%" PRIu64 ","
+            "\"is_subpackage\":%s}%s\n",
+            e->name, e->parent, repo_name(e->repo), e->path,
+            e->build_sh_size, e->is_subpackage ? "true" : "false",
+            (i + 1 < inv->count) ? "," : "");
+  }
+  fprintf(out, "  ]\n");
+  fprintf(out, "}\n");
+}
+
+void pkg_inventory_print_json(const pkg_inventory_t *inv) {
+  pkg_inventory_write_json(stdout, inv);
+}
+
+void pkg_inventory_report(FILE *out, const pkg_inventory_t *inv) {
+  fprintf(out, "=== Package Inventory — OBSERVED%s ===\n",
+          pkg_inventory_is_complete(inv) ? "" : "_LIMITED");
+  fprintf(out, "Claim allowed:             false\n");
+  fprintf(out, "Known roots:               %u/%u present, %u absent, %u failed\n",
+          inv->roots_present, inv->roots_expected, inv->roots_absent,
+          inv->roots_failed);
+  fprintf(out, "Directories scanned:       %u\n", inv->total_scanned);
+  fprintf(out, "Packages with build.sh:    %u\n", inv->total_with_build_sh);
+  fprintf(out, "Subpackages discovered:    %u\n", inv->total_subpackages);
+  fprintf(out, "Total entries:             %u\n", inv->count);
+  fprintf(out, "Missing build.sh:          %u\n", inv->total_missing);
+  fprintf(out, "Collection errors:         path=%u io=%u alloc=%u subpkg=%u\n",
+          inv->path_errors, inv->io_errors, inv->allocation_errors,
+          inv->subpackage_scan_failures);
+
+  uint32_t by_repo[4] = {0};
+  uint64_t bytes_by_repo[4] = {0};
+  for (uint32_t i = 0; i < inv->count; i++) {
+    pkg_repo_t r = inv->entries[i].repo;
+    if (r < 4) {
+      by_repo[r]++;
+      bytes_by_repo[r] += inv->entries[i].build_sh_size;
+    }
+  }
+  for (int r = 0; r < 4; r++) {
+    fprintf(out, "  %-20s %5u entries, %8" PRIu64 " bytes total\n",
+            repo_name((pkg_repo_t)r), by_repo[r], bytes_by_repo[r]);
+  }
+}
+
+void pkg_inventory_free(pkg_inventory_t *inv) {
   if (!inv) return;
   free(inv->entries);
   memset(inv, 0, sizeof(*inv));
 }
 
-void pkg_inventory_print_json(const pkg_inventory_t *inv) {
-  printf("{\"schema\":\"raf.pkg-inventory/v1\",\"status\":\"%s\","
-         "\"coverage\":{\"roots_expected\":%u,\"roots_scanned\":%u,"
-         "\"roots_failed\":%u,\"io_errors\":%u,\"path_errors\":%u,"
-         "\"subpackage_scan_failures\":%u,\"allocation_errors\":%u},"
-         "\"count\":%u,\"entries\":[",
-         (inv->roots_failed == 0 && inv->io_errors == 0 && inv->path_errors == 0 &&
-          inv->subpackage_scan_failures == 0 && inv->allocation_errors == 0 &&
-          inv->roots_scanned == inv->roots_expected)
-             ? "OBSERVED"
-             : "OBSERVED_LIMITED",
-         inv->roots_expected, inv->roots_scanned, inv->roots_failed, inv->io_errors,
-         inv->path_errors, inv->subpackage_scan_failures, inv->allocation_errors,
-         inv->count);
-  for (uint32_t i = 0; i < inv->count; ++i) {
-    const pkg_inventory_entry_t *e = &inv->entries[i];
-    if (i) putchar(',');
-    printf("{\"name\":\"%s\",\"repo\":\"%s\",\"build_sh\":\"%s\","
-           "\"subpackage\":%s}",
-           e->name, repo_name(e->repo_type), e->build_sh,
-           e->is_subpackage ? "true" : "false");
-  }
-  puts("]}");
+void pkg_inventory_destroy(pkg_inventory_t *inv) {
+  pkg_inventory_free(inv);
 }
