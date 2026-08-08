@@ -3,7 +3,7 @@
 #
 # Modes:
 #   validate (default): validate registry/quarantine/contracts/runtime probes
-#                       + pkg_metrics governance.
+#                       + scoped architecture matrix + pkg_metrics governance.
 #   promote:            run validate, then require strict Reality V2 gate.
 #
 # A validate PASS does not mean promotion PASS. Promotion remains blocked while
@@ -39,31 +39,37 @@ for cmd in python3 make jq cc; do
     }
 done
 
-echo "[1/9] Reality V2 registry/unit tests"
+echo "[1/11] Reality V2 registry/unit tests"
 python3 -m unittest core/tests/test_reality_audit_v2.py
 
-echo "[2/9] Toy crypto quarantine gate"
+echo "[2/11] Toy crypto quarantine gate"
 python3 -m unittest core/tests/test_toy_crypto_quarantine.py
 
-echo "[3/9] Strict pkg_metrics adversarial contract tests"
+echo "[3/11] Strict pkg_metrics adversarial contract tests"
 python3 -m unittest core/tests/test_contract_adversarial.py
 
-echo "[4/9] Runtime architecture probe tests"
+echo "[4/11] Runtime architecture probe tests"
 python3 -m unittest core/tests/test_arch_runtime_probe.py
 
-echo "[5/9] Runtime architecture receipt"
+echo "[5/11] Runtime architecture receipt"
 python3 scripts/arch_runtime_probe.py --out "$ARCH_OUT"
 
-echo "[6/9] Reality V2 report (non-promoting)"
+echo "[6/11] Build scoped architecture CLI"
+make -C core arch-detect
+
+echo "[7/11] Architecture identity/nominal matrix scope tests"
+bash core/tests/test_arch.sh
+
+echo "[8/11] Reality V2 report (non-promoting)"
 python3 core/audit_reality_v2.py --out "$AUDIT_OUT"
 
-echo "[7/9] Build governed metrics binaries"
+echo "[9/11] Build governed metrics binaries"
 make -C core metrics-producer contract-validate
 
-echo "[8/9] pkg_metrics governance + adversarial baseline tests"
+echo "[10/11] pkg_metrics governance + adversarial baseline tests"
 bash core/tests/test_governance.sh
 
-echo "[9/9] Scope assertion"
+echo "[11/11] Scope assertion"
 echo "VALIDATION_GATE=PASS"
 echo "STRICT_JSON_GATE=PASS"
 echo "DUPLICATE_KEYS=REJECTED"
@@ -71,7 +77,9 @@ echo "SCOPE_ENFORCEMENT=PASS"
 echo "TOY_CRYPTO_QUARANTINE=PASS"
 echo "TOY_CRYPTO_PRODUCTION_ALLOWED=false"
 echo "ARCH_RUNTIME_PROBE=OBSERVED_LIMITED"
+echo "ARCH_NOMINAL_MATRIX=OBSERVED_LIMITED"
 echo "ARCH_NOMINAL_MATRIX_IS_RUNTIME_EVIDENCE=false"
+echo "STATIC_EMULATION_CLAIM=false"
 echo "PRODUCT_READINESS=NOT_CLAIMED"
 echo "DEVICE_RUNTIME=TOKEN_VAZIO_UNLESS_SEPARATE_RECEIPT"
 echo "SECURITY=FAIL_FOR_TOY_CRYPTO_TOKEN_VAZIO_ELSEWHERE"
