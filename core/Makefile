@@ -2,8 +2,8 @@ CC ?= cc
 CFLAGS ?= -Wall -Wextra -Wshadow -Werror -g -O0
 LDFLAGS ?=
 
-TARGETS := termux-build-core test-manifest manifest-dumper test-cycle2-1 test-cycle2-2 test-build-orchestrator test-dep-resolver test-manifest-v2 device-test-orchestrator perf-profiler perf-analyzer simd-benchmark multicore-benchmark advanced-simd-benchmark advanced-simd-test orchestrator-production-benchmark unified-benchmark test-sprint3 test-sprint4 test-sprint5 test-sprint6 test-sprint10 test-sprint11
-SOURCES := termux-build-core.c sysexec.c package_writer.c elf_writer.c friction_analyzer.c checkpoint.c parallel_jobs.c build_exec.c manifest_loader.c source_download.c build_orchestrator.c dep_resolver.c manifest_v2.c device_test_orchestrator.c perf_profiler.c build_orchestrator_optimized.c perf_analyzer.c build_orchestrator_simd.c phase_barrier_lockfree.c cpu_affinity.c job_scheduler_parallel.c hardware_tuning.c build_orchestrator_advanced_simd.c unified_orchestrator.c gpu_device.c cycle_budget.c workload_generator.c coherence_tuning.c profiler.c multicore_orchestrator.c advanced_vectorization.c work_stealing.c adaptive_dvfs.c
+TARGETS := termux-build-core test-manifest manifest-dumper test-cycle2-1 test-cycle2-2 test-build-orchestrator test-dep-resolver test-manifest-v2 device-test-orchestrator perf-profiler perf-analyzer simd-benchmark multicore-benchmark advanced-simd-benchmark advanced-simd-test orchestrator-production-benchmark unified-benchmark test-sprint3 test-sprint4 test-sprint5 test-sprint6 test-sprint10 test-sprint11 test-sprint12
+SOURCES := termux-build-core.c sysexec.c package_writer.c elf_writer.c friction_analyzer.c checkpoint.c parallel_jobs.c build_exec.c manifest_loader.c source_download.c build_orchestrator.c dep_resolver.c manifest_v2.c device_test_orchestrator.c perf_profiler.c build_orchestrator_optimized.c perf_analyzer.c build_orchestrator_simd.c phase_barrier_lockfree.c cpu_affinity.c job_scheduler_parallel.c hardware_tuning.c build_orchestrator_advanced_simd.c unified_orchestrator.c gpu_device.c cycle_budget.c workload_generator.c coherence_tuning.c profiler.c multicore_orchestrator.c advanced_vectorization.c work_stealing.c adaptive_dvfs.c gpu_integration.c
 TEST_SOURCES := test_manifest.c manifest_loader.c
 DUMPER_SOURCES := manifest_dumper.c
 OBJECTS := $(SOURCES:.c=.o)
@@ -114,6 +114,8 @@ test: clean all
 	@echo "✓ Sprint 10 (work stealing) tests passed"
 	./test-sprint11
 	@echo "✓ Sprint 11 (adaptive DVFS) tests passed"
+	./test-sprint12
+	@echo "✓ Sprint 12 (GPU integration) tests passed"
 
 test-sprint3: tests/test_sprint3.o cycle_budget.o workload_generator.o coherence_tuning.o profiler.o build_orchestrator.o dep_resolver.o
 	$(CC) $(CFLAGS) $(LDFLAGS) -o $@ $^ -lm
@@ -133,6 +135,9 @@ test-sprint10: tests/test_sprint10.o work_stealing.o
 test-sprint11: tests/test_sprint11.o adaptive_dvfs.o
 	$(CC) $(CFLAGS) $(LDFLAGS) -o $@ $^ -lm
 
+test-sprint12: tests/test_sprint12.o gpu_integration.o
+	$(CC) $(CFLAGS) $(LDFLAGS) -o $@ $^ -lm
+
 tests/test_sprint3.o: tests/test_sprint3.c cycle_budget.h workload_generator.h coherence_tuning.h profiler.h
 	$(CC) $(CFLAGS) -c -o $@ $<
 
@@ -149,6 +154,9 @@ tests/test_sprint10.o: tests/test_sprint10.c work_stealing.h
 	$(CC) $(CFLAGS) -c -o $@ $<
 
 tests/test_sprint11.o: tests/test_sprint11.c adaptive_dvfs.h
+	$(CC) $(CFLAGS) -c -o $@ $<
+
+tests/test_sprint12.o: tests/test_sprint12.c gpu_integration.h
 	$(CC) $(CFLAGS) -c -o $@ $<
 
 clean:
