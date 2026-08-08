@@ -2,8 +2,8 @@ CC ?= cc
 CFLAGS ?= -Wall -Wextra -Wshadow -Werror -g -O0
 LDFLAGS ?=
 
-TARGETS := termux-build-core test-manifest manifest-dumper test-cycle2-1 test-cycle2-2 test-build-orchestrator test-dep-resolver
-SOURCES := termux-build-core.c sysexec.c package_writer.c elf_writer.c friction_analyzer.c checkpoint.c parallel_jobs.c build_exec.c manifest_loader.c source_download.c build_orchestrator.c dep_resolver.c
+TARGETS := termux-build-core test-manifest manifest-dumper test-cycle2-1 test-cycle2-2 test-build-orchestrator test-dep-resolver test-manifest-v2
+SOURCES := termux-build-core.c sysexec.c package_writer.c elf_writer.c friction_analyzer.c checkpoint.c parallel_jobs.c build_exec.c manifest_loader.c source_download.c build_orchestrator.c dep_resolver.c manifest_v2.c
 TEST_SOURCES := test_manifest.c manifest_loader.c
 DUMPER_SOURCES := manifest_dumper.c
 OBJECTS := $(SOURCES:.c=.o)
@@ -35,6 +35,9 @@ test-build-orchestrator: tests/test_build_orchestrator.o build_orchestrator.o
 test-dep-resolver: tests/test_dep_resolver.o dep_resolver.o
 	$(CC) $(CFLAGS) $(LDFLAGS) -o $@ $^
 
+test-manifest-v2: tests/test_manifest_v2.o manifest_v2.o
+	$(CC) $(CFLAGS) $(LDFLAGS) -o $@ $^
+
 tests/test_cycle2_1_manifesto_v2.o: tests/test_cycle2_1_manifesto_v2.c manifest.h
 	$(CC) $(CFLAGS) -c -o $@ $<
 
@@ -45,6 +48,9 @@ tests/test_build_orchestrator.o: tests/test_build_orchestrator.c build_orchestra
 	$(CC) $(CFLAGS) -c -o $@ $<
 
 tests/test_dep_resolver.o: tests/test_dep_resolver.c dep_resolver.h
+	$(CC) $(CFLAGS) -c -o $@ $<
+
+tests/test_manifest_v2.o: tests/test_manifest_v2.c manifest_v2.h
 	$(CC) $(CFLAGS) -c -o $@ $<
 
 %.o: %.c manifest.h
@@ -59,7 +65,7 @@ test: clean all test-cycle2-1
 	@echo "Structural and fixture manifest gates passed. Cycle 2.1 validation complete."
 
 clean:
-	rm -f $(OBJECTS) $(TEST_OBJECTS) $(DUMPER_OBJECTS) $(TARGETS) manifest.bin
+	rm -f $(OBJECTS) $(TEST_OBJECTS) $(DUMPER_OBJECTS) tests/test_manifest_v2.o $(TARGETS) manifest.bin
 
 install: $(TARGETS)
 	install -D -m 755 termux-build-core $(PREFIX)/bin/termux-build-core
