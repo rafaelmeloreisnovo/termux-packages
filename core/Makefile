@@ -2,8 +2,8 @@ CC ?= cc
 CFLAGS ?= -Wall -Wextra -Wshadow -Werror -g -O0
 LDFLAGS ?=
 
-TARGETS := termux-build-core test-manifest manifest-dumper test-cycle2-1 test-cycle2-2
-SOURCES := termux-build-core.c sysexec.c package_writer.c elf_writer.c friction_analyzer.c checkpoint.c parallel_jobs.c build_exec.c manifest_loader.c source_download.c
+TARGETS := termux-build-core test-manifest manifest-dumper test-cycle2-1 test-cycle2-2 test-build-orchestrator
+SOURCES := termux-build-core.c sysexec.c package_writer.c elf_writer.c friction_analyzer.c checkpoint.c parallel_jobs.c build_exec.c manifest_loader.c source_download.c build_orchestrator.c
 TEST_SOURCES := test_manifest.c manifest_loader.c
 DUMPER_SOURCES := manifest_dumper.c
 OBJECTS := $(SOURCES:.c=.o)
@@ -29,10 +29,16 @@ test-cycle2-1: tests/test_cycle2_1_manifesto_v2.o manifest_loader.o
 test-cycle2-2: tests/test_cycle2_2_source_download.o manifest_loader.o source_download.o
 	$(CC) $(CFLAGS) $(LDFLAGS) -o $@ $^
 
+test-build-orchestrator: tests/test_build_orchestrator.o build_orchestrator.o
+	$(CC) $(CFLAGS) $(LDFLAGS) -o $@ $^
+
 tests/test_cycle2_1_manifesto_v2.o: tests/test_cycle2_1_manifesto_v2.c manifest.h
 	$(CC) $(CFLAGS) -c -o $@ $<
 
 tests/test_cycle2_2_source_download.o: tests/test_cycle2_2_source_download.c manifest.h
+	$(CC) $(CFLAGS) -c -o $@ $<
+
+tests/test_build_orchestrator.o: tests/test_build_orchestrator.c build_orchestrator.h
 	$(CC) $(CFLAGS) -c -o $@ $<
 
 %.o: %.c manifest.h
