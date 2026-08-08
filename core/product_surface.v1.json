@@ -1,0 +1,37 @@
+{
+  "schema": "rafcodephi_core_product_surface/1.0.0",
+  "claim_allowed": false,
+  "status": "SOURCE_CONTRACT",
+  "build_system": "core/Makefile",
+  "governed_installer": "scripts/install_core_governed.sh",
+  "allowed_binaries": [
+    "termux-build-core",
+    "manifest-dumper"
+  ],
+  "test_only_binaries": [
+    "test-manifest",
+    "device-test-orchestrator",
+    "test-security-hardening",
+    "test-integration-e2e",
+    "test-distributed",
+    "test-sprint12"
+  ],
+  "forbidden_product_sources": [
+    "crypto_ed25519.c",
+    "crypto_chacha20.c",
+    "crypto_pqc.c",
+    "gpu_integration.c",
+    "dist_orchestrator.c",
+    "rpc_coordinator.c"
+  ],
+  "invariants": {
+    "build_all_is_product_surface": false,
+    "tests_are_installed_as_product": false,
+    "toy_crypto_is_product_dependency": false,
+    "gpu_fixture_is_product_dependency": false,
+    "distributed_prototype_is_product_dependency": false
+  },
+  "artifact_installation": "NOT_MEASURED",
+  "android_runtime": "NOT_MEASURED",
+  "next_gate": "Run the governed installer into an isolated DESTDIR/prefix, hash the resulting tree, and then reproduce the same tree from a validated Debian artifact."
+}
