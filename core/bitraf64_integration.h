@@ -1,159 +1,106 @@
 #ifndef TERMUX_BITRAF64_INTEGRATION_H
 #define TERMUX_BITRAF64_INTEGRATION_H
 
-#include <stdint.h>
 #include <stddef.h>
-#include <string.h>
+#include <stdint.h>
+
 #include "manifest_v2.h"
 
-/*
- * BITRAF64 Integration Layer for Termux Manifest V2
- * Maps BITRAF64 toroidal matrix (10×10×10×6) to 2057 packages
- * Embeds fiber ECC (33-bit raf_sig) into manifest entries
- * Validates toroidal ordering and coherence properties
- */
+#ifdef __cplusplus
+extern "C" {
+#endif
 
-#define BITRAF64_DIMENSION 10           /* 10×10×10 spatial */
-#define BITRAF64_FRACTALS 6             /* 6 fractal variants */
-#define BITRAF64_TOTAL_CELLS 1000       /* 10³ = 1000 */
-#define BITRAF64_ECC_RAF_SIG_BITS 33    /* Fiber ECC syndrome */
-#define BITRAF64_MAX_PACKAGES 2057      /* Termux packages */
+#define BITRAF64_DIM 10U
+#define BITRAF64_FRACTALS 6U
+#define BITRAF64_CELLS_PER_FRACTAL 1000U
+#define BITRAF64_TOTAL_CELLS 6000U
+#define BITRAF64_PACKAGE_REFERENCE_COUNT 2057U
+#define BITRAF64_PROJECTED_LAYERS 32U
 
-/* Bit-packing for BITRAF64 metadata in manifest reserved field */
+#define BITRAF64_PHI 1.6180339887498948482
+#define BITRAF64_PI 3.14159265358979323846
+#define BITRAF64_SPIRAL 0.86602540378443864676
+#define BITRAF64_R_CORR_DECLARED 0.963999
+
 typedef struct {
-  uint64_t raf_sig : 33;      /* Fiber ECC signature (33 bits) */
-  uint64_t coord_i : 4;       /* Toroidal coordinate i ∈ [0,9] (4 bits) */
-  uint64_t coord_j : 4;       /* Toroidal coordinate j ∈ [0,9] (4 bits) */
-  uint64_t coord_k : 4;       /* Toroidal coordinate k ∈ [0,9] (4 bits) */
-  uint64_t fractal_f : 3;     /* Fractal index f ∈ [0,5] (3 bits) */
-} termux_bitraf64_metadata_t;
+    uint8_t i;
+    uint8_t j;
+    uint8_t k;
+    uint8_t f;
+} bitraf64_coord_t;
 
-/* Toroidal validation result */
+/* Manifest V2 remains exactly 200 bytes. Full Phase-1 diagnostics live here. */
 typedef struct {
-  uint32_t pkg_index;         /* Package index in manifest */
-  uint32_t toroidal_layer;    /* Computed layer from (i+j+k) % 32 */
-  uint64_t spiral_distance;   /* Distance metric in toroidal space */
-  uint32_t neighbor_count;    /* Number of valid neighbors */
-  uint32_t raf_sig;           /* Fiber ECC signature value */
-  int valid;                  /* 1 if passes all validations */
-} termux_bitraf64_validation_t;
+    uint64_t diagnostic_sig33;
+    uint8_t projected_layer;
+    uint8_t coherence_score7;
+    uint16_t flags;
+    uint32_t manifest_tag32;
+} bitraf64_sidecar_v1_t;
 
-/* Adapter functions */
+enum {
+    BITRAF64_SIDECAR_STRUCTURAL_ONLY = 1u << 0,
+    BITRAF64_SIDECAR_NOT_ECC_PROOF   = 1u << 1,
+    BITRAF64_SIDECAR_NOT_DAG_DEPTH   = 1u << 2
+};
 
-/**
- * Compute toroidal coordinates from package index
- * Maps 2057 packages to 10×10×10×6 matrix
- *
- * Strategy:
- *   - Sort packages by dependency depth (existing)
- *   - Assign to toroidal layers: depth % 32
- *   - Within layer: distribute across (i,j,k,f) space
- *   - Fractal f cycles through 6 variants per package
- */
-int termux_bitraf64_compute_coordinates(
-    uint32_t pkg_index,
-    uint32_t total_packages,
-    uint32_t *out_i, uint32_t *out_j, uint32_t *out_k, uint32_t *out_f
-);
+typedef struct {
+    uint8_t torus_roundtrip_verified;
+    uint8_t manifest_tag_roundtrip_verified;
+    uint8_t gcd_claim_corrected;
+    uint8_t r_corr_formula_matches_declared;
+    uint8_t linear_invertibility_proven;
+    uint8_t single_error_correction_proven;
+    uint8_t real_dag_alignment_proven;
+    uint8_t entropy_autocorrelation_measured;
+    uint8_t simd_speedup_benchmarked;
+    uint8_t claim_allowed;
+} bitraf64_claim_gate_t;
 
-/**
- * Compute spiral distance in toroidal space
- * Distance = (√3/2)^(i+j+k) as per BITRAF64 coherence metric
- */
-uint64_t termux_bitraf64_compute_spiral_distance(
-    uint32_t i, uint32_t j, uint32_t k
-);
+int bitraf64_coord_from_index(uint32_t index, bitraf64_coord_t *out);
+uint32_t bitraf64_coord_to_index(const bitraf64_coord_t *coord);
+uint8_t bitraf64_projected_layer(const bitraf64_coord_t *coord);
+double bitraf64_toroidal_distance(const bitraf64_coord_t *a,
+                                  const bitraf64_coord_t *b);
 
-/**
- * Extract or set BITRAF64 metadata in manifest entry
- * Uses _reserved field for bit-packed storage
- */
-int termux_bitraf64_metadata_from_entry(
-    struct termux_manifest_entry_v2 *entry,
-    termux_bitraf64_metadata_t *out_metadata
-);
+/* Diagnostic fingerprint only: this is not an ECC correction proof. */
+uint64_t bitraf64_diagnostic_sig33(const uint8_t *data, size_t len);
 
-int termux_bitraf64_metadata_to_entry(
-    struct termux_manifest_entry_v2 *entry,
-    const termux_bitraf64_metadata_t *metadata
-);
+uint32_t bitraf64_gcd_u32(uint32_t a, uint32_t b);
+double bitraf64_r_corr_derived(void);
+double bitraf64_redundancy_bits_per_byte(uint32_t redundancy_bits,
+                                         uint32_t input_bytes);
 
-/**
- * Validate package against toroidal constraints
- *
- * Checks:
- *   1. Coordinates (i,j,k,f) within valid ranges
- *   2. Raf_sig consistent with coordinate hash
- *   3. Toroidal layer matches expected DAG depth
- *   4. Neighbors are reachable in dependency graph
- */
-int termux_bitraf64_validate_package(
-    struct termux_manifest_entry_v2 *entry,
-    const struct termux_manifest_entry_v2 *all_entries,
-    uint32_t total_entries,
-    termux_bitraf64_validation_t *out_validation
-);
+uint8_t bitraf64_coherence_score7(const struct termux_manifest_entry_v2 *entry,
+                                  const uint8_t *data,
+                                  size_t len);
 
-/**
- * Validate entire manifest against toroidal topology
- * Ensures 2057 packages form coherent toroidal lattice
- */
-int termux_bitraf64_validate_all_packages(
-    struct termux_manifest_entry_v2 *entries,
-    uint32_t entry_count,
-    uint32_t *out_valid_count,
-    uint64_t *out_total_spiral_distance
-);
+uint32_t bitraf64_manifest_tag32(const struct termux_manifest_entry_v2 *entry,
+                                 const uint8_t *data,
+                                 size_t len,
+                                 uint8_t projected_layer);
 
-/**
- * Compute unified coherence metric
- * Φ_unified = Φ_bitraf × Φ_termux × coupling_constant
- *
- * Where:
- *   Φ_bitraf = (1 - spiralDecay) × (1 - FibonacciVariance) × (1 - ECCErrorRate)
- *   Φ_termux = (1 - heapOverhead) × (1 - latencyWall) × (1 - cacheMisses)
- */
-uint64_t termux_bitraf64_compute_unified_coherence(
-    const struct termux_manifest_entry_v2 *entry,
-    uint32_t total_entries
-);
+int bitraf64_manifest_embed(struct termux_manifest_entry_v2 *entry,
+                            bitraf64_sidecar_v1_t *sidecar,
+                            const uint8_t *data,
+                            size_t len,
+                            uint32_t package_index);
 
-/**
- * Map BITRAF64 layout to Termux architecture variants
- * BITRAF64 fractals (6) → Termux architectures (ARM32, ARM64, x86_64, with variants)
- */
-int termux_bitraf64_get_arch_from_fractal(
-    uint32_t fractal_f,
-    char *out_arch_str,
-    size_t arch_str_len
-);
+int bitraf64_manifest_validate(const struct termux_manifest_entry_v2 *entry,
+                               const bitraf64_sidecar_v1_t *sidecar,
+                               const uint8_t *data,
+                               size_t len,
+                               uint32_t package_index);
 
-/**
- * Pack/unpack operations for bit-level BITRAF64 metadata
- */
-static inline uint64_t termux_bitraf64_metadata_pack(
-    uint32_t raf_sig,      /* 33 bits, masked to lower 33 */
-    uint32_t coord_i, uint32_t coord_j, uint32_t coord_k,
-    uint32_t fractal_f
-) {
-  return ((uint64_t)(raf_sig & 0x1FFFFFFFFULL) << 0) |   /* bits 0-32: raf_sig */
-         ((uint64_t)(coord_i & 0xF) << 33) |              /* bits 33-36: i */
-         ((uint64_t)(coord_j & 0xF) << 37) |              /* bits 37-40: j */
-         ((uint64_t)(coord_k & 0xF) << 41) |              /* bits 41-44: k */
-         ((uint64_t)(fractal_f & 0x7) << 45);             /* bits 45-47: f */
+bitraf64_claim_gate_t
+bitraf64_claim_gate_collect(const struct termux_manifest_entry_v2 *entry,
+                            const bitraf64_sidecar_v1_t *sidecar,
+                            const uint8_t *data,
+                            size_t len,
+                            uint32_t package_index);
+
+#ifdef __cplusplus
 }
+#endif
 
-static inline void termux_bitraf64_metadata_unpack(
-    uint64_t packed,
-    uint32_t *out_raf_sig,
-    uint32_t *out_i, uint32_t *out_j, uint32_t *out_k,
-    uint32_t *out_f
-) {
-  *out_raf_sig = (uint32_t)((packed >> 0) & 0x1FFFFFFFFULL);
-  *out_i = (uint32_t)((packed >> 33) & 0xF);
-  *out_j = (uint32_t)((packed >> 37) & 0xF);
-  *out_k = (uint32_t)((packed >> 41) & 0xF);
-  *out_f = (uint32_t)((packed >> 45) & 0x7);
-}
-
-#endif /* TERMUX_BITRAF64_INTEGRATION_H */
+#endif
