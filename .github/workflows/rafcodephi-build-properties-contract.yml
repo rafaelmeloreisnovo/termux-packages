@@ -32,16 +32,28 @@ jobs:
   properties-contract:
     runs-on: ubuntu-24.04
     timeout-minutes: 5
+    env:
+      EXPECTED_SOURCE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
     steps:
-      - name: Checkout exact revision
+      - name: Checkout exact source revision
         uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          fetch-depth: 1
 
-      - name: Record immutable input
+      - name: Prove exact HEAD and record immutable input
         run: |
           set -euo pipefail
           mkdir -p build/reports
+          observed="$(git rev-parse HEAD)"
+          printf '%s\n' "$observed" | tee build/reports/head.txt
+          printf '%s\n' "$EXPECTED_SOURCE_SHA" | tee build/reports/expected-head.txt
+          if [[ "$observed" != "$EXPECTED_SOURCE_SHA" ]]; then
+            printf 'SAME_SOURCE_REVISION=FAIL expected=%s observed=%s\n' "$EXPECTED_SOURCE_SHA" "$observed" >&2
+            exit 1
+          fi
+          printf 'SAME_SOURCE_REVISION=PASS sha=%s\n' "$observed" | tee build/reports/source-revision.txt
           sha256sum scripts/properties.sh | tee build/reports/properties-before.sha256
-          git rev-parse HEAD | tee build/reports/head.txt
           python3 --version
           bash --version | head -n 1
 
@@ -121,8 +133,11 @@ jobs:
         if: success()
         run: |
           set -euo pipefail
+          observed_head="$(git rev-parse HEAD)"
           cat > build/reports/status.txt <<EOF
           RAFCODEPHI_BUILD_PROPERTIES_CONTRACT=PASS
+          SAME_SOURCE_REVISION=PASS
+          SOURCE_COMMIT=${observed_head}
           STANDARD_BUILD_PREFIX=/data/data/com.termux.rafacodephi/files/usr
           REPO_BINARY_PREFIX=/data/data/com.termux/files/usr
           REPO_BINARY_REUSE_COMPATIBLE=false
@@ -133,7 +148,6 @@ jobs:
           PHYSICAL_DEVICE=NOT_MEASURED
           CLAIM_ALLOWED=false
           RELEASE_ALLOWED=false
-          COMMIT=${GITHUB_SHA}
           EOF
           cat build/reports/status.txt
 
@@ -141,6 +155,6 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v7
         with:
-          name: rafcodephi-build-properties-${{ github.sha }}
+          name: rafcodephi-build-properties-${{ github.event.pull_request.head.sha || github.sha }}
           path: build/reports/
           if-no-files-found: error
