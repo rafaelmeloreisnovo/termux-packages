@@ -35,3 +35,6 @@ test-sprint5
 test-sprint6
 test-ascii-grafo
 test-e2e-build
+test-production-hardening
+_checkpoints
+_build_cache

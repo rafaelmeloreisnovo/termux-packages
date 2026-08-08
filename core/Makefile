@@ -2,8 +2,8 @@ CC ?= cc
 CFLAGS ?= -Wall -Wextra -Wshadow -Werror -g -O0
 LDFLAGS ?=
 
-TARGETS := termux-build-core test-manifest manifest-dumper test-cycle2-1 test-cycle2-2 test-build-orchestrator test-dep-resolver test-manifest-v2 device-test-orchestrator perf-profiler perf-analyzer simd-benchmark multicore-benchmark advanced-simd-benchmark advanced-simd-test orchestrator-production-benchmark unified-benchmark test-sprint3 test-sprint4 test-sprint5 test-sprint6 test-sprint10 test-sprint11 test-sprint12 orchestrator-build-main test-bitraf64-integration test-bitraf64-simd-ops test-bitraf64-lut-cache test-bitraf64-coherence-monitor test-ascii-grafo test-e2e-build
-SOURCES := termux-build-core.c sysexec.c package_writer.c elf_writer.c friction_analyzer.c checkpoint.c parallel_jobs.c build_exec.c manifest_loader.c source_download.c build_orchestrator.c dep_resolver.c manifest_v2.c device_test_orchestrator.c perf_profiler.c build_orchestrator_optimized.c perf_analyzer.c build_orchestrator_simd.c phase_barrier_lockfree.c cpu_affinity.c job_scheduler_parallel.c hardware_tuning.c build_orchestrator_advanced_simd.c unified_orchestrator.c gpu_device.c cycle_budget.c workload_generator.c coherence_tuning.c profiler.c multicore_orchestrator.c advanced_vectorization.c work_stealing.c adaptive_dvfs.c gpu_integration.c orchestrator_build_main.c bitraf64_integration.c bitraf64_simd_ops.c bitraf64_lut_cache.c bitraf64_coherence_monitor.c ascii_grafo.c ascii_grafo_integration.c
+TARGETS := termux-build-core test-manifest manifest-dumper test-cycle2-1 test-cycle2-2 test-build-orchestrator test-dep-resolver test-manifest-v2 device-test-orchestrator perf-profiler perf-analyzer simd-benchmark multicore-benchmark advanced-simd-benchmark advanced-simd-test orchestrator-production-benchmark unified-benchmark test-sprint3 test-sprint4 test-sprint5 test-sprint6 test-sprint10 test-sprint11 test-sprint12 orchestrator-build-main test-bitraf64-integration test-bitraf64-simd-ops test-bitraf64-lut-cache test-bitraf64-coherence-monitor test-ascii-grafo test-e2e-build test-production-hardening
+SOURCES := termux-build-core.c sysexec.c package_writer.c elf_writer.c friction_analyzer.c checkpoint.c parallel_jobs.c build_exec.c manifest_loader.c source_download.c build_orchestrator.c dep_resolver.c manifest_v2.c device_test_orchestrator.c perf_profiler.c build_orchestrator_optimized.c perf_analyzer.c build_orchestrator_simd.c phase_barrier_lockfree.c cpu_affinity.c job_scheduler_parallel.c hardware_tuning.c build_orchestrator_advanced_simd.c unified_orchestrator.c gpu_device.c cycle_budget.c workload_generator.c coherence_tuning.c profiler.c multicore_orchestrator.c advanced_vectorization.c work_stealing.c adaptive_dvfs.c gpu_integration.c orchestrator_build_main.c bitraf64_integration.c bitraf64_simd_ops.c bitraf64_lut_cache.c bitraf64_coherence_monitor.c ascii_grafo.c ascii_grafo_integration.c production_hardening.c
 TEST_SOURCES := test_manifest.c manifest_loader.c
 DUMPER_SOURCES := manifest_dumper.c
 OBJECTS := $(SOURCES:.c=.o)
@@ -84,6 +84,9 @@ test-ascii-grafo: tests/test_ascii_grafo.o ascii_grafo.o ascii_grafo_integration
 	$(CC) $(CFLAGS) -o $@ $^ $(LDFLAGS) -lm
 
 test-e2e-build: tests/test_e2e_build.o workload_generator.o dep_resolver.o ascii_grafo.o ascii_grafo_integration.o bitraf64_coherence_monitor.o
+	$(CC) $(CFLAGS) -o $@ $^ $(LDFLAGS) -lm
+
+test-production-hardening: tests/test_production_hardening.o production_hardening.o
 	$(CC) $(CFLAGS) -o $@ $^ $(LDFLAGS) -lm
 
 tests/test_cycle2_1_manifesto_v2.o: tests/test_cycle2_1_manifesto_v2.c manifest.h
@@ -196,8 +199,11 @@ tests/test_ascii_grafo.o: tests/test_ascii_grafo.c ascii_grafo.h ascii_grafo_int
 tests/test_e2e_build.o: tests/test_e2e_build.c workload_generator.h ascii_grafo_integration.h bitraf64_coherence_monitor.h
 	$(CC) $(CFLAGS) -c -o $@ $<
 
+tests/test_production_hardening.o: tests/test_production_hardening.c production_hardening.h
+	$(CC) $(CFLAGS) -c -o $@ $<
+
 clean:
-	rm -f $(OBJECTS) $(TEST_OBJECTS) $(DUMPER_OBJECTS) tests/test_manifest_v2.o tests/test_bitraf64_simd_ops.o tests/test_bitraf64_lut_cache.o tests/test_bitraf64_coherence_monitor.o tests/test_ascii_grafo.o tests/test_e2e_build.o build_orchestrator_optimized.o perf_analyzer.o $(TARGETS) manifest.bin
+	rm -f $(OBJECTS) $(TEST_OBJECTS) $(DUMPER_OBJECTS) tests/test_manifest_v2.o tests/test_bitraf64_simd_ops.o tests/test_bitraf64_lut_cache.o tests/test_bitraf64_coherence_monitor.o tests/test_ascii_grafo.o tests/test_e2e_build.o tests/test_production_hardening.o build_orchestrator_optimized.o perf_analyzer.o $(TARGETS) manifest.bin
 
 install: $(TARGETS)
 	install -D -m 755 termux-build-core $(PREFIX)/bin/termux-build-core
