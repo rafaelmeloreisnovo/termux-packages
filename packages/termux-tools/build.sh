@@ -19,6 +19,19 @@ TERMUX_PKG_DEPENDS="coreutils, curl, dash, diffutils, findutils, gawk, grep, les
 TERMUX_PKG_RECOMMENDS="ed, dos2unix, inetutils, net-tools, patch, unzip"
 
 termux_step_pre_configure() {
+	# A forked Termux application must not inherit com.termux paths/package IDs
+	# through termux-tools (pkg, termux-setup-package-manager, etc.). Configure
+	# scripts also consume TERMUX_PREFIX from the environment, so export both
+	# compatibility variables explicitly before autoreconf/configure.
+	export TERMUX_PREFIX TERMUX_APP_PACKAGE
+
+	# Rewrite text source only; never post-process packaged ELF/data binaries.
+	# Replacing the package id also transforms the canonical /data/data/com.termux
+	# prefix embedded in scripts into the package-specific RAFCODEPHI path.
+	while IFS= read -r -d '' source_file; do
+		sed -i "s/com\.termux/${TERMUX_APP_PACKAGE//\//\\/}/g" "$source_file"
+	done < <(grep -IlZR -- 'com\.termux' . || true)
+
 	# Can't apply these patch normally since they contains special @TERMUX..@ text which normal patch replaces:
 	for d in "$TERMUX_PKG_BUILDER_DIR"/*.diff; do
 		patch -p1 < "$d"
