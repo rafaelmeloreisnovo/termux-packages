@@ -2,7 +2,7 @@
 # Single-entry governance V2 runner.
 #
 # Modes:
-#   validate (default): validate registry/tests + quarantine + pkg_metrics governance.
+#   validate (default): validate registry/quarantine/contracts + pkg_metrics governance.
 #   promote:            run validate, then require strict Reality V2 gate.
 #
 # A validate PASS does not mean promotion PASS. Promotion remains blocked while
@@ -37,23 +37,29 @@ for cmd in python3 make jq cc; do
     }
 done
 
-echo "[1/6] Reality V2 registry/unit tests"
+echo "[1/7] Reality V2 registry/unit tests"
 python3 -m unittest core/tests/test_reality_audit_v2.py
 
-echo "[2/6] Toy crypto quarantine gate"
+echo "[2/7] Toy crypto quarantine gate"
 python3 -m unittest core/tests/test_toy_crypto_quarantine.py
 
-echo "[3/6] Reality V2 report (non-promoting)"
+echo "[3/7] Strict pkg_metrics adversarial contract tests"
+python3 -m unittest core/tests/test_contract_adversarial.py
+
+echo "[4/7] Reality V2 report (non-promoting)"
 python3 core/audit_reality_v2.py --out "$AUDIT_OUT"
 
-echo "[4/6] Build governed metrics binaries"
+echo "[5/7] Build governed metrics binaries"
 make -C core metrics-producer contract-validate
 
-echo "[5/6] pkg_metrics governance + adversarial baseline tests"
+echo "[6/7] pkg_metrics governance + adversarial baseline tests"
 bash core/tests/test_governance.sh
 
-echo "[6/6] Scope assertion"
+echo "[7/7] Scope assertion"
 echo "VALIDATION_GATE=PASS"
+echo "STRICT_JSON_GATE=PASS"
+echo "DUPLICATE_KEYS=REJECTED"
+echo "SCOPE_ENFORCEMENT=PASS"
 echo "TOY_CRYPTO_QUARANTINE=PASS"
 echo "TOY_CRYPTO_PRODUCTION_ALLOWED=false"
 echo "PRODUCT_READINESS=NOT_CLAIMED"
