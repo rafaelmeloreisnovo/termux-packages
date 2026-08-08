@@ -1,14 +1,16 @@
 #!/usr/bin/env python3
 """RAFCODEPHI package-delivery gate.
 
-Two deliberately separate gates:
+Three distinct states are deliberately kept apart:
 
-* source: proves that the existing Termux builder + essential recipes expose the
-  required source contract for RAFCODEPHI. It does not claim a package artifact.
-* artifact: validates a concrete Debian package with dpkg-deb. Missing artifacts
-  are BLOCKED, never promoted from source readiness.
+* source: proves the existing Termux builder + essential recipes + governed
+  product-install surface expose the required source contract.
+* artifact: validates a concrete Debian package with dpkg-deb.
+* runtime: deliberately not implemented here; apt/pkg/Android execution requires
+  a separate physical/environment receipt.
 
-This script does not create a second package builder; it governs build-package.sh.
+Missing artifacts are BLOCKED, never promoted from source readiness. This script
+creates no second package builder; it governs the existing build-package.sh.
 """
 from __future__ import annotations
 
@@ -25,7 +27,8 @@ from typing import Any
 PACKAGE = "com.termux.rafacodephi"
 PREFIX = f"/data/data/{PACKAGE}/files/usr"
 ALLOWED_ARCHES = {"arm", "aarch64"}
-SCHEMA = "rafcodephi_delivery_gate/1.0.0"
+SCHEMA = "rafcodephi_delivery_gate/1.1.0"
+PRODUCT_SURFACE_SCHEMA = "rafcodephi_core_product_surface/1.0.0"
 
 
 class GateError(RuntimeError):
@@ -58,17 +61,22 @@ def source_gate(repo: Path) -> dict[str, Any]:
     tools_p = repo / "packages" / "termux-tools" / "build.sh"
     bootstrap_p = repo / "scripts" / "emit_rafcodephi_bootstrap_source_manifest.py"
     repo_json_p = repo / "repo.json"
+    surface_p = repo / "core" / "product_surface.v1.json"
+    installer_p = repo / "scripts" / "install_core_governed.sh"
 
     builder = read(builder_p)
     bash = read(bash_p)
     tools = read(tools_p)
     bootstrap = read(bootstrap_p)
     repo_json_raw = read(repo_json_p)
+    surface_raw = read(surface_p)
+    installer = read(installer_p)
 
     try:
         repo_json = json.loads(repo_json_raw)
+        surface = json.loads(surface_raw)
     except json.JSONDecodeError as exc:
-        raise GateError(f"repo.json invalid JSON: {exc}") from exc
+        raise GateError(f"source contract JSON invalid: {exc}") from exc
 
     # Existing builder is authoritative; prove it can produce Debian packages
     # for the two Android architectures relevant to this delivery contract.
@@ -100,6 +108,43 @@ def source_gate(repo: Path) -> dict[str, Any]:
     if not isinstance(repo_json, dict) or "packages" not in repo_json:
         raise GateError("repo.json does not declare packages repository")
 
+    if not isinstance(surface, dict) or surface.get("schema") != PRODUCT_SURFACE_SCHEMA:
+        raise GateError("invalid governed product surface schema")
+    if surface.get("claim_allowed") is not False:
+        raise GateError("product source surface must remain claim_allowed=false")
+    allowed = surface.get("allowed_binaries")
+    if allowed != ["termux-build-core", "manifest-dumper"]:
+        raise GateError(f"unexpected governed product binaries: {allowed!r}")
+    forbidden = set(surface.get("forbidden_product_sources", []))
+    required_forbidden = {
+        "crypto_ed25519.c",
+        "crypto_chacha20.c",
+        "crypto_pqc.c",
+        "gpu_integration.c",
+        "dist_orchestrator.c",
+        "rpc_coordinator.c",
+    }
+    if not required_forbidden.issubset(forbidden):
+        raise GateError("governed product surface does not quarantine all known risky sources")
+
+    # Governed installer must build the explicit allow-list and must not delegate
+    # to the legacy broad `make install` target.
+    require(installer, r'make -C "\$CORE_DIR" "\$\{ALLOWED\[@\]\}"', "governed explicit build targets")
+    if re.search(r'make\s+-C\s+"?\$CORE_DIR"?\s+install\b', installer):
+        raise GateError("governed installer delegates to legacy broad make install")
+    require(installer, r'DESTDIR=', "governed isolated install support")
+    require(installer, r'ANDROID_RUNTIME=NOT_MEASURED', "installer runtime boundary")
+
+    source_paths = (
+        builder_p,
+        bash_p,
+        tools_p,
+        bootstrap_p,
+        repo_json_p,
+        surface_p,
+        installer_p,
+    )
+
     return {
         "schema": SCHEMA,
         "gate": "source",
@@ -110,11 +155,17 @@ def source_gate(repo: Path) -> dict[str, Any]:
         "architectures": sorted(ALLOWED_ARCHES),
         "package_format": "debian",
         "builder": "build-package.sh",
+        "governed_installer": "scripts/install_core_governed.sh",
         "source_contract": {
             "bash_recipe": "PASS",
             "termux_tools_recipe": "PASS",
             "builder_deb_path": "PASS",
             "bootstrap_profile_contract": "PASS",
+            "product_surface_contract": "PASS",
+            "broad_make_install_used_by_governed_route": False,
+            "toy_crypto_product_dependency": False,
+            "gpu_fixture_product_dependency": False,
+            "distributed_prototype_product_dependency": False,
         },
         "artifact": "NOT_MEASURED",
         "repo_metadata_generated": "NOT_MEASURED",
@@ -122,7 +173,7 @@ def source_gate(repo: Path) -> dict[str, Any]:
         "physical_device_runtime": "NOT_MEASURED",
         "sources": {
             str(p.relative_to(repo)): {"sha256": sha256(p)}
-            for p in (builder_p, bash_p, tools_p, bootstrap_p, repo_json_p)
+            for p in source_paths
         },
     }
 
@@ -139,7 +190,6 @@ def dpkg_field(path: Path, field: str) -> str:
 
 
 def artifact_gate(repo: Path, artifact: Path, expected_package: str, arch: str) -> dict[str, Any]:
-    # Source gate must pass first; artifact evidence cannot float without origin.
     source = source_gate(repo)
     if arch not in ALLOWED_ARCHES:
         raise GateError(f"unsupported RAFCODEPHI delivery arch: {arch}")
