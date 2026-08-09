@@ -49,6 +49,7 @@ contract-validate
 arch-detect
 receipt-validate
 receipt-ledger
+arch-probe
 *.real.o
 *.receipt
 *.jsonl
