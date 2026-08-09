@@ -31,6 +31,7 @@ VALIDATOR="${VALIDATOR:-core/contract-validate}"
 STRICT_VALIDATOR="${STRICT_VALIDATOR:-scripts/validate_pkg_metrics_json.py}"
 RECEIPT_VALIDATOR="${RECEIPT_VALIDATOR:-core/receipt-validate}"
 RECEIPT_LEDGER="${RECEIPT_LEDGER:-core/receipt-ledger}"
+ARCH_PROBE="${ARCH_PROBE:-core/arch-probe}"
 LEDGER_PATH="${LEDGER_PATH:-/tmp/real_gov_ledger.jsonl}"
 LEDGER_DIR="${LEDGER_DIR:-/tmp/real_gov_receipts}"
 # Timestamped per-run path so ledger entries reference immutable files.
@@ -96,41 +97,41 @@ require_bin "$PRODUCER"
 require_bin "$VALIDATOR"
 
 # 2) Producer runs
-log "step 1/9: run producer"
+log "step 1/10: run producer"
 if ! "$PRODUCER" "$REPO_ROOT" "$OUT_JSON" >/dev/null; then
     fail "producer failed to run"
 fi
 
 # 3) Strict JSON grammar/scope/duplicate gate
-log "step 2/9: strict current JSON validation"
+log "step 2/10: strict current JSON validation"
 require_json_file "$OUT_JSON"
 strict_validate "$OUT_JSON"
 
 # 4) Compact C contract validation remains an independent ruler
-log "step 3/9: C contract validation (pkg_metrics/1.0.0)"
+log "step 3/10: C contract validation (pkg_metrics/1.0.0)"
 if ! "$VALIDATOR" "$OUT_JSON"; then
     fail "C contract validation rejected the JSON"
 fi
 
 # 5) No TOKEN_VAZIO leaks into the promoted metrics artifact
-log "step 4/9: scan current output for TOKEN_VAZIO"
+log "step 4/10: scan current output for TOKEN_VAZIO"
 require_no_token_vazio "$OUT_JSON"
 
 # 6) Baseline is evidence too and must satisfy the strict contract.
-log "step 5/9: strict regression baseline validation"
+log "step 5/10: strict regression baseline validation"
 require_json_file "$BASELINE"
 strict_validate "$BASELINE"
 require_no_token_vazio "$BASELINE"
 
 # 7) Regression fields must exist
-log "step 6/9: regression field presence"
+log "step 6/10: regression field presence"
 for field in node_count edge_count coherence_phi cycle_count unresolved_count; do
     require_json_field "$BASELINE" "$field"
     require_json_field "$OUT_JSON" "$field"
 done
 
 # 8) Regression gate vs baseline
-log "step 7/9: regression gate vs $BASELINE"
+log "step 7/10: regression gate vs $BASELINE"
 base_nodes=$(jq -r '.node_count' "$BASELINE")
 base_edges=$(jq -r '.edge_count' "$BASELINE")
 base_phi=$(jq -r '.coherence_phi' "$BASELINE")
@@ -168,7 +169,7 @@ fi
 log "regression gate passed"
 
 # 9) Receipt verification — signature must match; tampering is fatal.
-log "step 8/9: verify receipt signature"
+log "step 8/10: verify receipt signature"
 if [ ! -f "$RECEIPT_VALIDATOR" ]; then
     fail "receipt validator missing: $RECEIPT_VALIDATOR"
 fi
@@ -181,7 +182,7 @@ fi
 log "receipt signature valid"
 
 # 10) Chain-of-custody ledger: append current receipt + verify full chain
-log "step 9/9: chain-of-custody ledger append + verify"
+log "step 9/10: chain-of-custody ledger append + verify"
 if [ ! -f "$RECEIPT_LEDGER" ]; then
     fail "receipt ledger CLI missing: $RECEIPT_LEDGER"
 fi
@@ -193,6 +194,38 @@ if ! "$RECEIPT_LEDGER" verify "$LEDGER_PATH" >/dev/null 2>&1; then
 fi
 log "chain-of-custody intact"
 
-log "STRICT_JSON_GATE=PASS duplicate_keys=REJECTED scope_enforcement=PASS receipt=VALID ledger=INTACT"
+# 11) Runtime capability probe: OBSERVED evidence supersedes nominal.
+#     Its receipt joins the ledger, extending the chain-of-custody.
+log "step 10/10: runtime capability probe + receipt + ledger append"
+CAP_JSON="$LEDGER_DIR/capability-$_STAMP.json"
+if [ ! -f "$ARCH_PROBE" ]; then
+    fail "arch probe missing: $ARCH_PROBE"
+fi
+if ! "$ARCH_PROBE" "$CAP_JSON" >/dev/null 2>&1; then
+    fail "arch probe FAILED"
+fi
+if [ ! -f "$CAP_JSON.receipt" ]; then
+    fail "capability receipt not emitted"
+fi
+if ! "$RECEIPT_VALIDATOR" "$CAP_JSON.receipt" >/dev/null 2>&1; then
+    fail "capability receipt signature invalid"
+fi
+if ! "$RECEIPT_LEDGER" append "$LEDGER_PATH" "$CAP_JSON.receipt" >/dev/null 2>&1; then
+    fail "capability receipt ledger append FAILED"
+fi
+if ! "$RECEIPT_LEDGER" verify "$LEDGER_PATH" >/dev/null 2>&1; then
+    fail "ledger verification FAILED after capability append"
+fi
+# Detect OBSERVED_MISMATCH on page_size or cache_line (hard mismatch is a
+# real environment fact — we surface it but do NOT fail the gate on it).
+if grep -qE '"page_size": *"OBSERVED_MISMATCH"' "$CAP_JSON"; then
+    log "NOTE: page_size OBSERVED_MISMATCH — observed supersedes nominal"
+fi
+if grep -qE '"cache_line": *"OBSERVED_MISMATCH"' "$CAP_JSON"; then
+    log "NOTE: cache_line OBSERVED_MISMATCH — observed supersedes nominal"
+fi
+log "runtime capability observed and sealed"
+
+log "STRICT_JSON_GATE=PASS duplicate_keys=REJECTED scope_enforcement=PASS receipt=VALID ledger=INTACT capability=OBSERVED"
 log "✓✓✓ pkg_metrics governance gate PASSED (scope-limited; not product readiness)"
 exit 0
