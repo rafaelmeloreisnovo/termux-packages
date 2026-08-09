@@ -30,7 +30,7 @@ OBJECTS := $(SOURCES:.c=.o)
 TEST_OBJECTS := $(TEST_SOURCES:.c=.o)
 DUMPER_OBJECTS := $(DUMPER_SOURCES:.c=.o)
 
-.PHONY: all clean test manifest
+.PHONY: all clean test manifest real-all real-tour real-test
 
 all: $(TARGETS)
 
@@ -375,3 +375,35 @@ install: $(TARGETS)
 	install -D -m 755 termux-build-core $(PREFIX)/bin/termux-build-core
 	install -D -m 755 test-manifest $(PREFIX)/bin/test-manifest
 	install -D -m 755 manifest-dumper $(PREFIX)/bin/manifest-dumper
+
+# ============================================================================
+# REAL layer convenience targets — build, test, or run the executable tour.
+# ============================================================================
+
+# Build every REAL binary in one shot.
+real-all: metrics-producer arch-probe receipt-validate receipt-ledger \
+          contract-validate arch-detect pkg-real pkg-count-freestanding
+	@echo "✓ REAL binaries built:"
+	@ls -l metrics-producer arch-probe receipt-validate receipt-ledger \
+	       contract-validate arch-detect pkg-real pkg-count-freestanding
+
+# Run every REAL test suite; fail-closed on any suite red.
+# Runs from repo root because pkg_scanner needs to find packages/ dirs.
+real-test: real-all
+	@cd .. && ./core/test-pkg-real
+	@cd .. && bash core/tests/test_real_attrs.sh
+	@cd .. && bash core/tests/test_freestanding.sh
+	@cd .. && bash core/tests/test_governance.sh
+	@cd .. && bash core/tests/test_arch.sh
+	@cd .. && bash core/tests/test_receipts.sh
+	@cd .. && bash core/tests/test_ledger.sh
+	@cd .. && bash core/tests/test_arch_probe.sh
+	@echo "✓ All REAL test suites passed"
+
+# Run the executable documentation tour; refreshes docs/REAL_TOUR_OUTPUT.md
+real-tour: real-all
+	@bash ../docs/REAL_TOUR.sh
+
+# Same as real-tour but non-zero exit on any failure (CI use).
+real-tour-check: real-all
+	@bash ../docs/REAL_TOUR.sh --check
