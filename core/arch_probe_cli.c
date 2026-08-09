@@ -43,25 +43,39 @@ static uint64_t now_unix_ms(void) {
   return (uint64_t)ts.tv_sec * 1000ULL + (uint64_t)(ts.tv_nsec / 1000000);
 }
 
-/* Read L1 D-cache line size in bytes. Returns 0 if unknown. */
-static uint32_t observe_cache_line(void) {
+/* Read L1 D-cache line size in bytes. Returns 0 if unknown; sets *src to
+ * the actual source used ("/sys", "sysconf", "unavailable"). */
+static uint32_t observe_cache_line(const char **src) {
   /* Try /sys/devices first — most authoritative on Linux */
   FILE *f = fopen("/sys/devices/system/cpu/cpu0/cache/index0/coherency_line_size", "r");
   if (f) {
     uint32_t v = 0;
-    if (fscanf(f, "%u", &v) == 1) { fclose(f); return v; }
+    if (fscanf(f, "%u", &v) == 1 && v > 0) {
+      fclose(f);
+      *src = "/sys/devices/.../coherency_line_size";
+      return v;
+    }
     fclose(f);
   }
   /* Fall back to sysconf */
   long lc = sysconf(_SC_LEVEL1_DCACHE_LINESIZE);
-  if (lc > 0) return (uint32_t)lc;
+  if (lc > 0) {
+    *src = "sysconf(_SC_LEVEL1_DCACHE_LINESIZE)";
+    return (uint32_t)lc;
+  }
+  *src = "PROBE_UNAVAILABLE_ON_THIS_OS";
   return 0;
 }
 
-/* Read cpuinfo and set SIMD bits by known flag names. Linux only. */
-static uint32_t observe_simd(void) {
+/* Read cpuinfo and set SIMD bits by known flag names. Linux only.
+ * Sets *src to actual source or PROBE_UNAVAILABLE_ON_THIS_OS. */
+static uint32_t observe_simd(const char **src) {
   FILE *f = fopen("/proc/cpuinfo", "r");
-  if (!f) return 0;
+  if (!f) {
+    *src = "PROBE_UNAVAILABLE_ON_THIS_OS";
+    return 0;
+  }
+  *src = "/proc/cpuinfo";
   uint32_t flags = 0;
   char line[8192];
   while (fgets(line, sizeof(line), f)) {
@@ -123,11 +137,15 @@ int main(int argc, char **argv) {
   real_arch_t ct = real_arch_compile_time();
   const real_arch_props_t *nominal = real_arch_props(rt);
 
-  /* Observed values */
+  /* Observed values with explicit source tracking (no silent 0 leaks) */
   long pg = sysconf(_SC_PAGE_SIZE);
   uint32_t observed_page = pg > 0 ? (uint32_t)pg : 0;
-  uint32_t observed_cache = observe_cache_line();
-  uint32_t observed_simd  = observe_simd();
+  const char *page_src  = (pg > 0) ? "sysconf(_SC_PAGE_SIZE)"
+                                   : "PROBE_UNAVAILABLE_ON_THIS_OS";
+  const char *cache_src = "PROBE_UNAVAILABLE_ON_THIS_OS";
+  const char *simd_src  = "PROBE_UNAVAILABLE_ON_THIS_OS";
+  uint32_t observed_cache = observe_cache_line(&cache_src);
+  uint32_t observed_simd  = observe_simd(&simd_src);
 
   /* Compare against nominal */
   int page_match  = nominal ? (observed_page == nominal->page_size) : 0;
@@ -159,6 +177,11 @@ int main(int argc, char **argv) {
   fprintf(f, "    \"simd\": ");
   write_simd_array(f, observed_simd);
   fprintf(f, "\n  },\n");
+  fprintf(f, "  \"sources\": {\n");
+  fprintf(f, "    \"page_size\":  \"%s\",\n", page_src);
+  fprintf(f, "    \"cache_line\": \"%s\",\n", cache_src);
+  fprintf(f, "    \"simd\":       \"%s\"\n",  simd_src);
+  fprintf(f, "  },\n");
   if (nominal) {
     fprintf(f, "  \"nominal\": {\n");
     fprintf(f, "    \"page_size\":  %u,\n", nominal->page_size);
