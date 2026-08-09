@@ -30,7 +30,13 @@ PRODUCER="${PRODUCER:-core/metrics-producer}"
 VALIDATOR="${VALIDATOR:-core/contract-validate}"
 STRICT_VALIDATOR="${STRICT_VALIDATOR:-scripts/validate_pkg_metrics_json.py}"
 RECEIPT_VALIDATOR="${RECEIPT_VALIDATOR:-core/receipt-validate}"
-OUT_JSON="${OUT_JSON:-/tmp/real_gov_metrics.json}"
+RECEIPT_LEDGER="${RECEIPT_LEDGER:-core/receipt-ledger}"
+LEDGER_PATH="${LEDGER_PATH:-/tmp/real_gov_ledger.jsonl}"
+LEDGER_DIR="${LEDGER_DIR:-/tmp/real_gov_receipts}"
+# Timestamped per-run path so ledger entries reference immutable files.
+_STAMP="$(date -u +%Y%m%dT%H%M%S)-$$"
+OUT_JSON="${OUT_JSON:-$LEDGER_DIR/metrics-$_STAMP.json}"
+mkdir -p "$LEDGER_DIR"
 
 log() { echo "[$(date +'%Y-%m-%d %H:%M:%S')] $*" >&2; }
 
@@ -90,41 +96,41 @@ require_bin "$PRODUCER"
 require_bin "$VALIDATOR"
 
 # 2) Producer runs
-log "step 1/8: run producer"
+log "step 1/9: run producer"
 if ! "$PRODUCER" "$REPO_ROOT" "$OUT_JSON" >/dev/null; then
     fail "producer failed to run"
 fi
 
 # 3) Strict JSON grammar/scope/duplicate gate
-log "step 2/8: strict current JSON validation"
+log "step 2/9: strict current JSON validation"
 require_json_file "$OUT_JSON"
 strict_validate "$OUT_JSON"
 
 # 4) Compact C contract validation remains an independent ruler
-log "step 3/8: C contract validation (pkg_metrics/1.0.0)"
+log "step 3/9: C contract validation (pkg_metrics/1.0.0)"
 if ! "$VALIDATOR" "$OUT_JSON"; then
     fail "C contract validation rejected the JSON"
 fi
 
 # 5) No TOKEN_VAZIO leaks into the promoted metrics artifact
-log "step 4/8: scan current output for TOKEN_VAZIO"
+log "step 4/9: scan current output for TOKEN_VAZIO"
 require_no_token_vazio "$OUT_JSON"
 
 # 6) Baseline is evidence too and must satisfy the strict contract.
-log "step 5/8: strict regression baseline validation"
+log "step 5/9: strict regression baseline validation"
 require_json_file "$BASELINE"
 strict_validate "$BASELINE"
 require_no_token_vazio "$BASELINE"
 
 # 7) Regression fields must exist
-log "step 6/8: regression field presence"
+log "step 6/9: regression field presence"
 for field in node_count edge_count coherence_phi cycle_count unresolved_count; do
     require_json_field "$BASELINE" "$field"
     require_json_field "$OUT_JSON" "$field"
 done
 
 # 8) Regression gate vs baseline
-log "step 7/8: regression gate vs $BASELINE"
+log "step 7/9: regression gate vs $BASELINE"
 base_nodes=$(jq -r '.node_count' "$BASELINE")
 base_edges=$(jq -r '.edge_count' "$BASELINE")
 base_phi=$(jq -r '.coherence_phi' "$BASELINE")
@@ -162,7 +168,7 @@ fi
 log "regression gate passed"
 
 # 9) Receipt verification — signature must match; tampering is fatal.
-log "step 8/8: verify receipt signature"
+log "step 8/9: verify receipt signature"
 if [ ! -f "$RECEIPT_VALIDATOR" ]; then
     fail "receipt validator missing: $RECEIPT_VALIDATOR"
 fi
@@ -174,6 +180,19 @@ if ! "$RECEIPT_VALIDATOR" "$OUT_JSON.receipt" >/dev/null 2>&1; then
 fi
 log "receipt signature valid"
 
-log "STRICT_JSON_GATE=PASS duplicate_keys=REJECTED scope_enforcement=PASS receipt=VALID"
+# 10) Chain-of-custody ledger: append current receipt + verify full chain
+log "step 9/9: chain-of-custody ledger append + verify"
+if [ ! -f "$RECEIPT_LEDGER" ]; then
+    fail "receipt ledger CLI missing: $RECEIPT_LEDGER"
+fi
+if ! "$RECEIPT_LEDGER" append "$LEDGER_PATH" "$OUT_JSON.receipt" >/dev/null 2>&1; then
+    fail "ledger append FAILED for $OUT_JSON.receipt"
+fi
+if ! "$RECEIPT_LEDGER" verify "$LEDGER_PATH" >/dev/null 2>&1; then
+    fail "ledger chain-of-custody VERIFY FAILED at $LEDGER_PATH"
+fi
+log "chain-of-custody intact"
+
+log "STRICT_JSON_GATE=PASS duplicate_keys=REJECTED scope_enforcement=PASS receipt=VALID ledger=INTACT"
 log "✓✓✓ pkg_metrics governance gate PASSED (scope-limited; not product readiness)"
 exit 0
