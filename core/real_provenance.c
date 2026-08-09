@@ -39,7 +39,7 @@ int real_provenance_capture(real_provenance_t *out,
   out->cflags_fingerprint   = REAL_CFLAGS_FP;
   out->schema_version       = schema_version;
 
-  /* Toolchain */
+  /* Toolchain — check for truncation; mark honestly if it happens */
   {
     const char *ver =
 #ifdef __VERSION__
@@ -48,9 +48,14 @@ int real_provenance_capture(real_provenance_t *out,
         "unknown"
 #endif
         ;
-    /* "gcc 13.3.0 (Ubuntu ...)" style */
-    (void)snprintf(out->toolchain_id, sizeof(out->toolchain_id),
-                   "%s %s", REAL_CC_NAME, ver);
+    int n = snprintf(out->toolchain_id, sizeof(out->toolchain_id),
+                     "%s %s", REAL_CC_NAME, ver);
+    if (n < 0 || (size_t)n >= sizeof(out->toolchain_id)) {
+      /* Truncation is a real event — surface via TOKEN_VAZIO so the
+       * contract validator refuses to promote the artifact. */
+      cp(out->toolchain_id, sizeof(out->toolchain_id),
+         "TOKEN_VAZIO_toolchain_id_truncated");
+    }
   }
 
   /* Producer basename */
@@ -64,12 +69,16 @@ int real_provenance_capture(real_provenance_t *out,
         (uint64_t)ts.tv_sec * 1000ULL + (uint64_t)(ts.tv_nsec / 1000000);
   }
 
-  /* Uname */
+  /* Uname — same truncation policy */
   {
     struct utsname u;
     if (uname(&u) != 0) return -1;
-    (void)snprintf(out->host_uname, sizeof(out->host_uname),
-                   "%s %s %s", u.sysname, u.release, u.machine);
+    int n = snprintf(out->host_uname, sizeof(out->host_uname),
+                     "%s %s %s", u.sysname, u.release, u.machine);
+    if (n < 0 || (size_t)n >= sizeof(out->host_uname)) {
+      cp(out->host_uname, sizeof(out->host_uname),
+         "TOKEN_VAZIO_host_uname_truncated");
+    }
   }
 
   return 0;
