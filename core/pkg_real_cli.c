@@ -71,6 +71,12 @@ static int cmd_dag(const char *base_dir, int json) {
   pkg_dag_t dag;
   if (pkg_dag_build(&dag, &inv) < 0) {
     fprintf(stderr, "REAL_ERROR: dag build failed\n");
+    /* C29 fix: pkg_dag_build may have partially populated dag (parsed
+     * array, some edges) before returning -1. Call pkg_dag_free to
+     * release those. Process exit would reclaim anyway, but library
+     * use cases and repeated CLI invocations would leak (up to
+     * ~430 MB of parsed data on a 3000-package repo). */
+    pkg_dag_free(&dag);
     pkg_inventory_free(&inv);
     return 2;
   }

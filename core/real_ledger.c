@@ -180,13 +180,34 @@ int real_ledger_append(const char *ledger_path, const char *receipt_path) {
   e.appended_unix_ms = now_unix_ms();
   seal_entry(&e);
 
+  /* C23 fix: capture the ledger's current size BEFORE appending, so
+   * that if fprintf/fflush/fclose fail (ENOSPC, EIO, mid-write disk
+   * fail) we can ftruncate back to that size and preserve the ledger
+   * as it was at the start of this transaction. We hold LOCK_EX so
+   * no concurrent writer can race between the size sample and the
+   * truncate. */
+  off_t pre_append_size = lseek(lock_fd, 0, SEEK_END);
+  if (pre_append_size < 0) { close(lock_fd); return -1; }
+
   FILE *f = fdopen(lock_fd, "a");
   if (!f) { close(lock_fd); return -1; }
   write_entry_line(f, &e);
-  int err = fflush(f);
-  /* fclose releases the lock as it closes the underlying fd. */
-  if (fclose(f) != 0) err = -1;
-  return err == 0 ? 0 : -1;
+  int stream_err = ferror(f);
+  int flush_err = fflush(f);
+  /* Capture the fd from FILE* while it's still valid so we can
+   * truncate below. fclose invalidates both. */
+  int fd_for_truncate = fileno(f);
+  int truncate_err = 0;
+  if (stream_err || flush_err != 0) {
+    /* Roll back to pre-append state. If ftruncate fails, verify will
+     * still catch the partial line — fail-closed either way. */
+    if (ftruncate(fd_for_truncate, pre_append_size) != 0) truncate_err = 1;
+  }
+  int close_err = fclose(f);
+  if (stream_err || flush_err != 0 || close_err != 0 || truncate_err) {
+    return -1;
+  }
+  return 0;
 }
 
 int real_ledger_verify(const char *ledger_path,

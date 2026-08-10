@@ -95,6 +95,29 @@ static uint32_t observe_simd(const char **src) {
   return flags;
 }
 
+/* C17 fix: JSON-escape a string for safe embedding in a JSON string
+ * literal. Handles `"`, `\`, and control chars. uname strings on
+ * custom kernels or exotic hosts can contain characters that break
+ * naive `"%s"` formatting; without escaping they'd silently corrupt
+ * the receipt JSON. */
+static void json_esc_str(FILE *f, const char *s) {
+  fputc('"', f);
+  if (!s) { fputc('"', f); return; }
+  for (const unsigned char *p = (const unsigned char *)s; *p; p++) {
+    switch (*p) {
+      case '"':  fputs("\\\"", f); break;
+      case '\\': fputs("\\\\", f); break;
+      case '\n': fputs("\\n", f);  break;
+      case '\r': fputs("\\r", f);  break;
+      case '\t': fputs("\\t", f);  break;
+      default:
+        if (*p < 0x20) fprintf(f, "\\u%04x", *p);
+        else fputc(*p, f);
+    }
+  }
+  fputc('"', f);
+}
+
 /* Write SIMD flags as JSON array */
 static void write_simd_array(FILE *f, uint32_t simd) {
   const struct { uint32_t m; const char *n; } t[] = {
@@ -167,9 +190,11 @@ int main(int argc, char **argv) {
   fprintf(f, "  \"identity\": {\n");
   fprintf(f, "    \"compile_time\": \"%s\",\n", real_arch_name(ct));
   fprintf(f, "    \"runtime\":      \"%s\",\n", real_arch_name(rt));
-  fprintf(f, "    \"uname_sysname\": \"%s\",\n", u.sysname);
-  fprintf(f, "    \"uname_release\": \"%s\",\n", u.release);
-  fprintf(f, "    \"uname_machine\": \"%s\"\n",  u.machine);
+  /* C17 fix: JSON-escape uname strings (custom kernels/hosts may
+   * embed `"` or control chars that would break naive %s). */
+  fputs("    \"uname_sysname\": ", f); json_esc_str(f, u.sysname); fputs(",\n", f);
+  fputs("    \"uname_release\": ", f); json_esc_str(f, u.release); fputs(",\n", f);
+  fputs("    \"uname_machine\": ", f); json_esc_str(f, u.machine); fputs("\n", f);
   fprintf(f, "  },\n");
   fprintf(f, "  \"observed\": {\n");
   fprintf(f, "    \"page_size\":  %u,\n", observed_page);
