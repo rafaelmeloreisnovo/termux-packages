@@ -401,6 +401,8 @@ real-test: real-all
 	@cd .. && bash core/tests/test_hotfix_b1_receipt_aliasing.sh
 	@cd .. && bash core/tests/test_hotfix_b3_b4_strto_guards.sh
 	@cd .. && bash core/tests/test_hotfix_b6_ledger_concurrent.sh
+	@cd .. && bash core/tests/test_hotfix_c17_json_escape.sh
+	@cd .. && bash core/tests/test_hotfix_c23_ledger_rollback.sh
 	@echo "✓ All REAL test suites passed"
 
 # Run the executable documentation tour; refreshes docs/REAL_TOUR_OUTPUT.md

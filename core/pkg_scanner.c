@@ -329,6 +329,29 @@ pkg_inventory_find(const pkg_inventory_t *inv, const char *name) {
   return NULL;
 }
 
+/* C17-companion: JSON-escape a string. Package names in Termux conform
+ * to Debian rules (`[a-z0-9-]+`), and paths are constructed from those
+ * + `/` + `.subpackage.sh` — so escape is defensive. If a future
+ * upstream ever introduces a name containing `"` or `\`, this saves
+ * the JSON output from silent corruption. */
+static void pkg_json_esc(FILE *out, const char *s) {
+  fputc('"', out);
+  if (!s) { fputc('"', out); return; }
+  for (const unsigned char *p = (const unsigned char *)s; *p; p++) {
+    switch (*p) {
+      case '"':  fputs("\\\"", out); break;
+      case '\\': fputs("\\\\", out); break;
+      case '\n': fputs("\\n", out);  break;
+      case '\r': fputs("\\r", out);  break;
+      case '\t': fputs("\\t", out);  break;
+      default:
+        if (*p < 0x20) fprintf(out, "\\u%04x", *p);
+        else fputc(*p, out);
+    }
+  }
+  fputc('"', out);
+}
+
 void pkg_inventory_write_json(FILE *out, const pkg_inventory_t *inv) {
   const int complete = pkg_inventory_is_complete(inv);
   fprintf(out, "{\n");
@@ -357,11 +380,14 @@ void pkg_inventory_write_json(FILE *out, const pkg_inventory_t *inv) {
   fprintf(out, "  \"packages\": [\n");
   for (uint32_t i = 0; i < inv->count; i++) {
     const pkg_inventory_entry_t *e = &inv->entries[i];
-    fprintf(out,
-            "    {\"name\":\"%s\",\"parent\":\"%s\",\"repo\":\"%s\","
-            "\"path\":\"%s\",\"build_sh_size\":%" PRIu64 ","
-            "\"is_subpackage\":%s}%s\n",
-            e->name, e->parent, repo_name(e->repo), e->path,
+    /* C17-companion: JSON-escape name/parent/path against future
+     * upstream names containing quotes / control chars. */
+    fputs("    {\"name\":", out);   pkg_json_esc(out, e->name);
+    fputs(",\"parent\":", out);     pkg_json_esc(out, e->parent);
+    fprintf(out, ",\"repo\":\"%s\"", repo_name(e->repo));
+    fputs(",\"path\":", out);       pkg_json_esc(out, e->path);
+    fprintf(out, ",\"build_sh_size\":%" PRIu64
+                 ",\"is_subpackage\":%s}%s\n",
             e->build_sh_size, e->is_subpackage ? "true" : "false",
             (i + 1 < inv->count) ? "," : "");
   }
