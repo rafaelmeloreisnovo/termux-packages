@@ -77,9 +77,19 @@ else
 fi
 
 # 7) tamper referenced receipt file → chain breaks
+# B8 fix: whitespace-tolerant sed. Producer formatting may change from
+# "exit_code": 0 to "exit_code":0 (or vice versa) — the old literal
+# pattern silently no-op'd on any spacing change and let the test
+# report a false-negative. \s* covers all variants.
 cp "$SCRATCH/r2.json.receipt" "$SCRATCH/r2.json.receipt.bak"
-sed 's/"exit_code": 0/"exit_code": 42/' \
+sed -E 's/"exit_code":[[:space:]]*0/"exit_code": 42/' \
     "$SCRATCH/r2.json.receipt.bak" > "$SCRATCH/r2.json.receipt"
+# Verify the sed actually mutated the file — otherwise we'd be testing
+# nothing and a passing test-count would lie.
+if cmp -s "$SCRATCH/r2.json.receipt" "$SCRATCH/r2.json.receipt.bak"; then
+    fail "sed pattern did not match — test would give false result"
+    exit 1
+fi
 if ! "$LED" verify "$LEDGER" >/dev/null 2>&1; then
     pass "tamper detected: referenced receipt file altered"
 else

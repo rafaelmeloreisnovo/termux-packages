@@ -111,7 +111,17 @@ static void require_double(const char *json, const char *key, double *out,
     add_violation(r, key, "not numeric");
     return;
   }
-  double v = strtod(buf, NULL);
+  /* B2 fix: reset+check errno around strtod; also enforce that the
+   * parser consumed at least one char (endptr moved). Silent overflow
+   * (HUGE_VAL) or empty parse would otherwise be caught only by the
+   * range check — and only for bounded fields. */
+  errno = 0;
+  char *endp = NULL;
+  double v = strtod(buf, &endp);
+  if (errno != 0 || endp == buf) {
+    add_violation(r, key, "unparseable or out-of-range double");
+    return;
+  }
   if (v < lo || v > hi) {
     char msg[128];
     snprintf(msg, sizeof(msg), "%.6f outside [%.3f, %.3f]", v, lo, hi);

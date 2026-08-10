@@ -1,10 +1,13 @@
 #include "real_ledger.h"
 #include <errno.h>
+#include <fcntl.h>
 #include <inttypes.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/file.h>
 #include <time.h>
+#include <unistd.h>
 
 /* ============================================================================
  * REAL: append-only ledger with SHA256 chain-hash.
@@ -53,10 +56,19 @@ static int parse_entry_line(const char *line, real_ledger_entry_t *e) {
   #define FIND(k) ((p = strstr(line, "\"" k "\":")) ? p + strlen("\"" k "\":") : NULL)
 
   const char *q;
+  /* B3 fix: errno-reset + endptr check on strtoull. A tampered
+   * numeric field is now rejected at parse time instead of quietly
+   * becoming 0. Defence-in-depth: the chain-hash re-computation would
+   * catch the mutation anyway, but a parser that returns junk-as-zero
+   * is a footgun for every future caller. */
   #define GRAB_U64(k, dst) do { \
       q = FIND(k); if (!q) return -1; \
       while (*q == ' ' || *q == '"') q++; \
-      dst = strtoull(q, NULL, 10); \
+      errno = 0; \
+      char *_endp = NULL; \
+      unsigned long long _v = strtoull(q, &_endp, 10); \
+      if (errno != 0 || _endp == q) return -1; \
+      dst = (uint64_t)_v; \
     } while (0)
 
   #define GRAB_STR(k, dst, cap) do { \
@@ -139,11 +151,24 @@ int real_ledger_append(const char *ledger_path, const char *receipt_path) {
   real_receipt_t r;
   if (real_receipt_verify_file(receipt_path, &r) != 0) return -1;
 
+  /* B6 fix: acquire an exclusive advisory lock on the ledger for the
+   * duration of tail-read + append-write, so two concurrent appenders
+   * cannot both compute the same next_seq / prev_tail and race a
+   * broken chain into existence. Lock is held on a dedicated fd
+   * (opened O_CREAT|O_WRONLY|O_APPEND) so the tail-read via a
+   * separate fopen("r") does not conflict. flock() is released
+   * automatically on close/exit. */
+  int lock_fd = open(ledger_path, O_CREAT | O_WRONLY | O_APPEND, 0644);
+  if (lock_fd < 0) return -1;
+  if (flock(lock_fd, LOCK_EX) != 0) { close(lock_fd); return -1; }
+
   char prev_tail[REAL_SHA256_HEXLEN];
   uint64_t next_seq = 0;
   uint64_t count = 0;
-  if (real_ledger_tail(ledger_path, prev_tail, &next_seq, &count) != 0)
+  if (real_ledger_tail(ledger_path, prev_tail, &next_seq, &count) != 0) {
+    close(lock_fd);
     return -1;
+  }
 
   real_ledger_entry_t e;
   memset(&e, 0, sizeof(e));
@@ -155,11 +180,12 @@ int real_ledger_append(const char *ledger_path, const char *receipt_path) {
   e.appended_unix_ms = now_unix_ms();
   seal_entry(&e);
 
-  FILE *f = fopen(ledger_path, "a");
-  if (!f) return -1;
+  FILE *f = fdopen(lock_fd, "a");
+  if (!f) { close(lock_fd); return -1; }
   write_entry_line(f, &e);
   int err = fflush(f);
-  fclose(f);
+  /* fclose releases the lock as it closes the underlying fd. */
+  if (fclose(f) != 0) err = -1;
   return err == 0 ? 0 : -1;
 }
 
