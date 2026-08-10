@@ -84,20 +84,44 @@ int real_provenance_capture(real_provenance_t *out,
   return 0;
 }
 
+/* D4 fix: JSON-escape helper for provenance writer. Same policy as
+ * arch_probe's and pkg_scanner's escape (C17/C10) — handles `"`, `\`,
+ * `\n`, `\r`, `\t`, control chars via `\uXXXX`. Symmetric with
+ * real_contract.c's extract_str decode (D3). Prevents provenance
+ * fields with future non-ASCII content (custom-kernel uname, exotic
+ * toolchain reports containing `"`) from silently corrupting the
+ * receipt/metrics JSON. Today's producers write only ASCII into these
+ * fields, so this fix is prospective. */
+static void prov_json_esc(FILE *out, const char *s) {
+  fputc('"', out);
+  if (!s) { fputc('"', out); return; }
+  for (const unsigned char *p = (const unsigned char *)s; *p; p++) {
+    switch (*p) {
+      case '"':  fputs("\\\"", out); break;
+      case '\\': fputs("\\\\", out); break;
+      case '\n': fputs("\\n", out);  break;
+      case '\r': fputs("\\r", out);  break;
+      case '\t': fputs("\\t", out);  break;
+      default:
+        if (*p < 0x20) fprintf(out, "\\u%04x", *p);
+        else fputc(*p, out);
+    }
+  }
+  fputc('"', out);
+}
+
 void real_provenance_write_json(FILE *out, const real_provenance_t *p) {
   /* NONNULL_ALL contract enforced by compiler */
   fprintf(out, "  \"provenance\": {\n");
-  fprintf(out, "    \"schema_version\": \"%s\",\n", p->schema_version);
-  fprintf(out, "    \"git_commit\": \"%s\",\n", p->git_commit);
-  fprintf(out, "    \"build_timestamp_utc\": \"%s\",\n",
-          p->build_timestamp_utc);
-  fprintf(out, "    \"cflags_fingerprint\": \"%s\",\n",
-          p->cflags_fingerprint);
-  fprintf(out, "    \"toolchain_id\": \"%s\",\n", p->toolchain_id);
-  fprintf(out, "    \"producer_name\": \"%s\",\n", p->producer_name);
+  fputs("    \"schema_version\": ", out);      prov_json_esc(out, p->schema_version);      fputs(",\n", out);
+  fputs("    \"git_commit\": ", out);          prov_json_esc(out, p->git_commit);          fputs(",\n", out);
+  fputs("    \"build_timestamp_utc\": ", out); prov_json_esc(out, p->build_timestamp_utc); fputs(",\n", out);
+  fputs("    \"cflags_fingerprint\": ", out);  prov_json_esc(out, p->cflags_fingerprint);  fputs(",\n", out);
+  fputs("    \"toolchain_id\": ", out);        prov_json_esc(out, p->toolchain_id);        fputs(",\n", out);
+  fputs("    \"producer_name\": ", out);       prov_json_esc(out, p->producer_name);       fputs(",\n", out);
   fprintf(out, "    \"run_timestamp_unix_ms\": %" PRIu64 ",\n",
           p->run_timestamp_unix_ms);
-  fprintf(out, "    \"host_uname\": \"%s\"\n", p->host_uname);
+  fputs("    \"host_uname\": ", out);          prov_json_esc(out, p->host_uname);          fputs("\n", out);
   fprintf(out, "  }");
 }
 

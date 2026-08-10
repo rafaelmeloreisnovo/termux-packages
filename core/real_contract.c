@@ -40,14 +40,48 @@ static const char *find_key(const char *hay, const char *key) {
 }
 
 /* Extract quoted string starting at *cursor; fills dst up to cap-1 chars.
- * Returns 1 on success, 0 on failure. */
+ * Returns 1 on success, 0 on failure.
+ *
+ * D3 fix: properly DECODE JSON escape sequences (\", \\, \/, \n, \r, \t,
+ * \b, \f) instead of silently dropping the escaped char. Before this
+ * fix, an input of `"foo\"bar"` would produce `"foobar"` in dst — both
+ * the `\` and the escaped char were consumed but nothing was written.
+ * This meant any producer that emitted an escape sequence would produce
+ * a canonical form the verifier couldn't reconstruct, causing SHA
+ * mismatch on legitimate receipts. Today no REAL producer writes escape
+ * sequences into pkg_metrics fields (all are ASCII: git hash, ISO-8601
+ * timestamp, uname), so the bug was latent — but D4/D5 add json_esc
+ * to the writers, and that only round-trips correctly if this decode
+ * is symmetric. `\uXXXX` is intentionally NOT handled (no producer
+ * emits it and the parser is only used with our own output). */
 static int extract_str(const char *cursor, char *dst, size_t cap) {
   if (*cursor != '"') return 0;
   cursor++;
   size_t i = 0;
   while (*cursor && *cursor != '"' && i + 1 < cap) {
-    if (*cursor == '\\' && cursor[1]) cursor += 2;
-    else dst[i++] = *cursor++;
+    if (*cursor == '\\' && cursor[1]) {
+      char decoded;
+      switch (cursor[1]) {
+        case '"':  decoded = '"';  break;
+        case '\\': decoded = '\\'; break;
+        case '/':  decoded = '/';  break;
+        case 'n':  decoded = '\n'; break;
+        case 'r':  decoded = '\r'; break;
+        case 't':  decoded = '\t'; break;
+        case 'b':  decoded = '\b'; break;
+        case 'f':  decoded = '\f'; break;
+        default:
+          /* Unknown escape: keep the raw char after the backslash to
+           * preserve some information. Producer/verifier still stay in
+           * sync because both see the raw bytes. */
+          decoded = cursor[1];
+          break;
+      }
+      dst[i++] = decoded;
+      cursor += 2;
+    } else {
+      dst[i++] = *cursor++;
+    }
   }
   dst[i] = '\0';
   return *cursor == '"';

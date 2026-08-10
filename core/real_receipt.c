@@ -131,13 +131,38 @@ int real_receipt_seal(real_receipt_t *r, int exit_code) {
   return 0;
 }
 
+/* D5 fix: JSON-escape helper for receipt writers. Same policy as
+ * D4/C17. path fields come from filesystem — could theoretically
+ * contain `"` or control chars (Linux allows any byte except `/` and
+ * `\0` in filenames). sha256_hex is always 64 hex chars, no escape
+ * needed but harmless. Symmetric with real_contract.c extract_str
+ * decode (D3). */
+static void rcpt_json_esc(FILE *f, const char *s) {
+  fputc('"', f);
+  if (!s) { fputc('"', f); return; }
+  for (const unsigned char *p = (const unsigned char *)s; *p; p++) {
+    switch (*p) {
+      case '"':  fputs("\\\"", f); break;
+      case '\\': fputs("\\\\", f); break;
+      case '\n': fputs("\\n", f);  break;
+      case '\r': fputs("\\r", f);  break;
+      case '\t': fputs("\\t", f);  break;
+      default:
+        if (*p < 0x20) fprintf(f, "\\u%04x", *p);
+        else fputc(*p, f);
+    }
+  }
+  fputc('"', f);
+}
+
 static void write_io_array(FILE *f, const char *name,
                            const real_receipt_io_t *arr, uint32_t n) {
   fprintf(f, "  \"%s\": [", name);
   for (uint32_t i = 0; i < n; i++) {
-    fprintf(f, "%s\n    {\"path\":\"%s\",\"sha256\":\"%s\",\"size\":%" PRIu64 "}",
-            i == 0 ? "" : ",", arr[i].path, arr[i].sha256_hex,
-            arr[i].size_bytes);
+    fprintf(f, "%s\n    {\"path\":", i == 0 ? "" : ",");
+    rcpt_json_esc(f, arr[i].path);
+    fprintf(f, ",\"sha256\":\"%s\",\"size\":%" PRIu64 "}",
+            arr[i].sha256_hex, arr[i].size_bytes);
   }
   fprintf(f, "%s]", n > 0 ? "\n  " : "");
 }
