@@ -1,6 +1,7 @@
 #include "real_receipt.h"
 #include "real_arch.h"
 #include <errno.h>
+#include <fcntl.h>
 #include <inttypes.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -152,8 +153,15 @@ int real_receipt_write(const real_receipt_t *r, const char *path) {
   int tn = snprintf(tmp_path, sizeof(tmp_path), "%s.tmp.%ld", path, (long)getpid());
   if (tn < 0 || (size_t)tn >= sizeof(tmp_path)) return -1;
 
-  FILE *f = fopen(tmp_path, "w");
-  if (!f) return -1;
+  /* C40 fix: O_NOFOLLOW + O_EXCL on the temp file. Prevents
+   * (a) writing through a symlink someone planted at tmp_path
+   * (b) writing over an existing tmp file (someone else's stale
+   * write attempt or a race). If tmp_path already exists (rare —
+   * pid collision + still there), we bail rather than clobber. */
+  int fd = open(tmp_path, O_WRONLY | O_CREAT | O_EXCL | O_NOFOLLOW, 0644);
+  if (fd < 0) return -1;
+  FILE *f = fdopen(fd, "w");
+  if (!f) { close(fd); unlink(tmp_path); return -1; }
 
   /* Any fprintf hitting an error sets the stream error indicator;
    * ferror() at the end catches all of them in one place. */

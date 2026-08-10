@@ -158,7 +158,18 @@ int real_ledger_append(const char *ledger_path, const char *receipt_path) {
    * (opened O_CREAT|O_WRONLY|O_APPEND) so the tail-read via a
    * separate fopen("r") does not conflict. flock() is released
    * automatically on close/exit. */
-  int lock_fd = open(ledger_path, O_CREAT | O_WRONLY | O_APPEND, 0644);
+  /* C40 fix: O_NOFOLLOW rejects the open if ledger_path is a symlink
+   * at its final component. This is defence-in-depth against an
+   * attacker replacing the ledger file with a symlink to /etc/passwd
+   * (or any other target) between our previous verify and this
+   * append. The intermediate path components can still be symlinks —
+   * full protection would require openat with a directory fd, which
+   * is a larger refactor. First-time creates (O_CREAT with no
+   * existing file) are unaffected because there's no symlink to
+   * follow. On ELOOP the caller sees the same -1 as other errors,
+   * which is the correct fail-closed behavior. */
+  int lock_fd = open(ledger_path,
+                     O_CREAT | O_WRONLY | O_APPEND | O_NOFOLLOW, 0644);
   if (lock_fd < 0) return -1;
   if (flock(lock_fd, LOCK_EX) != 0) { close(lock_fd); return -1; }
 
