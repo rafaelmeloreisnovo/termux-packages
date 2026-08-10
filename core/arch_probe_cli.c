@@ -205,8 +205,13 @@ int main(int argc, char **argv) {
     fprintf(f, "  \"comparison\": {\"authority\":\"observed_only\"}\n");
   }
   fprintf(f, "}\n");
-  if (fclose(f) != 0) {
-    fprintf(stderr, "BLOCKED: fclose failed for %s\n", out_path);
+  /* B11 fix: capture ferror BEFORE fclose so ENOSPC/EIO during
+   * fprintf is surfaced. */
+  int stream_err = ferror(f);
+  if (fclose(f) != 0 || stream_err) {
+    fprintf(stderr, "BLOCKED: write/close failed for %s (stream_err=%d)\n",
+            out_path, stream_err);
+    unlink(out_path);
     return 2;
   }
 

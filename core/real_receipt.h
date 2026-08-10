@@ -60,6 +60,17 @@ typedef struct {
   uint64_t started_unix_ms;
   uint64_t finished_unix_ms;
 
+  /* Instance-owned backing storage for provenance fields that are
+   * declared `const char *` in real_provenance_t. Used only by the
+   * verify path when the receipt is parsed from disk (the produce path
+   * gets these pointers from compile-time -D injection). Eliminates
+   * the static-buffer aliasing bug that made two parsed receipts share
+   * their provenance strings. See docs/REAL_HOTFIX_AUDIT.md B1. */
+  char _prov_git_commit[64];
+  char _prov_build_timestamp[64];
+  char _prov_cflags_fp[64];
+  char _prov_schema_version[32];
+
   /* Computed by seal — SHA256 over the canonical form of every field
    * above (excluding this field itself). */
   char content_sha256_hex[REAL_SHA256_HEXLEN];

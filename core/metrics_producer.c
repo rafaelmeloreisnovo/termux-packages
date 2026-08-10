@@ -29,6 +29,7 @@
 #include <errno.h>
 #include <inttypes.h>
 #include <stdint.h>
+#include <unistd.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -214,8 +215,15 @@ int main(int argc, char **argv) {
   fprintf(f, "  \"total_latency_us\": %" PRIu64 "\n", total_latency_us);
   fprintf(f, "}\n");
 
-  if (fclose(f) != 0) {
-    fprintf(stderr, "BLOCKED: failed to close/flush %s\n", out_path);
+  /* B11 fix: check ferror() BEFORE fclose so ENOSPC/EIO during any of
+   * the preceding fprintfs is surfaced instead of quietly leaving a
+   * truncated metrics.json on disk. Contract-validate would catch the
+   * truncation downstream, but fail-here is much clearer. */
+  int stream_err = ferror(f);
+  if (fclose(f) != 0 || stream_err) {
+    fprintf(stderr, "BLOCKED: write/close failed for %s (stream_err=%d)\n",
+            out_path, stream_err);
+    unlink(out_path);
     pkg_dag_free(&dag);
     pkg_inventory_free(&inv);
     return 2;

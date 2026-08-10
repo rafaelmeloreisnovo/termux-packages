@@ -5,7 +5,9 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/types.h>
 #include <time.h>
+#include <unistd.h>
 
 /* ============================================================================
  * REAL: receipt lifecycle — begin → add_input* → add_output* → seal → write
@@ -141,8 +143,20 @@ static void write_io_array(FILE *f, const char *name,
 
 int real_receipt_write(const real_receipt_t *r, const char *path) {
   /* NONNULL_ALL */
-  FILE *f = fopen(path, "w");
+  /* B11/B12 fix: atomic write via temp file + rename. If any fprintf
+   * fails (ENOSPC, EIO), or fflush/fclose reports an error, we DO NOT
+   * leave a partial receipt in place — the temp file is unlinked and
+   * the target path is untouched. Consumers therefore never see a
+   * half-written receipt claiming to be a valid one. */
+  char tmp_path[512];
+  int tn = snprintf(tmp_path, sizeof(tmp_path), "%s.tmp.%ld", path, (long)getpid());
+  if (tn < 0 || (size_t)tn >= sizeof(tmp_path)) return -1;
+
+  FILE *f = fopen(tmp_path, "w");
   if (!f) return -1;
+
+  /* Any fprintf hitting an error sets the stream error indicator;
+   * ferror() at the end catches all of them in one place. */
   fprintf(f, "{\n");
   fprintf(f, "  \"schema\": \"" REAL_RECEIPT_SCHEMA "\",\n");
   fprintf(f, "  \"status\": \"REAL\",\n");
@@ -160,7 +174,18 @@ int real_receipt_write(const real_receipt_t *r, const char *path) {
   fprintf(f, ",\n");
   write_io_array(f, "outputs", r->outputs, r->output_count);
   fprintf(f, "\n}\n");
-  fclose(f);
+
+  int had_stream_err = ferror(f);
+  int flush_err = fflush(f);
+  int close_err = fclose(f);
+  if (had_stream_err || flush_err != 0 || close_err != 0) {
+    unlink(tmp_path);
+    return -1;
+  }
+  if (rename(tmp_path, path) != 0) {
+    unlink(tmp_path);
+    return -1;
+  }
   return 0;
 }
 
@@ -220,27 +245,34 @@ int real_receipt_verify_file(const char *path, real_receipt_t *out) {
 
   GRAB_STR("operation", out->operation);
 
-  /* Provenance strings needed for canonical serialization */
-  static char pg[64], pb[64], pfp[64], pt[128], pp[64], ph[192], ps[64];
-  GRAB_STR("schema_version", ps);
-  GRAB_STR("git_commit", pg);
-  GRAB_STR("build_timestamp_utc", pb);
-  GRAB_STR("cflags_fingerprint", pfp);
-  GRAB_STR("toolchain_id", pt);
-  GRAB_STR("producer_name", pp);
-  GRAB_STR("host_uname", ph);
-  out->provenance.git_commit           = pg;
-  out->provenance.build_timestamp_utc  = pb;
-  out->provenance.cflags_fingerprint   = pfp;
-  out->provenance.schema_version       = ps;
-  strncpy(out->provenance.toolchain_id, pt, sizeof(out->provenance.toolchain_id) - 1);
-  strncpy(out->provenance.producer_name, pp, sizeof(out->provenance.producer_name) - 1);
-  strncpy(out->provenance.host_uname, ph, sizeof(out->provenance.host_uname) - 1);
+  /* Provenance strings — parsed into instance-owned backing buffers of
+   * *out (fixes B1: was previously static-shared across all calls). */
+  GRAB_STR("schema_version",      out->_prov_schema_version);
+  GRAB_STR("git_commit",          out->_prov_git_commit);
+  GRAB_STR("build_timestamp_utc", out->_prov_build_timestamp);
+  GRAB_STR("cflags_fingerprint",  out->_prov_cflags_fp);
+  GRAB_STR("toolchain_id",        out->provenance.toolchain_id);
+  GRAB_STR("producer_name",       out->provenance.producer_name);
+  GRAB_STR("host_uname",          out->provenance.host_uname);
+  out->provenance.git_commit          = out->_prov_git_commit;
+  out->provenance.build_timestamp_utc = out->_prov_build_timestamp;
+  out->provenance.cflags_fingerprint  = out->_prov_cflags_fp;
+  out->provenance.schema_version      = out->_prov_schema_version;
 
+  /* GRAB_U64 with errno-reset + errno-check (fixes B4). If parse fails
+   * or overflows, we set dst to 0 which will cause content_sha256
+   * recomputation to mismatch — tamper is surfaced, not silently
+   * accepted. */
   const char *q;
   #define GRAB_U64(field, dst) do { \
       q = find_key_v(buf, field); \
-      if (q) dst = strtoull(q, NULL, 10); \
+      if (q) { \
+        errno = 0; \
+        char *_endp = NULL; \
+        unsigned long long _v = strtoull(q, &_endp, 10); \
+        if (errno != 0 || _endp == q) { free(buf); return -1; } \
+        dst = (uint64_t)_v; \
+      } \
     } while (0)
 
   GRAB_U64("run_timestamp_unix_ms", out->provenance.run_timestamp_unix_ms);
@@ -248,18 +280,29 @@ int real_receipt_verify_file(const char *path, real_receipt_t *out) {
   GRAB_U64("finished_unix_ms", out->finished_unix_ms);
   GRAB_U64("duration_us",      out->duration_us);
   q = find_key_v(buf, "exit_code");
-  if (q) out->exit_code = (int32_t)strtol(q, NULL, 10);
+  if (q) {
+    errno = 0;
+    char *_endp = NULL;
+    long _e = strtol(q, &_endp, 10);
+    if (errno != 0 || _endp == q) { free(buf); return -1; }
+    out->exit_code = (int32_t)_e;
+  }
 
   GRAB_STR("compile_time", out->arch_compile);
   GRAB_STR("runtime",      out->arch_runtime);
 
-  /* Parse inputs / outputs arrays — v1 uses fixed format */
+  /* Parse inputs / outputs arrays. B5/B7 fix: hoist `outputs` lookup
+   * out of the inner loop (O(N²) → O(N)) and check for NULL BEFORE
+   * pointer-ordering (comparing `cur > NULL` was undefined behavior
+   * per C11 §6.5.8/5). B4 fix: strtoull with errno guard for `size`. */
+  const char *outputs_marker = strstr(buf, "\"outputs\":");
   const char *arr_start = strstr(buf, "\"inputs\":");
   if (arr_start) {
     const char *cur = arr_start;
     while ((cur = strstr(cur, "\"path\":")) != NULL) {
-      /* Only advance while inside inputs array */
-      if (cur > strstr(buf, "\"outputs\":")) break;
+      /* Stop before crossing into outputs array. Defined-behavior
+       * comparison: same underlying object (buf). */
+      if (outputs_marker != NULL && cur >= outputs_marker) break;
       if (out->input_count >= RECEIPT_MAX_IO) break;
       real_receipt_io_t *io = &out->inputs[out->input_count++];
       cur += 7; while (*cur == ' ' || *cur == '"') cur++;
@@ -275,12 +318,18 @@ int real_receipt_verify_file(const char *path, real_receipt_t *out) {
         io->sha256_hex[j] = '\0';
       }
       const char *sq = strstr(cur, "\"size\":");
-      if (sq) { sq += 7; io->size_bytes = strtoull(sq, NULL, 10); }
+      if (sq) {
+        sq += 7;
+        errno = 0;
+        char *_endp = NULL;
+        unsigned long long _sz = strtoull(sq, &_endp, 10);
+        if (errno != 0 || _endp == sq) { free(buf); return -1; }
+        io->size_bytes = _sz;
+      }
     }
   }
-  const char *out_start = strstr(buf, "\"outputs\":");
-  if (out_start) {
-    const char *cur = out_start;
+  if (outputs_marker) {
+    const char *cur = outputs_marker;
     while ((cur = strstr(cur, "\"path\":")) != NULL) {
       if (out->output_count >= RECEIPT_MAX_IO) break;
       real_receipt_io_t *io = &out->outputs[out->output_count++];
@@ -297,7 +346,14 @@ int real_receipt_verify_file(const char *path, real_receipt_t *out) {
         io->sha256_hex[j] = '\0';
       }
       const char *sq = strstr(cur, "\"size\":");
-      if (sq) { sq += 7; io->size_bytes = strtoull(sq, NULL, 10); }
+      if (sq) {
+        sq += 7;
+        errno = 0;
+        char *_endp = NULL;
+        unsigned long long _sz = strtoull(sq, &_endp, 10);
+        if (errno != 0 || _endp == sq) { free(buf); return -1; }
+        io->size_bytes = _sz;
+      }
     }
   }
 

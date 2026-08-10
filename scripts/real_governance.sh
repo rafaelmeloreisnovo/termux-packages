@@ -34,10 +34,14 @@ RECEIPT_LEDGER="${RECEIPT_LEDGER:-core/receipt-ledger}"
 ARCH_PROBE="${ARCH_PROBE:-core/arch-probe}"
 LEDGER_PATH="${LEDGER_PATH:-/tmp/real_gov_ledger.jsonl}"
 LEDGER_DIR="${LEDGER_DIR:-/tmp/real_gov_receipts}"
-# Timestamped per-run path so ledger entries reference immutable files.
-_STAMP="$(date -u +%Y%m%dT%H%M%S)-$$"
-OUT_JSON="${OUT_JSON:-$LEDGER_DIR/metrics-$_STAMP.json}"
 mkdir -p "$LEDGER_DIR"
+# B10 fix: use mktemp for guaranteed unique per-run identifier. The
+# previous "$(date -u +%Y%m%dT%H%M%S)-$$" pattern could collide when
+# two runs share the same second AND pid (container restart, PID
+# reuse). mktemp -u guarantees uniqueness without racing a file
+# create — the actual file is written by the producer.
+_STAMP="$(date -u +%Y%m%dT%H%M%S)-$(mktemp -u XXXXXXXX)"
+OUT_JSON="${OUT_JSON:-$LEDGER_DIR/metrics-$_STAMP.json}"
 
 log() { echo "[$(date +'%Y-%m-%d %H:%M:%S')] $*" >&2; }
 
