@@ -71,12 +71,35 @@ static int parse_entry_line(const char *line, real_ledger_entry_t *e) {
       dst = (uint64_t)_v; \
     } while (0)
 
+  /* E9 fix: decode JSON escape sequences in ledger string fields —
+   * symmetric with the escape now emitted by write_entry_line. Without
+   * this, a receipt_path containing `"` or `\` would be truncated at
+   * the first raw `"`, and the canonical hash would mismatch, breaking
+   * the chain. Same policy as real_contract.c extract_str (D3). */
   #define GRAB_STR(k, dst, cap) do { \
       q = FIND(k); if (!q) return -1; \
       while (*q == ' ') q++; \
       if (*q != '"') return -1; \
       q++; size_t i = 0; \
-      while (*q && *q != '"' && i + 1 < (cap)) (dst)[i++] = *q++; \
+      while (*q && *q != '"' && i + 1 < (cap)) { \
+        if (*q == '\\' && q[1]) { \
+          char _d; \
+          switch (q[1]) { \
+            case '"':  _d = '"';  break; \
+            case '\\': _d = '\\'; break; \
+            case '/':  _d = '/';  break; \
+            case 'n':  _d = '\n'; break; \
+            case 'r':  _d = '\r'; break; \
+            case 't':  _d = '\t'; break; \
+            case 'b':  _d = '\b'; break; \
+            case 'f':  _d = '\f'; break; \
+            default:   _d = q[1]; break; \
+          } \
+          (dst)[i++] = _d; q += 2; \
+        } else { \
+          (dst)[i++] = *q++; \
+        } \
+      } \
       (dst)[i] = '\0'; \
     } while (0)
 
@@ -97,17 +120,41 @@ static int parse_entry_line(const char *line, real_ledger_entry_t *e) {
   return 1;
 }
 
+/* E9 fix: JSON-escape receipt_path when writing the ledger line.
+ * SHA hashes (prev_tail_sha256, receipt_sha256, entry_sha256) are
+ * always exactly 64 hex chars and don't need escape. Symmetric with
+ * the GRAB_STR decode above. */
+static void ledger_json_esc(FILE *out, const char *s) {
+  fputc('"', out);
+  if (!s) { fputc('"', out); return; }
+  for (const unsigned char *p = (const unsigned char *)s; *p; p++) {
+    switch (*p) {
+      case '"':  fputs("\\\"", out); break;
+      case '\\': fputs("\\\\", out); break;
+      case '\n': fputs("\\n", out);  break;
+      case '\r': fputs("\\r", out);  break;
+      case '\t': fputs("\\t", out);  break;
+      default:
+        if (*p < 0x20) fprintf(out, "\\u%04x", *p);
+        else fputc(*p, out);
+    }
+  }
+  fputc('"', out);
+}
+
 static void write_entry_line(FILE *out, const real_ledger_entry_t *e) {
   fprintf(out,
           "{\"schema\":\"" REAL_LEDGER_SCHEMA "\","
           "\"seq\":%" PRIu64 ","
           "\"prev_tail_sha256\":\"%s\","
           "\"receipt_sha256\":\"%s\","
-          "\"receipt_path\":\"%s\","
-          "\"appended_unix_ms\":%" PRIu64 ","
+          "\"receipt_path\":",
+          e->seq, e->prev_tail_sha256_hex, e->receipt_sha256_hex);
+  ledger_json_esc(out, e->receipt_path);
+  fprintf(out,
+          ",\"appended_unix_ms\":%" PRIu64 ","
           "\"entry_sha256\":\"%s\"}\n",
-          e->seq, e->prev_tail_sha256_hex, e->receipt_sha256_hex,
-          e->receipt_path, e->appended_unix_ms, e->entry_sha256_hex);
+          e->appended_unix_ms, e->entry_sha256_hex);
 }
 
 int real_ledger_tail(const char *ledger_path,
