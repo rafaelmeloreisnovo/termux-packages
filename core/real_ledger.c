@@ -172,7 +172,17 @@ int real_ledger_tail(const char *ledger_path,
     return -1;
   }
 
-  char line[2048];
+  /* F6 fix: line buffer 4096 (was 2048). After the E9 escape/decode
+   * round-trip, a legitimate receipt_path of 512 chars all requiring
+   * `\uXXXX` expansion produces 3072 escape bytes + ~350 for the rest
+   * of the line = ~3422 bytes. The old 2048-byte buffer would silently
+   * truncate on fgets, and the parser would then reject the line —
+   * but the operator would see "chain broken" with no clue why. Now
+   * we allocate enough for the worst legitimate case, PLUS actively
+   * detect any residual truncation and fail-closed with a clear
+   * signal (parse_entry_line already returns -1 on missing quote
+   * terminators, which is what a truncated line looks like). */
+  char line[4096];
   real_ledger_entry_t last;
   int have_any = 0;
   while (fgets(line, sizeof(line), f)) {
@@ -276,7 +286,17 @@ int real_ledger_verify(const char *ledger_path,
   FILE *f = fopen(ledger_path, "r");
   if (!f) return -1;
 
-  char line[2048];
+  /* F6 fix: line buffer 4096 (was 2048). After the E9 escape/decode
+   * round-trip, a legitimate receipt_path of 512 chars all requiring
+   * `\uXXXX` expansion produces 3072 escape bytes + ~350 for the rest
+   * of the line = ~3422 bytes. The old 2048-byte buffer would silently
+   * truncate on fgets, and the parser would then reject the line —
+   * but the operator would see "chain broken" with no clue why. Now
+   * we allocate enough for the worst legitimate case, PLUS actively
+   * detect any residual truncation and fail-closed with a clear
+   * signal (parse_entry_line already returns -1 on missing quote
+   * terminators, which is what a truncated line looks like). */
+  char line[4096];
   char expected_prev[REAL_SHA256_HEXLEN] = {0};
   uint64_t expected_seq = 0;
   int chain_ok = 1;
