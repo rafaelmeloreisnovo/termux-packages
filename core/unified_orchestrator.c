@@ -9,6 +9,7 @@
 #include <pthread.h>
 #include <unistd.h>
 #include <stdatomic.h>
+#include <inttypes.h>
 
 static inline uint64_t get_time_ns(void) {
   struct timespec ts;
@@ -48,7 +49,7 @@ int unified_orchestrator_alloc(unified_orchestrator_t **orch_out) {
   }
 
   snprintf(orch->cicd_module.build_id, sizeof(orch->cicd_module.build_id),
-           "build_%lu", orch->timestamp_start);
+           "build_%" PRIu64, orch->timestamp_start);
 
   *orch_out = orch;
   return 0;
@@ -264,12 +265,12 @@ void unified_orchestrator_report(unified_orchestrator_t *orch) {
     device_profile_t *profile = &orch->device_module.profiles[0];
     printf("│ Device:          %s\n", profile->device_name);
     printf("│ CPU Cores:       %u @ %u MHz\n", profile->cpu_cores, profile->cpu_freq_mhz);
-    printf("│ CPU L1 Cache:    %lu KB\n", profile->cpu_l1_cache / 1024);
+    printf("│ CPU L1 Cache:    %" PRIu64 " KB\n", profile->cpu_l1_cache / 1024);
 
     if (profile->gpu_exists) {
       printf("│ GPU:             %s (%u cores @ %u MHz)\n", profile->gpu_name,
              profile->gpu_cores, profile->gpu_freq_mhz);
-      printf("│ GPU Memory:      %lu MB\n", profile->gpu_memory / (1024 * 1024));
+      printf("│ GPU Memory:      %" PRIu64 " MB\n", profile->gpu_memory / (1024 * 1024));
     } else {
       printf("│ GPU:             Not available\n");
     }
@@ -294,7 +295,7 @@ void unified_orchestrator_report(unified_orchestrator_t *orch) {
   printf("┌─ CI/CD INTEGRATION (Phase 9.12) ─────────────────────────────┐\n");
   printf("│ Build ID:        %s\n", orch->cicd_module.build_id);
   printf("│ Wall Time:       %.2f minutes (%.2f seconds)\n", elapsed_min, elapsed_sec);
-  printf("│ Timestamp:       %lu\n", orch->cicd_module.timestamp_start);
+  printf("│ Timestamp:       %" PRIu64 "\n", orch->cicd_module.timestamp_start);
 
   double total_phase_time = 0.0;
   for (uint32_t i = 0; i < 9; i++) {
@@ -311,7 +312,7 @@ void unified_orchestrator_report(unified_orchestrator_t *orch) {
   printf("│ GPU Initialized: %s\n",
          orch->gpu_module.gpu_initialized ? "Yes" : "No");
   printf("│ GPU Power:       %.2f W\n", orch->gpu_module.gpu_power_watts);
-  printf("│ GPU Tasks:       %lu enqueued, %lu completed\n",
+  printf("│ GPU Tasks:       %" PRIu64 " enqueued, %" PRIu64 " completed\n",
          orch->gpu_module.gpu_tasks.count, orch->gpu_module.gpu_tasks.completed_count);
   printf("│ GPU Speedup:     %.2fx\n", orch->gpu_module.gpu_tasks.speedup);
 
@@ -330,7 +331,7 @@ void unified_orchestrator_report(unified_orchestrator_t *orch) {
          orch->coherence_module.phi_current, orch->coherence_module.phi_target);
   printf("║ Active Threads:  %u                                           ║\n",
          orch->active_threads);
-  printf("║ Generation:      %lu                                          ║\n",
+  printf("║ Generation:      %" PRIu64 "                                          ║\n",
          orch->generation);
   printf("╚═══════════════════════════════════════════════════════════════╝\n\n");
 }
