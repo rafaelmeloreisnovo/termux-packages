@@ -26,48 +26,33 @@ jobs:
     name: D6-D9 — APT isolated -> install/runtime -> device handoff -> attestation
     runs-on: ubuntu-24.04
     timeout-minutes: 60
-
     steps:
       - name: Checkout exact revision
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
           persist-credentials: false
           fetch-depth: 1
-
       - name: Install governed toolchain
         shell: bash
         run: |
           set -euo pipefail
           sudo apt-get update
-          sudo apt-get install -y --no-install-recommends \
-            gcc-arm-linux-gnueabihf gcc-aarch64-linux-gnu \
-            libc6-dev-armhf-cross libc6-dev-arm64-cross \
-            binutils-arm-linux-gnueabihf binutils-aarch64-linux-gnu \
-            qemu-user dpkg-dev apt-utils gnupg jq gzip file python3
-
+          sudo apt-get install -y --no-install-recommends gcc-arm-linux-gnueabihf gcc-aarch64-linux-gnu libc6-dev-armhf-cross libc6-dev-arm64-cross binutils-arm-linux-gnueabihf binutils-aarch64-linux-gnu qemu-user dpkg-dev apt-utils gnupg jq gzip file python3
       - name: Build D3 packages with Debian-canonical architectures
         shell: bash
         run: |
           set -euo pipefail
           mkdir -p _d9/repo/pool/main/r/rafcodephi-real _d9/evidence _d9/work _d9/apt
-
           build_one() {
-            ARCH="$1"
-            DEB_ARCH="$2"
-            CC="$3"
-            MACHINE_RE="$4"
-            ROOT="_d9/work/$ARCH/root"
+            ARCH="$1"; DEB_ARCH="$2"; CC="$3"; MACHINE_RE="$4"; ROOT="_d9/work/$ARCH/root"
             mkdir -p "$ROOT/DEBIAN" "$ROOT/data/data/com.termux.rafacodephi/files/usr/bin"
-
             make -C core clean
             find core -maxdepth 1 -type f -name '*.o' -delete
             make -C core CC="$CC" pkg-real metrics-producer contract-validate receipt-validate receipt-ledger arch-probe
-
             for bin in pkg-real metrics-producer contract-validate receipt-validate receipt-ledger arch-probe; do
               readelf -h "core/$bin" | grep -Eq "Machine:.*$MACHINE_RE"
               install -m 0755 "core/$bin" "$ROOT/data/data/com.termux.rafacodephi/files/usr/bin/$bin"
             done
-
             cat > "$ROOT/DEBIAN/control" <<EOF
           Package: com.termux.rafacodephi-real
           Version: 0.1.0+git${GITHUB_SHA::12}
@@ -77,16 +62,13 @@ jobs:
           Priority: optional
           Description: Source-derived RAFCODEPHI REAL evidence package
           EOF
-
             DEB="_d9/repo/pool/main/r/rafcodephi-real/com.termux.rafacodephi-real_0.1.0+git${GITHUB_SHA::12}_${DEB_ARCH}.deb"
             dpkg-deb --build --root-owner-group "$ROOT" "$DEB" >/dev/null
             test "$(dpkg-deb -f "$DEB" Architecture)" = "$DEB_ARCH"
             sha256sum "$DEB" > "_d9/evidence/d3-${ARCH}.deb.sha256"
           }
-
           build_one arm armhf arm-linux-gnueabihf-gcc ARM
           build_one aarch64 arm64 aarch64-linux-gnu-gcc AArch64
-
       - name: Rebuild D4 repository metadata
         shell: bash
         run: |
@@ -97,25 +79,13 @@ jobs:
           test "$(grep -c '^Package: com.termux.rafacodephi-real$' Packages)" -eq 2
           grep -q '^Architecture: armhf$' Packages
           grep -q '^Architecture: arm64$' Packages
-
-          apt-ftparchive \
-            -o APT::FTPArchive::Release::Origin=RAFCODEPHI \
-            -o APT::FTPArchive::Release::Label='RAFCODEPHI D6-D9 Evidence' \
-            -o APT::FTPArchive::Release::Suite=stable \
-            -o APT::FTPArchive::Release::Codename=rafcodephi \
-            -o APT::FTPArchive::Release::Architectures='armhf arm64' \
-            -o APT::FTPArchive::Release::Components=main \
-            release . > Release
-          test -s Packages
-          test -s Packages.gz
-          test -s Release
-
+          apt-ftparchive -o APT::FTPArchive::Release::Origin=RAFCODEPHI -o APT::FTPArchive::Release::Label='RAFCODEPHI D6-D9 Evidence' -o APT::FTPArchive::Release::Suite=stable -o APT::FTPArchive::Release::Codename=rafcodephi -o APT::FTPArchive::Release::Architectures='armhf arm64' -o APT::FTPArchive::Release::Components=main release . > Release
+          test -s Packages && test -s Packages.gz && test -s Release
       - name: Rebuild D5 ephemeral signature and isolated trust keyring
         shell: bash
         run: |
           set -euo pipefail
-          export GNUPGHOME="$PWD/_d9/gnupg-sign"
-          mkdir -m 0700 -p "$GNUPGHOME"
+          export GNUPGHOME="$PWD/_d9/gnupg-sign"; mkdir -m 0700 -p "$GNUPGHOME"
           cat > _d9/key.batch <<'EOF'
           %no-protection
           Key-Type: RSA
@@ -126,128 +96,72 @@ jobs:
           %commit
           EOF
           gpg --batch --generate-key _d9/key.batch
-          FPR="$(gpg --batch --with-colons --list-secret-keys | awk -F: '$1=="fpr"{print $10; exit}')"
-          test -n "$FPR"
+          FPR="$(gpg --batch --with-colons --list-secret-keys | awk -F: '$1=="fpr"{print $10; exit}')"; test -n "$FPR"
           gpg --batch --yes --armor --export "$FPR" > _d9/evidence/d5-ephemeral-public.asc
           gpg --batch --yes --export "$FPR" > _d9/evidence/d5-ephemeral-public.gpg
           gpg --batch --yes --local-user "$FPR" --clearsign --output _d9/repo/InRelease _d9/repo/Release
           gpg --batch --yes --local-user "$FPR" --detach-sign --output _d9/repo/Release.gpg _d9/repo/Release
-
-          export GNUPGHOME="$PWD/_d9/gnupg-verify"
-          mkdir -m 0700 -p "$GNUPGHOME"
+          export GNUPGHOME="$PWD/_d9/gnupg-verify"; mkdir -m 0700 -p "$GNUPGHOME"
           gpg --batch --import _d9/evidence/d5-ephemeral-public.asc
           gpg --batch --verify _d9/repo/InRelease
           gpg --batch --verify _d9/repo/Release.gpg _d9/repo/Release
-
       - name: D6 — isolated APT client verifies signed repository and resolves packages
         shell: bash
         run: |
           set -euo pipefail
-          REPO="$(realpath _d9/repo)"
-          KEY="$(realpath _d9/evidence/d5-ephemeral-public.gpg)"
-
+          REPO="$(realpath _d9/repo)"; KEY="$(realpath _d9/evidence/d5-ephemeral-public.gpg)"
           apt_probe() {
-            ARCH="$1"
-            ROOT="$PWD/_d9/apt/$ARCH"
+            ARCH="$1"; ROOT="$PWD/_d9/apt/$ARCH"
             mkdir -p "$ROOT/etc/apt" "$ROOT/lists/partial" "$ROOT/cache/archives/partial" "$ROOT/state"
             printf 'deb [signed-by=%s] file:%s ./\n' "$KEY" "$REPO" > "$ROOT/etc/apt/sources.list"
-
-            APT=(apt-get \
-              -o APT::Architecture="$ARCH" \
-              -o Dir::Etc::sourcelist="$ROOT/etc/apt/sources.list" \
-              -o Dir::Etc::sourceparts="-" \
-              -o Dir::State="$ROOT/state" \
-              -o Dir::State::lists="$ROOT/lists" \
-              -o Dir::Cache="$ROOT/cache" \
-              -o Dir::Cache::archives="$ROOT/cache/archives" \
-              -o APT::Get::List-Cleanup="0" \
-              -o Acquire::Languages="none")
-
+            APT=(apt-get -o APT::Architecture="$ARCH" -o Dir::Etc::sourcelist="$ROOT/etc/apt/sources.list" -o Dir::Etc::sourceparts="-" -o Dir::State="$ROOT/state" -o Dir::State::lists="$ROOT/lists" -o Dir::Cache="$ROOT/cache" -o Dir::Cache::archives="$ROOT/cache/archives" -o APT::Get::List-Cleanup="0" -o Acquire::Languages="none")
             "${APT[@]}" update
-            apt-cache \
-              -o APT::Architecture="$ARCH" \
-              -o Dir::Etc::sourcelist="$ROOT/etc/apt/sources.list" \
-              -o Dir::Etc::sourceparts="-" \
-              -o Dir::State="$ROOT/state" \
-              -o Dir::State::lists="$ROOT/lists" \
-              policy com.termux.rafacodephi-real | tee "_d9/evidence/d6-${ARCH}-policy.txt"
+            apt-cache -o APT::Architecture="$ARCH" -o Dir::Etc::sourcelist="$ROOT/etc/apt/sources.list" -o Dir::Etc::sourceparts="-" -o Dir::State="$ROOT/state" -o Dir::State::lists="$ROOT/lists" policy com.termux.rafacodephi-real | tee "_d9/evidence/d6-${ARCH}-policy.txt"
             grep -q 'Candidate: 0.1.0+git' "_d9/evidence/d6-${ARCH}-policy.txt"
-
             "${APT[@]}" download com.termux.rafacodephi-real
-            DEB="$(find . -maxdepth 1 -type f -name 'com.termux.rafacodephi-real_*_'"$ARCH"'.deb' -print -quit)"
-            test -n "$DEB"
+            DEB="$(find . -maxdepth 1 -type f -name 'com.termux.rafacodephi-real_*_'"$ARCH"'.deb' -print -quit)"; test -n "$DEB"
             mv "$DEB" "_d9/evidence/d6-${ARCH}-downloaded.deb"
             sha256sum "_d9/evidence/d6-${ARCH}-downloaded.deb" > "_d9/evidence/d6-${ARCH}-downloaded.deb.sha256"
           }
-
           apt_probe armhf
           apt_probe arm64
-
           jq -n --arg sha "$GITHUB_SHA" '{schema:"rafcodephi_d6_apt_isolated/1.0.0",status:"D6_APT_ISOLATED_PASS",git_sha:$sha,signature_verified:true,armhf_resolution:"PASS",arm64_resolution:"PASS",persistent_trust_root:"TOKEN_VAZIO",physical_android:"TOKEN_VAZIO",claim_allowed:false}' > _d9/evidence/d6-receipt.json
           jq -e '.status=="D6_APT_ISOLATED_PASS" and .claim_allowed==false' _d9/evidence/d6-receipt.json >/dev/null
-
       - name: D7 — install/extract APT-fetched package and execute packaged binaries under QEMU
         shell: bash
         run: |
           set -euo pipefail
           run_one() {
-            ARCH="$1"
-            QEMU="$2"
-            SYSROOT="$3"
-            DEB="_d9/evidence/d6-${ARCH}-downloaded.deb"
-            ROOT="_d9/work/d7-${ARCH}-root"
-            rm -rf "$ROOT"
-            mkdir -p "$ROOT"
-            dpkg-deb -x "$DEB" "$ROOT"
-            BIN="$ROOT/data/data/com.termux.rafacodephi/files/usr/bin/arch-probe"
-            test -x "$BIN"
-            "$QEMU" -L "$SYSROOT" "$BIN" > "_d9/evidence/d7-${ARCH}-arch-probe.txt"
-            test -s "_d9/evidence/d7-${ARCH}-arch-probe.txt"
-
-            PKGREAL="$ROOT/data/data/com.termux.rafacodephi/files/usr/bin/pkg-real"
-            test -x "$PKGREAL"
-            "$QEMU" -L "$SYSROOT" "$PKGREAL" --help > "_d9/evidence/d7-${ARCH}-pkg-real.txt" 2>&1 || RC=$?
-            RC="${RC:-0}"
+            ARCH="$1"; QEMU="$2"; SYSROOT="$3"; DEB="_d9/evidence/d6-${ARCH}-downloaded.deb"; ROOT="_d9/work/d7-${ARCH}-root"
+            rm -rf "$ROOT"; mkdir -p "$ROOT"; dpkg-deb -x "$DEB" "$ROOT"
+            BIN="$ROOT/data/data/com.termux.rafacodephi/files/usr/bin/arch-probe"; test -x "$BIN"
+            PROBE_JSON="_d9/evidence/d7-${ARCH}-arch-probe.json"
+            "$QEMU" -L "$SYSROOT" "$BIN" "$PROBE_JSON"
+            test -s "$PROBE_JSON"
+            jq -e '.arch != null' "$PROBE_JSON" >/dev/null
+            PKGREAL="$ROOT/data/data/com.termux.rafacodephi/files/usr/bin/pkg-real"; test -x "$PKGREAL"
+            RC=0; "$QEMU" -L "$SYSROOT" "$PKGREAL" --help > "_d9/evidence/d7-${ARCH}-pkg-real.txt" 2>&1 || RC=$?
             test "$RC" -le 2
           }
-
           run_one armhf qemu-arm /usr/arm-linux-gnueabihf
           run_one arm64 qemu-aarch64 /usr/aarch64-linux-gnu
-
           jq -n --arg sha "$GITHUB_SHA" '{schema:"rafcodephi_d7_emulated_install_runtime/1.0.0",status:"D7_EMULATED_INSTALL_RUNTIME_PASS",git_sha:$sha,armhf:"PASS",arm64:"PASS",runtime_kind:"QEMU_USER_LINUX",android_bionic:false,physical_android:"TOKEN_VAZIO",claim_allowed:false}' > _d9/evidence/d7-receipt.json
           jq -e '.status=="D7_EMULATED_INSTALL_RUNTIME_PASS" and .android_bionic==false and .physical_android=="TOKEN_VAZIO"' _d9/evidence/d7-receipt.json >/dev/null
-
       - name: D8 — emit physical-device handoff contract without false promotion
         shell: bash
         run: |
           set -euo pipefail
-          ARM_SHA="$(sha256sum _d9/evidence/d6-armhf-downloaded.deb | awk '{print $1}')"
-          A64_SHA="$(sha256sum _d9/evidence/d6-arm64-downloaded.deb | awk '{print $1}')"
-          KEY_SHA="$(sha256sum _d9/evidence/d5-ephemeral-public.gpg | awk '{print $1}')"
-          jq -n \
-            --arg git_sha "$GITHUB_SHA" \
-            --arg arm_sha "$ARM_SHA" \
-            --arg a64_sha "$A64_SHA" \
-            --arg key_sha "$KEY_SHA" \
-            '{schema:"rafcodephi_d8_device_handoff/1.0.0",status:"D8_DEVICE_HANDOFF_READY",git_sha:$git_sha,required_device_environment:{os:"Android/Termux",package_id:"com.termux.rafacodephi",prefix:"/data/data/com.termux.rafacodephi/files/usr"},inputs:{armhf_deb_sha256:$arm_sha,arm64_deb_sha256:$a64_sha,ephemeral_test_key_sha256:$key_sha},required_physical_actions:["import governed trust root","apt update","apt install com.termux.rafacodephi-real","execute arch-probe","execute pkg-real","capture device properties and hashes","emit signed device receipt"],physical_android:"TOKEN_VAZIO",persistent_trust_root:"TOKEN_VAZIO",claim_allowed:false,rule:"HANDOFF_READY_IS_NOT_DEVICE_PASS"}' > _d9/evidence/d8-receipt.json
+          ARM_SHA="$(sha256sum _d9/evidence/d6-armhf-downloaded.deb | awk '{print $1}')"; A64_SHA="$(sha256sum _d9/evidence/d6-arm64-downloaded.deb | awk '{print $1}')"; KEY_SHA="$(sha256sum _d9/evidence/d5-ephemeral-public.gpg | awk '{print $1}')"
+          jq -n --arg git_sha "$GITHUB_SHA" --arg arm_sha "$ARM_SHA" --arg a64_sha "$A64_SHA" --arg key_sha "$KEY_SHA" '{schema:"rafcodephi_d8_device_handoff/1.0.0",status:"D8_DEVICE_HANDOFF_READY",git_sha:$git_sha,required_device_environment:{os:"Android/Termux",package_id:"com.termux.rafacodephi",prefix:"/data/data/com.termux.rafacodephi/files/usr"},inputs:{armhf_deb_sha256:$arm_sha,arm64_deb_sha256:$a64_sha,ephemeral_test_key_sha256:$key_sha},required_physical_actions:["import governed trust root","apt update","apt install com.termux.rafacodephi-real","execute arch-probe","execute pkg-real","capture device properties and hashes","emit signed device receipt"],physical_android:"TOKEN_VAZIO",persistent_trust_root:"TOKEN_VAZIO",claim_allowed:false,rule:"HANDOFF_READY_IS_NOT_DEVICE_PASS"}' > _d9/evidence/d8-receipt.json
           jq -e '.status=="D8_DEVICE_HANDOFF_READY" and .physical_android=="TOKEN_VAZIO" and .claim_allowed==false' _d9/evidence/d8-receipt.json >/dev/null
-
       - name: D9 — aggregate governed attestation and preserve unresolved physical boundary
         shell: bash
         run: |
           set -euo pipefail
-          D6_SHA="$(sha256sum _d9/evidence/d6-receipt.json | awk '{print $1}')"
-          D7_SHA="$(sha256sum _d9/evidence/d7-receipt.json | awk '{print $1}')"
-          D8_SHA="$(sha256sum _d9/evidence/d8-receipt.json | awk '{print $1}')"
-          jq -n \
-            --arg git_sha "$GITHUB_SHA" \
-            --arg d6 "$D6_SHA" \
-            --arg d7 "$D7_SHA" \
-            --arg d8 "$D8_SHA" \
-            '{schema:"rafcodephi_d9_governed_attestation/1.0.0",status:"D9_PRE_DEVICE_ATTESTATION_PASS",git_sha:$git_sha,chain:{D3:"PASS_REBUILT",D4:"PASS_REBUILT",D5:"PASS_EPHEMERAL_TRUST",D6:"PASS_APT_ISOLATED",D7:"PASS_QEMU_INSTALL_RUNTIME",D8:"HANDOFF_READY_PHYSICAL_TOKEN_VAZIO",D9:"PASS_PRE_DEVICE_ATTESTATION"},receipt_sha256:{D6:$d6,D7:$d7,D8:$d8},persistent_trust_root:"TOKEN_VAZIO",physical_android:"TOKEN_VAZIO",android_bionic_runtime:"TOKEN_VAZIO",claim_allowed:false,rule:"D9_PRE_DEVICE_PASS_NEVER_EQUALS_PHYSICAL_DEVICE_PASS"}' > _d9/evidence/d9-receipt.json
+          D6_SHA="$(sha256sum _d9/evidence/d6-receipt.json | awk '{print $1}')"; D7_SHA="$(sha256sum _d9/evidence/d7-receipt.json | awk '{print $1}')"; D8_SHA="$(sha256sum _d9/evidence/d8-receipt.json | awk '{print $1}')"
+          jq -n --arg git_sha "$GITHUB_SHA" --arg d6 "$D6_SHA" --arg d7 "$D7_SHA" --arg d8 "$D8_SHA" '{schema:"rafcodephi_d9_governed_attestation/1.0.0",status:"D9_PRE_DEVICE_ATTESTATION_PASS",git_sha:$git_sha,chain:{D3:"PASS_REBUILT",D4:"PASS_REBUILT",D5:"PASS_EPHEMERAL_TRUST",D6:"PASS_APT_ISOLATED",D7:"PASS_QEMU_INSTALL_RUNTIME",D8:"HANDOFF_READY_PHYSICAL_TOKEN_VAZIO",D9:"PASS_PRE_DEVICE_ATTESTATION"},receipt_sha256:{D6:$d6,D7:$d7,D8:$d8},persistent_trust_root:"TOKEN_VAZIO",physical_android:"TOKEN_VAZIO",android_bionic_runtime:"TOKEN_VAZIO",claim_allowed:false,rule:"D9_PRE_DEVICE_PASS_NEVER_EQUALS_PHYSICAL_DEVICE_PASS"}' > _d9/evidence/d9-receipt.json
           jq -e '.status=="D9_PRE_DEVICE_ATTESTATION_PASS" and .physical_android=="TOKEN_VAZIO" and .android_bionic_runtime=="TOKEN_VAZIO" and .claim_allowed==false' _d9/evidence/d9-receipt.json >/dev/null
           sha256sum _d9/evidence/d9-receipt.json > _d9/evidence/d9-receipt.json.sha256
-
       - name: Fail closed on D6-D9 transit invariant
         shell: bash
         run: |
@@ -256,7 +170,6 @@ jobs:
           jq -e '.status=="D7_EMULATED_INSTALL_RUNTIME_PASS"' _d9/evidence/d7-receipt.json >/dev/null
           jq -e '.status=="D8_DEVICE_HANDOFF_READY" and .physical_android=="TOKEN_VAZIO"' _d9/evidence/d8-receipt.json >/dev/null
           jq -e '.status=="D9_PRE_DEVICE_ATTESTATION_PASS" and .physical_android=="TOKEN_VAZIO"' _d9/evidence/d9-receipt.json >/dev/null
-
       - name: Upload D6-D9 evidence bundle
         if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
