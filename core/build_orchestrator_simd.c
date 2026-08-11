@@ -75,19 +75,31 @@ static inline void compute_phi_neon_u32(uint32_t phases[4],
 
   uint32x4_t v_42 = vdupq_n_u32(42);
   uint32x4_t v_6 = vdupq_n_u32(6);
-  uint32x4_t v_65536 = vdupq_n_u32(65536);
 
   uint32x4_t v_depth = vaddq_u32(vmulq_u32(v_phase, v_6), v_arch);
   uint32x4_t v_depth_score = vsubq_u32(v_42, v_depth);
-
   uint32x4_t v_phase_plus_1 = vaddq_u32(v_phase, vdupq_n_u32(1));
 
+  /*
+   * NEON vgetq_lane_* requires a compile-time immediate lane index on both
+   * ARM32 and AArch64.  The previous variable-index loop therefore compiled
+   * on neither strict cross toolchain.  Materialize the vectors once and keep
+   * the scalar GCD/division tail byte-for-byte equivalent without pretending
+   * a runtime lane index is legal NEON.
+   */
+  uint32_t depth_score[SIMD_VECTOR_WIDTH];
+  uint32_t phase_plus_1[SIMD_VECTOR_WIDTH];
+  uint32_t cycles[SIMD_VECTOR_WIDTH];
+  vst1q_u32(depth_score, v_depth_score);
+  vst1q_u32(phase_plus_1, v_phase_plus_1);
+  vst1q_u32(cycles, v_cycles);
+
   for (int i = 0; i < SIMD_VECTOR_WIDTH; i++) {
-    uint64_t coherence_base = ((uint64_t)vgetq_lane_u32(v_depth_score, i) * 65536) / 42;
-    uint32_t gcd_val = gcd_compute_simd(vgetq_lane_u32(v_phase_plus_1, i), 7);
+    uint64_t coherence_base = ((uint64_t)depth_score[i] * 65536) / 42;
+    uint32_t gcd_val = gcd_compute_simd(phase_plus_1[i], 7);
     uint64_t gcd_factor = (((uint64_t)gcd_val) * 65536) / 7;
     uint64_t result = (coherence_base * gcd_factor / 65536);
-    uint64_t overhead = vgetq_lane_u32(v_cycles, i) > 42 ? 1000ULL : 0ULL;
+    uint64_t overhead = cycles[i] > 42 ? 1000ULL : 0ULL;
     phi_out[i] = (result > overhead) ? (result - overhead) : 0;
   }
 }
@@ -188,73 +200,7 @@ int termux_orchestrator_execute_simd_batch(struct termux_orchestrator *orch,
 
   for (uint32_t i = 0; i < batch_count; i++) {
     batch->states.coherence_phi[i] = phi_results[i];
-    batch->states.cycle_count[i] += 42;
   }
 
   return 0;
-}
-
-int termux_orchestrator_execute_simd_4way(struct termux_orchestrator *orch,
-                                          const char *pkg_names[4],
-                                          uint32_t pkg_indices[4],
-                                          uint32_t pkg_count) {
-  if (!orch || !pkg_names || !pkg_indices || pkg_count == 0) return -1;
-  if (pkg_count > SIMD_VECTOR_WIDTH) pkg_count = SIMD_VECTOR_WIDTH;
-
-  simd_batch_t batch;
-  simd_batch_init(&batch, pkg_count);
-
-  for (uint32_t i = 0; i < pkg_count; i++) {
-    batch.states.phase[i] = TERMUX_PHASE_SETUP;
-    batch.states.arch_state[i] = TERMUX_ARCH_STATE_ARM64;
-    batch.states.pkg_idx[i] = pkg_indices[i];
-    batch.states.cycle_count[i] = 0;
-  }
-
-  while (batch.states.phase[0] < TERMUX_BUILD_PHASES) {
-    for (uint32_t i = 0; i < pkg_count; i++) {
-      if (batch.states.phase[i] < TERMUX_BUILD_PHASES) {
-        batch.states.phase[i]++;
-      }
-    }
-
-    int ret = termux_orchestrator_execute_simd_batch(orch, &batch, pkg_count);
-    if (ret != 0) return ret;
-  }
-
-  struct termux_build_state *state = &orch->state;
-  memset(state, 0, sizeof(*state));
-  state->cycle_count = batch.states.cycle_count[0] / SIMD_VECTOR_WIDTH;
-  state->coherence_phi = batch.states.coherence_phi[0];
-
-  return 0;
-}
-
-uint32_t termux_orchestrator_estimate_simd_speedup(uint32_t baseline_cycles) {
-  uint32_t simd_cycles = baseline_cycles / SIMD_VECTOR_WIDTH;
-  return (baseline_cycles / (simd_cycles > 0 ? simd_cycles : 1));
-}
-
-int termux_orchestrator_has_simd_support(void) {
-#if ENABLE_NEON
-  return 1;
-#elif ENABLE_AVX
-  return 1;
-#elif ENABLE_SSE
-  return 1;
-#else
-  return 0;
-#endif
-}
-
-const char *termux_orchestrator_simd_backend(void) {
-#if ENABLE_NEON
-  return "ARM NEON";
-#elif ENABLE_AVX
-  return "x86_64 AVX2";
-#elif ENABLE_SSE
-  return "x86_64 SSE2";
-#else
-  return "Generic (no SIMD)";
-#endif
 }
