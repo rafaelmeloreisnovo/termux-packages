@@ -3,6 +3,7 @@
 #include <stdio.h>
 #include <math.h>
 #include <string.h>
+#include <inttypes.h>
 
 #define GCD_SAFE(a, b) ({ uint32_t _a = (a), _b = (b); while (_b) { uint32_t _t = _b; _b = _a % _b; _a = _t; } _a; })
 #define PHI_SCALE (1ULL << 16)
@@ -103,7 +104,7 @@ void termux_coherence_print_report(const layer_coherence_t *layers, uint32_t cou
   uint64_t total_phi = 0;
   for (uint32_t i = 0; i < count && i < TERMUX_DAG_LAYERS; i++) {
     const layer_coherence_t *layer = &layers[i];
-    printf("%5u | %8u | %7lu | %14.2f | %17.2f\n",
+    printf("%5u | %8u | %7" PRIu64 " | %14.2f | %17.2f\n",
            layer->layer_id,
            layer->package_count,
            layer->coherence_phi,
