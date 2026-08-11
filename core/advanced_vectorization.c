@@ -2,6 +2,7 @@
 #include <stdio.h>
 #include <string.h>
 #include <time.h>
+#include <inttypes.h>
 
 #ifdef __aarch64__
 #include <arm_neon.h>
@@ -112,9 +113,11 @@ uint32_t termux_crc32c_neon(const uint8_t *data, size_t len, uint32_t crc) {
 
   while (data < end_bulk) {
     uint8x16_t chunk = vld1q_u8(data);
+    uint8_t lanes[16];
+    vst1q_u8(lanes, chunk);
 
     for (int i = 0; i < 16; i++) {
-      crc ^= vgetq_lane_u8(chunk, i);
+      crc ^= lanes[i];
       for (int j = 0; j < 8; j++) {
         if (crc & 1) {
           crc = (crc >> 1) ^ crc32c_poly;
@@ -179,8 +182,8 @@ uint32_t termux_crc32c_sve(const uint8_t *data, size_t len, uint32_t crc) {
 uint32_t termux_crc32c_avx512(const uint8_t *data, size_t len, uint32_t crc) {
   if (!data || len == 0) return crc;
 
-#ifdef __x86_64__
   const uint8_t *end = data + len;
+#ifdef __x86_64__
   const uint8_t *end_bulk = data + (len / 64) * 64;
 
   while (data < end_bulk) {
@@ -324,8 +327,8 @@ void termux_simd_print_metrics(const simd_metrics_t *metrics) {
   if (!metrics) return;
 
   printf("\n=== SIMD Vectorization Metrics ===\n");
-  printf("Scalar cycles: %lu\n", metrics->cycles_scalar);
-  printf("Vector cycles: %lu\n", metrics->cycles_vector);
+  printf("Scalar cycles: %" PRIu64 "\n", metrics->cycles_scalar);
+  printf("Vector cycles: %" PRIu64 "\n", metrics->cycles_vector);
   printf("Speedup: %.2fx\n", metrics->speedup);
   printf("Efficiency: %.2f%%\n", metrics->efficiency * 100.0);
   printf("Vector ops executed: %u\n", metrics->vector_ops_executed);
