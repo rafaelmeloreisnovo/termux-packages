@@ -5,6 +5,7 @@
 #include <string.h>
 #include <time.h>
 #include <stdbool.h>
+#include <inttypes.h>
 
 static int test_simd_backend_detection(void) {
   printf("\n=== Sprint 6.1: SIMD Backend Detection ===\n");
@@ -47,14 +48,10 @@ static int test_crc32c_neon(void) {
   printf("\n=== Sprint 6.3: CRC32c NEON Vectorization ===\n");
 
   uint8_t data[256];
-  for (int i = 0; i < 256; i++) {
-    data[i] = (uint8_t)(i & 0xFF);
-  }
+  for (int i = 0; i < 256; i++) data[i] = (uint8_t)(i & 0xFF);
 
-  uint32_t crc = 0;
-  crc = termux_crc32c_neon(data, 256, crc);
+  uint32_t crc = termux_crc32c_neon(data, 256, 0);
   assert(crc != 0);
-
   printf("  CRC32c of 256 bytes: 0x%08x\n", crc);
   printf("✓ CRC32c NEON PASSED\n");
   return 0;
@@ -64,14 +61,10 @@ static int test_crc32c_sve(void) {
   printf("\n=== Sprint 6.4: CRC32c SVE Vectorization ===\n");
 
   uint8_t data[256];
-  for (int i = 0; i < 256; i++) {
-    data[i] = (uint8_t)(i & 0xFF);
-  }
+  for (int i = 0; i < 256; i++) data[i] = (uint8_t)(i & 0xFF);
 
-  uint32_t crc = 0;
-  crc = termux_crc32c_sve(data, 256, crc);
+  uint32_t crc = termux_crc32c_sve(data, 256, 0);
   assert(crc != 0);
-
   printf("  CRC32c of 256 bytes: 0x%08x\n", crc);
   printf("✓ CRC32c SVE PASSED\n");
   return 0;
@@ -81,14 +74,10 @@ static int test_crc32c_avx512(void) {
   printf("\n=== Sprint 6.5: CRC32c AVX-512 Vectorization ===\n");
 
   uint8_t data[512];
-  for (int i = 0; i < 512; i++) {
-    data[i] = (uint8_t)(i & 0xFF);
-  }
+  for (int i = 0; i < 512; i++) data[i] = (uint8_t)(i & 0xFF);
 
-  uint32_t crc = 0;
-  crc = termux_crc32c_avx512(data, 512, crc);
+  uint32_t crc = termux_crc32c_avx512(data, 512, 0);
   assert(crc != 0);
-
   printf("  CRC32c of 512 bytes: 0x%08x\n", crc);
   printf("✓ CRC32c AVX-512 PASSED\n");
   return 0;
@@ -98,21 +87,17 @@ static int test_vectorized_cycle_count(void) {
   printf("\n=== Sprint 6.6: Vectorized Cycle Counting ===\n");
 
   uint32_t cycles[256];
-  for (int i = 0; i < 256; i++) {
-    cycles[i] = 40 + (i % 20);
-  }
+  for (int i = 0; i < 256; i++) cycles[i] = 40 + (i % 20);
 
   uint64_t sum = 0;
   simd_metrics_t metrics = {};
-
   int ret = termux_vectorized_cycle_count(cycles, 256, &sum, &metrics);
   assert(ret == 0);
   assert(sum > 0);
 
-  printf("  Total cycles: %lu\n", sum);
+  printf("  Total cycles: %" PRIu64 "\n", sum);
   printf("  Vector operations: %u\n", metrics.vector_ops_executed);
   printf("  Efficiency: %.2f ops/ns\n", metrics.efficiency);
-
   printf("✓ Vectorized cycle count PASSED\n");
   return 0;
 }
@@ -121,20 +106,16 @@ static int test_vectorized_phi_compute(void) {
   printf("\n=== Sprint 6.7: Vectorized Φ Computation ===\n");
 
   uint64_t phi_scores[32];
-  for (int i = 0; i < 32; i++) {
-    phi_scores[i] = 55000 + (i * 1000);
-  }
+  for (int i = 0; i < 32; i++) phi_scores[i] = 55000 + (i * 1000);
 
   double mean_phi = 0.0;
   simd_metrics_t metrics = {};
-
   int ret = termux_vectorized_phi_compute(phi_scores, 32, &mean_phi, &metrics);
   assert(ret == 0);
   assert(mean_phi > 0.0);
 
   printf("  Mean Φ: %.3f\n", mean_phi);
   printf("  Speedup: %.2fx\n", metrics.speedup);
-
   printf("✓ Vectorized Φ computation PASSED\n");
   return 0;
 }
@@ -144,10 +125,7 @@ static int test_mixed_width_processing(void) {
 
   uint8_t src[256] = {};
   uint8_t dst[256] = {};
-
-  for (int i = 0; i < 256; i++) {
-    src[i] = (uint8_t)i;
-  }
+  for (int i = 0; i < 256; i++) src[i] = (uint8_t)i;
 
   simd_backend_t backends[] = {
     SIMD_BACKEND_SCALAR, SIMD_BACKEND_NEON_128,
@@ -161,13 +139,9 @@ static int test_mixed_width_processing(void) {
 
     bool match = true;
     for (int j = 0; j < 256; j++) {
-      if (src[j] != dst[j]) {
-        match = false;
-        break;
-      }
+      if (src[j] != dst[j]) { match = false; break; }
     }
     assert(match);
-
     printf("  Backend %u: ✓\n", backends[i]);
   }
 
@@ -186,9 +160,7 @@ static int test_simd_metrics_printing(void) {
     .vector_ops_executed = 64,
     .scalar_fallback_count = 5
   };
-
   termux_simd_print_metrics(&metrics);
-
   printf("✓ SIMD metrics printing PASSED\n");
   return 0;
 }
@@ -225,6 +197,5 @@ int main(void) {
     printf("✗ SOME TESTS FAILED\n");
   }
   printf("================================================================================\n\n");
-
   return all_passed == 0 ? 0 : 1;
 }
