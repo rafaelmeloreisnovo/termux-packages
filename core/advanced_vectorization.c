@@ -31,7 +31,7 @@ simd_backend_t termux_detect_simd_backend(void) {
 
 #ifdef __aarch64__
   uint64_t id_aa64isar1;
-  __asm__ volatile("mrs %0, id_aa64isr1_el1" : "=r" (id_aa64isar1));
+  __asm__ volatile("mrs %0, id_aa64isar1_el1" : "=r" (id_aa64isar1));
 
   if ((id_aa64isar1 >> 20) & 0xFUL) {
     return SIMD_BACKEND_SVE_512;
