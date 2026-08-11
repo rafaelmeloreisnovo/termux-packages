@@ -1,0 +1,131 @@
+name: RAFCODEPHI G6 Receipt Failure Contract
+
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - 'core/tests/test_hotfix_g6_producer_exit_code.sh'
+      - 'core/metrics_producer.c'
+      - 'core/arch_probe_cli.c'
+      - 'core/real_receipt.c'
+      - 'core/real_receipt.h'
+      - 'core/Makefile'
+      - '.github/workflows/rafcodephi-g6-receipt-failure.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'core/tests/test_hotfix_g6_producer_exit_code.sh'
+      - 'core/metrics_producer.c'
+      - 'core/arch_probe_cli.c'
+      - 'core/real_receipt.c'
+      - 'core/real_receipt.h'
+      - 'core/Makefile'
+      - '.github/workflows/rafcodephi-g6-receipt-failure.yml'
+
+permissions:
+  contents: read
+
+env:
+  CLAIM_ALLOWED: 'false'
+  PHYSICAL_ANDROID: 'TOKEN_VAZIO'
+  PERSISTENT_TRUST_ROOT: 'TOKEN_VAZIO'
+  RULE: 'ANY_RED_STOPS_TRANSIT'
+
+jobs:
+  g6-negative-path:
+    name: G6 negative receipt path — ${{ matrix.compiler }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - compiler: gcc
+            cc: gcc
+          - compiler: clang
+            cc: clang
+
+    steps:
+      - name: Checkout exact revision
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+          fetch-depth: 1
+
+      - name: Verify local toolchain surface
+        shell: bash
+        run: |
+          set -euo pipefail
+          for tool in bash make jq sha256sum "${{ matrix.cc }}"; do
+            command -v "$tool" >/dev/null
+          done
+
+      - name: Build only the G6 production surface
+        shell: bash
+        env:
+          CC: ${{ matrix.cc }}
+        run: |
+          set -euo pipefail
+          make -C core clean
+          make -C core CC="$CC" metrics-producer arch-probe
+          test -x core/metrics-producer
+          test -x core/arch-probe
+
+      - name: Exercise real receipt-write failure path
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p _g6/${{ matrix.compiler }}
+          bash core/tests/test_hotfix_g6_producer_exit_code.sh \
+            | tee _g6/${{ matrix.compiler }}/g6-negative-path.log
+          grep -Fq 'Passed: 9' _g6/${{ matrix.compiler }}/g6-negative-path.log
+          grep -Fq 'Failed: 0' _g6/${{ matrix.compiler }}/g6-negative-path.log
+
+      - name: Emit G6 evidence receipt
+        if: success()
+        shell: bash
+        run: |
+          set -euo pipefail
+          ROOT="_g6/${{ matrix.compiler }}"
+          TEST_SHA="$(sha256sum core/tests/test_hotfix_g6_producer_exit_code.sh | awk '{print $1}')"
+          LOG_SHA="$(sha256sum "$ROOT/g6-negative-path.log" | awk '{print $1}')"
+          METRICS_SHA="$(sha256sum core/metrics-producer | awk '{print $1}')"
+          PROBE_SHA="$(sha256sum core/arch-probe | awk '{print $1}')"
+          jq -n \
+            --arg schema 'rafcodephi_g6_receipt_failure/1.0.0' \
+            --arg status 'G6_NEGATIVE_RECEIPT_PATH_PASS' \
+            --arg source_sha '${{ github.event.pull_request.head.sha || github.sha }}' \
+            --arg checkout_sha "$GITHUB_SHA" \
+            --arg run_id "$GITHUB_RUN_ID" \
+            --arg compiler '${{ matrix.compiler }}' \
+            --arg test_sha256 "$TEST_SHA" \
+            --arg log_sha256 "$LOG_SHA" \
+            --arg metrics_producer_sha256 "$METRICS_SHA" \
+            --arg arch_probe_sha256 "$PROBE_SHA" \
+            '{schema:$schema,status:$status,claim_allowed:false,source_sha:$source_sha,checkout_sha:$checkout_sha,run_id:$run_id,compiler:$compiler,checks:{metrics_exit_3:"PASS",metrics_json_survives:"PASS",metrics_receipt_absent:"PASS",metrics_o_excl_sentinel_preserved:"PASS",arch_probe_exit_3:"PASS",arch_probe_json_survives:"PASS",arch_probe_receipt_absent:"PASS",arch_probe_o_excl_sentinel_preserved:"PASS",happy_path_sha_binding:"PASS"},sha256:{test:$test_sha256,log:$log_sha256,metrics_producer:$metrics_producer_sha256,arch_probe:$arch_probe_sha256},physical_android:"TOKEN_VAZIO",persistent_trust_root:"TOKEN_VAZIO",rule:"ANY_RED_STOPS_TRANSIT"}' \
+            > "$ROOT/g6-receipt.json"
+          jq -e '.status=="G6_NEGATIVE_RECEIPT_PATH_PASS" and .claim_allowed==false and ([.checks[]] | all(.=="PASS"))' \
+            "$ROOT/g6-receipt.json" >/dev/null
+          sha256sum "$ROOT/g6-receipt.json" > "$ROOT/g6-receipt.json.sha256"
+
+      - name: Upload G6 evidence
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: rafcodephi-g6-${{ matrix.compiler }}-${{ github.run_id }}
+          path: _g6/${{ matrix.compiler }}/
+          if-no-files-found: warn
+          retention-days: 30
+
+  g6-transit:
+    name: G6 receipt-failure global transit
+    needs: [g6-negative-path]
+    if: always()
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Fail closed if either compiler path is red
+        shell: bash
+        run: |
+          set -euo pipefail
+          test '${{ needs.g6-negative-path.result }}' = 'success'
+          printf '%s\n' 'G6_NEGATIVE_RECEIPT_GLOBAL_PASS'
