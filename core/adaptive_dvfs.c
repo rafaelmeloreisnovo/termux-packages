@@ -3,6 +3,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <math.h>
+#include <inttypes.h>
 
 static const frequency_point_t default_freq_points[TERMUX_MAX_FREQUENCY_LEVELS] = {
   {.freq_mhz = 800,  .power_mw = 500,  .latency_factor = 2.5, .energy_per_cycle = 0.625},
@@ -154,9 +155,9 @@ void termux_dvfs_print_stats(const adaptive_dvfs_t *dvfs) {
   printf("                     ADAPTIVE DVFS STATISTICS\n");
   printf("================================================================================\n");
   printf("Frequency Domains: %u\n", dvfs->domain_count);
-  printf("Total Energy Consumed: %lu µJ\n", dvfs->total_energy_uj);
-  printf("Scaling Events: %lu\n", dvfs->scaling_events);
-  printf("Energy Saved: %lu µJ\n", dvfs->energy_saved_uj);
+  printf("Total Energy Consumed: %" PRIu64 " µJ\n", dvfs->total_energy_uj);
+  printf("Scaling Events: %" PRIu64 "\n", dvfs->scaling_events);
+  printf("Energy Saved: %" PRIu64 " µJ\n", dvfs->energy_saved_uj);
 
   printf("\nPer-Domain Metrics:\n");
   for (uint32_t i = 0; i < dvfs->domain_count; i++) {
@@ -164,8 +165,8 @@ void termux_dvfs_print_stats(const adaptive_dvfs_t *dvfs) {
     printf("  Domain %u:\n", domain->domain_id);
     printf("    Current Frequency: %u MHz\n", domain->current_freq_mhz);
     printf("    Coherence φ: %.4f\n", domain->coherence_phi);
-    printf("    Total Cycles: %lu\n", domain->total_cycles);
-    printf("    Total Energy: %lu µJ\n", domain->total_energy_uj);
+    printf("    Total Cycles: %" PRIu64 "\n", domain->total_cycles);
+    printf("    Total Energy: %" PRIu64 " µJ\n", domain->total_energy_uj);
     printf("    Active Cores: %u\n", domain->active_cores);
   }
 
