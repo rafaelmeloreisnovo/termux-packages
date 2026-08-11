@@ -377,10 +377,23 @@ tests/test_integration_e2e.o: tests/test_integration_e2e.c dist_orchestrator.h r
 clean:
 	rm -f $(OBJECTS) $(TEST_OBJECTS) $(DUMPER_OBJECTS) tests/test_manifest_v2.o tests/test_bitraf64_simd_ops.o tests/test_bitraf64_lut_cache.o tests/test_bitraf64_coherence_monitor.o tests/test_ascii_grafo.o tests/test_e2e_build.o tests/test_production_hardening.o tests/test_orchestrator_v2.o tests/test_distributed.o tests/test_performance_opt.o tests/test_security_hardening.o tests/test_integration_e2e.o build_orchestrator_optimized.o perf_analyzer.o *.real.o $(TARGETS) manifest.bin
 
+# H5 fix: install target used $(PREFIX) with no default — when PREFIX
+# was unset, $(PREFIX)/bin/... expanded to /bin/..., silently writing
+# binaries into system root. Now derive PREFIX from Termux env if
+# present, otherwise fail loud with a clear message. Fail-closed
+# beats accidentally clobbering /bin/termux-build-core on the host.
+INSTALL_PREFIX := $(or $(strip $(PREFIX)),$(strip $(TERMUX_PREFIX)),$(strip $(TERMUX__PREFIX)))
+
 install: $(TARGETS)
-	install -D -m 755 termux-build-core $(PREFIX)/bin/termux-build-core
-	install -D -m 755 test-manifest $(PREFIX)/bin/test-manifest
-	install -D -m 755 manifest-dumper $(PREFIX)/bin/manifest-dumper
+	@if [ -z "$(INSTALL_PREFIX)" ]; then \
+	    echo "BLOCKED: install requires PREFIX (or TERMUX_PREFIX/TERMUX__PREFIX)"; \
+	    echo "  usage:  make install PREFIX=/usr/local"; \
+	    echo "  termux: PREFIX/TERMUX_PREFIX auto-derived when set in env"; \
+	    exit 2; \
+	fi
+	install -D -m 755 termux-build-core $(INSTALL_PREFIX)/bin/termux-build-core
+	install -D -m 755 test-manifest $(INSTALL_PREFIX)/bin/test-manifest
+	install -D -m 755 manifest-dumper $(INSTALL_PREFIX)/bin/manifest-dumper
 
 # ============================================================================
 # REAL layer convenience targets — build, test, or run the executable tour.
@@ -414,6 +427,7 @@ real-test: real-all
 	@cd .. && bash core/tests/test_hotfix_e9_ledger_path_escape.sh
 	@cd .. && bash core/tests/test_hotfix_f6_ledger_line_length.sh
 	@cd .. && bash core/tests/test_hotfix_g6_producer_exit_code.sh
+	@cd .. && bash core/tests/test_hotfix_h5_install_prefix.sh
 	@echo "✓ All REAL test suites passed"
 
 # Compile-hygiene suite lives in a separate target because each run
