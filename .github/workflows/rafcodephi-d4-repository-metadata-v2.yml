@@ -58,7 +58,12 @@ jobs:
             MACHINE_RE="$4"
             ROOT="_d4/work/$ARCH/root"
             mkdir -p "$ROOT/DEBIAN" "$ROOT/data/data/com.termux.rafacodephi/files/usr/bin"
+            # Makefile clean does not enumerate every legacy *.o target (notably
+            # pkg_real_cli.o/pkg_scanner.o/pkg_parser.o/pkg_dag.o). A cross-arch
+            # build must therefore remove all object files before changing CC;
+            # otherwise ARM objects can be reused by the AArch64 linker.
             make -C core clean
+            find core -maxdepth 1 -type f -name '*.o' -delete
             make -C core CC="$CC" pkg-real metrics-producer contract-validate receipt-validate receipt-ledger arch-probe
             for bin in pkg-real metrics-producer contract-validate receipt-validate receipt-ledger arch-probe; do
               readelf -h "core/$bin" | grep -Eq "Machine:.*$MACHINE_RE"
@@ -73,11 +78,11 @@ jobs:
               'Priority: optional' \
               'Description: Source-derived RAFCODEPHI REAL evidence tooling package' \
               > "$ROOT/DEBIAN/control"
-            DEB="_d4/repo/pool/main/r/rafcodephi-real/com.termux.rafacodephi-real_0.1.0+git${GITHUB_SHA::12}_${DEB_ARCH}.deb"
+            DEB="_d4/repo/pool/main/r/rafcodephi-real/com.termux.rafcodephi-real_0.1.0+git${GITHUB_SHA::12}_${DEB_ARCH}.deb"
             dpkg-deb --build --root-owner-group "$ROOT" "$DEB" >/dev/null
             python3 scripts/rafcodephi_delivery_gate.py artifact \
               --repo . --artifact "$DEB" \
-              --expected-package com.termux.rafacodephi-real \
+              --expected-package com.termux.rafcodephi-real \
               --arch "$ARCH" \
               --out "_d4/evidence/d3-${ARCH}.json"
           }
