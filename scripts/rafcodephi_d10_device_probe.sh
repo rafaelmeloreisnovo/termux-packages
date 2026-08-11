@@ -33,7 +33,7 @@ PREFIX_ACTUAL="${PREFIX:-}"
 [ "$PREFIX_ACTUAL" = "$PREFIX_EXPECTED" ] || fail 28 "unexpected PREFIX: $PREFIX_ACTUAL"
 
 case "$PREFIX_ACTUAL" in
-  /data/data/${PACKAGE_EXPECTED}/files/usr|/data/user/0/${PACKAGE_EXPECTED}/files/usr) ;;
+  /data/data/"${PACKAGE_EXPECTED}"/files/usr|/data/user/0/"${PACKAGE_EXPECTED}"/files/usr) ;;
   *) fail 29 "PREFIX does not bind expected package id" ;;
 esac
 
@@ -67,33 +67,35 @@ UTC="$(date -u '+%Y-%m-%dT%H:%M:%SZ' 2>/dev/null || printf 'TOKEN_VAZIO')"
 
 # Values included directly below are constrained to Android property/uname/path tokens;
 # the full build fingerprint itself is deliberately represented only by SHA-256.
-printf '{\n' > "$OUT"
-printf '  "schema":"rafcodephi_d10_physical_device/1.0.0",\n' >> "$OUT"
-printf '  "status":"D10_PHYSICAL_DEVICE_PASS",\n' >> "$OUT"
-printf '  "claim_allowed":false,\n' >> "$OUT"
-printf '  "runtime_kind":"ANDROID_TERMUX_PHYSICAL",\n' >> "$OUT"
-printf '  "android_bionic_runtime":"MEASURED_ON_DEVICE",\n' >> "$OUT"
-printf '  "physical_android":"PASS",\n' >> "$OUT"
-printf '  "persistent_trust_root":"TOKEN_VAZIO",\n' >> "$OUT"
-printf '  "package_id":"%s",\n' "$PACKAGE_EXPECTED" >> "$OUT"
-printf '  "prefix":"%s",\n' "$PREFIX_ACTUAL" >> "$OUT"
-printf '  "android_release":"%s",\n' "$ANDROID_RELEASE" >> "$OUT"
-printf '  "android_sdk":"%s",\n' "$ANDROID_SDK" >> "$OUT"
-printf '  "device_product":"%s",\n' "$DEVICE_PRODUCT" >> "$OUT"
-printf '  "device_model":"%s",\n' "$DEVICE_MODEL" >> "$OUT"
-printf '  "abi_primary":"%s",\n' "$ABI_PRIMARY" >> "$OUT"
-printf '  "uname_s":"%s",\n' "$UNAME_S" >> "$OUT"
-printf '  "uname_m":"%s",\n' "$UNAME_M" >> "$OUT"
-printf '  "observed_at_utc":"%s",\n' "$UTC" >> "$OUT"
-printf '  "sha256":{\n' >> "$OUT"
-printf '    "build_fingerprint":"%s",\n' "$FINGERPRINT_SHA" >> "$OUT"
-printf '    "arch_probe_binary":"%s",\n' "$ARCH_SHA" >> "$OUT"
-printf '    "pkg_real_binary":"%s",\n' "$PKG_SHA" >> "$OUT"
-printf '    "arch_probe_receipt":"%s",\n' "$ARCH_RECEIPT_SHA" >> "$OUT"
-printf '    "pkg_real_log":"%s"\n' "$PKG_LOG_SHA" >> "$OUT"
-printf '  },\n' >> "$OUT"
-printf '  "rule":"PHYSICAL_PASS_REQUIRES_THIS_RECEIPT_FROM_THE_DEVICE_ITSELF"\n' >> "$OUT"
-printf '}\n' >> "$OUT"
+{
+  printf '{\n'
+  printf '  "schema":"rafcodephi_d10_physical_device/1.0.0",\n'
+  printf '  "status":"D10_PHYSICAL_DEVICE_PASS",\n'
+  printf '  "claim_allowed":false,\n'
+  printf '  "runtime_kind":"ANDROID_TERMUX_PHYSICAL",\n'
+  printf '  "android_bionic_runtime":"MEASURED_ON_DEVICE",\n'
+  printf '  "physical_android":"PASS",\n'
+  printf '  "persistent_trust_root":"TOKEN_VAZIO",\n'
+  printf '  "package_id":"%s",\n' "$PACKAGE_EXPECTED"
+  printf '  "prefix":"%s",\n' "$PREFIX_ACTUAL"
+  printf '  "android_release":"%s",\n' "$ANDROID_RELEASE"
+  printf '  "android_sdk":"%s",\n' "$ANDROID_SDK"
+  printf '  "device_product":"%s",\n' "$DEVICE_PRODUCT"
+  printf '  "device_model":"%s",\n' "$DEVICE_MODEL"
+  printf '  "abi_primary":"%s",\n' "$ABI_PRIMARY"
+  printf '  "uname_s":"%s",\n' "$UNAME_S"
+  printf '  "uname_m":"%s",\n' "$UNAME_M"
+  printf '  "observed_at_utc":"%s",\n' "$UTC"
+  printf '  "sha256":{\n'
+  printf '    "build_fingerprint":"%s",\n' "$FINGERPRINT_SHA"
+  printf '    "arch_probe_binary":"%s",\n' "$ARCH_SHA"
+  printf '    "pkg_real_binary":"%s",\n' "$PKG_SHA"
+  printf '    "arch_probe_receipt":"%s",\n' "$ARCH_RECEIPT_SHA"
+  printf '    "pkg_real_log":"%s"\n' "$PKG_LOG_SHA"
+  printf '  },\n'
+  printf '  "rule":"PHYSICAL_PASS_REQUIRES_THIS_RECEIPT_FROM_THE_DEVICE_ITSELF"\n'
+  printf '}\n'
+} > "$OUT"
 
 RECEIPT_SHA="$(sha256sum "$OUT" | awk '{print $1}')"
 printf '%s  %s\n' "$RECEIPT_SHA" "$OUT" > "$OUT.sha256"
