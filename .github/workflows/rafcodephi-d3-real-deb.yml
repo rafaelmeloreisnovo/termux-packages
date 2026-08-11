@@ -1,0 +1,284 @@
+name: RAFCODEPHI D3 REAL Debian Evidence
+
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - 'core/**'
+      - 'scripts/rafcodephi_delivery_gate.py'
+      - '.github/workflows/rafcodephi-d3-real-deb.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'core/**'
+      - 'scripts/rafcodephi_delivery_gate.py'
+      - '.github/workflows/rafcodephi-d3-real-deb.yml'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: rafcodephi-d3-real-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  CLAIM_ALLOWED: 'false'
+  PHYSICAL_ANDROID: 'TOKEN_VAZIO'
+  D4_REPOSITORY: 'TOKEN_VAZIO'
+  APT_PKG_RUNTIME: 'TOKEN_VAZIO'
+  EVIDENCE_SCOPE: 'D3_REAL_SOURCE_BUILT_DEB_QEMU_VALIDATED_NOT_ANDROID_PRODUCT_READY'
+
+jobs:
+  d3-real:
+    name: D3 REAL ${{ matrix.arch }} — source -> ELF -> deb -> validate -> QEMU
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: arm
+            cc: arm-linux-gnueabihf-gcc
+            qemu: qemu-arm
+            sysroot: /usr/arm-linux-gnueabihf
+            machine_regex: 'ARM'
+            dev_headers: libc6-dev-armhf-cross
+          - arch: aarch64
+            cc: aarch64-linux-gnu-gcc
+            qemu: qemu-aarch64
+            sysroot: /usr/aarch64-linux-gnu
+            machine_regex: 'AArch64'
+            dev_headers: libc6-dev-arm64-cross
+
+    steps:
+      - name: Checkout exact revision
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+          fetch-depth: 1
+
+      - name: Install deterministic D3 toolchain
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            qemu-user dpkg-dev jq file \
+            gcc-arm-linux-gnueabihf gcc-aarch64-linux-gnu \
+            libc6-dev-armhf-cross libc6-dev-arm64-cross \
+            binutils-arm-linux-gnueabihf binutils-aarch64-linux-gnu
+
+      - name: Cross-build governed REAL evidence binaries
+        shell: bash
+        run: |
+          set -euo pipefail
+          make -C core clean
+          make -C core CC='${{ matrix.cc }}' \
+            pkg-real metrics-producer contract-validate receipt-validate receipt-ledger arch-probe
+          mkdir -p "_d3/${{ matrix.arch }}/bin"
+          for bin in pkg-real metrics-producer contract-validate receipt-validate receipt-ledger arch-probe; do
+            cp "core/$bin" "_d3/${{ matrix.arch }}/bin/$bin"
+          done
+
+      - name: Prove target ELF identity before packaging
+        shell: bash
+        run: |
+          set -euo pipefail
+          D="_d3/${{ matrix.arch }}"
+          : > "$D/elf-before-package.txt"
+          for bin in "$D"/bin/*; do
+            file "$bin" | tee -a "$D/elf-before-package.txt"
+            readelf -h "$bin" | grep -E 'Class:|Machine:' | tee -a "$D/elf-before-package.txt"
+            readelf -h "$bin" | grep -Eq 'Machine:.*${{ matrix.machine_regex }}'
+          done
+
+      - name: Build D3 source-derived Debian artifact
+        shell: bash
+        run: |
+          set -euo pipefail
+          ARCH='${{ matrix.arch }}'
+          D="_d3/$ARCH"
+          ROOT="$D/root"
+          PREFIX="data/data/com.termux.rafacodephi/files/usr"
+          INSTALL="$ROOT/$PREFIX/libexec/rafcodephi/real"
+          mkdir -p "$ROOT/DEBIAN" "$INSTALL"
+          cp "$D"/bin/* "$INSTALL/"
+          chmod 0755 "$INSTALL"/*
+          VERSION="0.1.0+git.${GITHUB_SHA::12}"
+          cat > "$ROOT/DEBIAN/control" <<EOF
+          Package: com.termux.rafacodephi-real-evidence
+          Version: $VERSION
+          Architecture: $ARCH
+          Maintainer: RAFCODEPHI CI <noreply@example.invalid>
+          Description: Source-built REAL evidence binaries for D3 validation; not Android product readiness
+          EOF
+          {
+            echo "schema=rafcodephi_d3_source_manifest/1.0.0"
+            echo "git_sha=$GITHUB_SHA"
+            echo "architecture=$ARCH"
+            echo "compiler=${{ matrix.cc }}"
+            echo "scope=$EVIDENCE_SCOPE"
+            echo "claim_allowed=$CLAIM_ALLOWED"
+            echo "physical_android=$PHYSICAL_ANDROID"
+            echo "d4_repository=$D4_REPOSITORY"
+            echo "apt_pkg_runtime=$APT_PKG_RUNTIME"
+            sha256sum "$INSTALL"/*
+          } > "$ROOT/$PREFIX/libexec/rafcodephi/real/SOURCE-MANIFEST.txt"
+          ART="$D/com.termux.rafacodephi-real-evidence_${VERSION}_${ARCH}.deb"
+          dpkg-deb --root-owner-group --build "$ROOT" "$ART"
+          printf '%s\n' "$ART" > "$D/artifact.path"
+          sha256sum "$ART" > "$D/artifact.sha256"
+
+      - name: Validate concrete D3 artifact with delivery gate
+        shell: bash
+        run: |
+          set -euo pipefail
+          D="_d3/${{ matrix.arch }}"
+          ART="$(cat "$D/artifact.path")"
+          python3 scripts/rafcodephi_delivery_gate.py artifact \
+            --repo . \
+            --artifact "$ART" \
+            --expected-package com.termux.rafacodephi-real-evidence \
+            --arch '${{ matrix.arch }}' \
+            --out "$D/delivery-artifact-gate.json" \
+            2> "$D/delivery-artifact-gate.stderr.log"
+          jq -e '
+            .gate == "artifact" and
+            .state == "PASS" and
+            .claim_allowed == false and
+            .artifact_sha256 != null and
+            .artifact_size > 0 and
+            .repo_metadata_generated == "NOT_MEASURED" and
+            .apt_pkg_runtime == "NOT_MEASURED" and
+            .physical_device_runtime == "NOT_MEASURED"
+          ' "$D/delivery-artifact-gate.json" >/dev/null
+
+      - name: Unpack artifact and prove packaged binaries are unchanged target ELFs
+        shell: bash
+        run: |
+          set -euo pipefail
+          D="_d3/${{ matrix.arch }}"
+          ART="$(cat "$D/artifact.path")"
+          OUT="$D/unpacked"
+          dpkg-deb -x "$ART" "$OUT"
+          DIR="$OUT/data/data/com.termux.rafacodephi/files/usr/libexec/rafcodephi/real"
+          test -f "$DIR/SOURCE-MANIFEST.txt"
+          : > "$D/elf-after-package.txt"
+          for bin in pkg-real metrics-producer contract-validate receipt-validate receipt-ledger arch-probe; do
+            test -x "$DIR/$bin"
+            cmp "$D/bin/$bin" "$DIR/$bin"
+            readelf -h "$DIR/$bin" | grep -Eq 'Machine:.*${{ matrix.machine_regex }}'
+            sha256sum "$DIR/$bin" | tee -a "$D/elf-after-package.txt"
+          done
+
+      - name: Execute unpacked D3 binaries under QEMU
+        shell: bash
+        run: |
+          set -euo pipefail
+          D="_d3/${{ matrix.arch }}"
+          DIR="$D/unpacked/data/data/com.termux.rafacodephi/files/usr/libexec/rafcodephi/real"
+          Q='${{ matrix.qemu }}'
+          S='${{ matrix.sysroot }}'
+          "$Q" -L "$S" "$DIR/pkg-real" parse packages/bash/build.sh --json > "$D/d3-bash-parse.json"
+          jq -e . "$D/d3-bash-parse.json" >/dev/null
+          "$Q" -L "$S" "$DIR/metrics-producer" . "$D/d3-metrics.json" 2> "$D/d3-metrics.stderr.log"
+          jq -e '.schema == "pkg_metrics/1.0.0" and .status == "REAL"' "$D/d3-metrics.json" >/dev/null
+          "$Q" -L "$S" "$DIR/contract-validate" "$D/d3-metrics.json" | tee "$D/d3-contract.log"
+          "$Q" -L "$S" "$DIR/receipt-validate" "$D/d3-metrics.json.receipt" | tee "$D/d3-receipt.log"
+          "$Q" -L "$S" "$DIR/receipt-ledger" append "$D/d3-ledger.jsonl" "$D/d3-metrics.json.receipt"
+          "$Q" -L "$S" "$DIR/receipt-ledger" verify "$D/d3-ledger.jsonl" | tee "$D/d3-ledger-verify.log"
+          "$Q" -L "$S" "$DIR/arch-probe" "$D/d3-arch.json"
+          jq -e '.schema == "arch_capability/1.0.0"' "$D/d3-arch.json" >/dev/null
+
+      - name: Emit D3 provenance receipt
+        shell: bash
+        run: |
+          set -euo pipefail
+          D="_d3/${{ matrix.arch }}"
+          ART="$(cat "$D/artifact.path")"
+          ART_SHA="$(sha256sum "$ART" | awk '{print $1}')"
+          GATE_SHA="$(sha256sum "$D/delivery-artifact-gate.json" | awk '{print $1}')"
+          LEDGER_SHA="$(sha256sum "$D/d3-ledger.jsonl" | awk '{print $1}')"
+          cat > "$D/d3-receipt.json" <<EOF
+          {
+            "schema": "rafcodephi_d3_real_receipt/1.0.0",
+            "status": "D3_REAL_EVIDENCE_PASS",
+            "claim_allowed": false,
+            "git_sha": "$GITHUB_SHA",
+            "architecture": "${{ matrix.arch }}",
+            "scope": "$EVIDENCE_SCOPE",
+            "artifact": "$(basename "$ART")",
+            "artifact_sha256": "$ART_SHA",
+            "delivery_gate_sha256": "$GATE_SHA",
+            "ledger_sha256": "$LEDGER_SHA",
+            "source_derived": true,
+            "packaged_elf_identity": "PASS",
+            "packaged_binary_byte_identity": "PASS",
+            "qemu_execution_from_unpacked_deb": "PASS",
+            "d4_repository": "$D4_REPOSITORY",
+            "apt_pkg_runtime": "$APT_PKG_RUNTIME",
+            "physical_android": "$PHYSICAL_ANDROID"
+          }
+          EOF
+          jq -e '
+            .status == "D3_REAL_EVIDENCE_PASS" and
+            .claim_allowed == false and
+            .source_derived == true and
+            .packaged_elf_identity == "PASS" and
+            .packaged_binary_byte_identity == "PASS" and
+            .qemu_execution_from_unpacked_deb == "PASS" and
+            .d4_repository == "TOKEN_VAZIO" and
+            .apt_pkg_runtime == "TOKEN_VAZIO" and
+            .physical_android == "TOKEN_VAZIO"
+          ' "$D/d3-receipt.json" >/dev/null
+          sha256sum "$D/d3-receipt.json" > "$D/d3-receipt.json.sha256"
+
+      - name: Upload D3 evidence and concrete deb
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: rafcodephi-d3-real-${{ matrix.arch }}-${{ github.run_id }}
+          path: _d3/${{ matrix.arch }}/
+          if-no-files-found: error
+          retention-days: 30
+
+  d3-transit:
+    name: D3 invariant — both architectures must pass
+    runs-on: ubuntu-24.04
+    needs: [d3-real]
+    if: always()
+    steps:
+      - name: Fail closed unless ARM and AArch64 D3 matrix is green
+        shell: bash
+        env:
+          MATRIX_RESULT: ${{ needs.d3-real.result }}
+        run: |
+          set -euo pipefail
+          mkdir -p _d3_transit
+          STATUS=BLOCKED
+          if [ "$MATRIX_RESULT" = success ]; then STATUS=D3_REAL_MATRIX_PASS; fi
+          cat > _d3_transit/receipt.json <<EOF
+          {
+            "schema": "rafcodephi_d3_transit/1.0.0",
+            "status": "$STATUS",
+            "claim_allowed": false,
+            "matrix_result": "$MATRIX_RESULT",
+            "rule": "ANY_RED_STOPS_TRANSIT",
+            "d3_real_source_built_deb": "$( [ "$STATUS" = D3_REAL_MATRIX_PASS ] && echo PASS || echo BLOCKED )",
+            "d4_repository": "TOKEN_VAZIO",
+            "apt_pkg_runtime": "TOKEN_VAZIO",
+            "physical_android": "TOKEN_VAZIO"
+          }
+          EOF
+          cat _d3_transit/receipt.json
+          sha256sum _d3_transit/receipt.json > _d3_transit/receipt.json.sha256
+          [ "$STATUS" = D3_REAL_MATRIX_PASS ]
+
+      - name: Upload D3 transit receipt
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: rafcodephi-d3-transit-${{ github.run_id }}
+          path: _d3_transit/
+          if-no-files-found: error
+          retention-days: 30
