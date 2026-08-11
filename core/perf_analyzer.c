@@ -4,6 +4,7 @@
 #include <string.h>
 #include <time.h>
 #include <math.h>
+#include <inttypes.h>
 
 #define PERF_BENCHMARK_SAMPLES 128
 #define PERF_WARMUP_ITERATIONS 8
@@ -172,8 +173,8 @@ static void print_cache_analysis(void) {
   uint64_t optimized_avg_cycles = optimized.total_phi > 0 ?
     (optimized.total_phi / optimized.sample_count) : 0;
 
-  printf("  Baseline average cycles:  %lu\n", baseline_avg_cycles);
-  printf("  Optimized average cycles: %lu\n", optimized_avg_cycles);
+  printf("  Baseline average cycles:  %" PRIu64 "\n", baseline_avg_cycles);
+  printf("  Optimized average cycles: %" PRIu64 "\n", optimized_avg_cycles);
 
   if (optimized_avg_cycles < baseline_avg_cycles) {
     double cycle_reduction = (double)(baseline_avg_cycles - optimized_avg_cycles) /

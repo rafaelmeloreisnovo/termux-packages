@@ -4,6 +4,7 @@
 #include <assert.h>
 #include <string.h>
 #include <math.h>
+#include <inttypes.h>
 
 static int test_dvfs_init(void) {
   printf("\n=== Sprint 11.1: DVFS Initialization ===\n");
@@ -96,13 +97,13 @@ static int test_energy_estimation(void) {
   assert(ret == 0);
 
   uint64_t energy_max = termux_dvfs_estimate_energy(&dvfs, 0, 1000000);
-  printf("  Energy at 3200 MHz for 1M cycles: %lu µJ\n", energy_max);
+  printf("  Energy at 3200 MHz for 1M cycles: %" PRIu64 " µJ\n", energy_max);
 
   ret = termux_dvfs_set_frequency(&dvfs, 0, DVFS_LEVEL_MINIMAL);
   assert(ret == 0);
 
   uint64_t energy_min = termux_dvfs_estimate_energy(&dvfs, 0, 1000000);
-  printf("  Energy at 800 MHz for 1M cycles: %lu µJ\n", energy_min);
+  printf("  Energy at 800 MHz for 1M cycles: %" PRIu64 " µJ\n", energy_min);
 
   assert(energy_max > energy_min);
   printf("✓ Energy estimation working (lower frequency = lower energy)\n");
@@ -146,7 +147,7 @@ static int test_scaling_statistics(void) {
   }
 
   uint64_t scaling_events = dvfs.scaling_events;
-  printf("  Scaling events: %lu\n", scaling_events);
+  printf("  Scaling events: %" PRIu64 "\n", scaling_events);
   assert(scaling_events > 0);
 
   printf("✓ Scaling statistics tracking working\n");

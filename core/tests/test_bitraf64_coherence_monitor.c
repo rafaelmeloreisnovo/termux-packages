@@ -3,6 +3,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <time.h>
+#include <inttypes.h>
 
 int test_coherence_monitor_init(void) {
   printf("Test 1: Coherence Monitor Initialization\n");
@@ -44,7 +45,7 @@ int test_record_package(void) {
 
   bitraf64_monitor_layer_t *layer = &monitor.layers[0];
   printf("  Layer 0 package count: %u\n", layer->pkg_count);
-  printf("  Layer 0 mean phi: 0x%016lx (%.4f)\n", layer->mean_phi,
+  printf("  Layer 0 mean phi: 0x%016" PRIx64 " (%.4f)\n", layer->mean_phi,
          (double)layer->mean_phi / 65536.0);
   printf("  Layer 0 total time: %u ms\n", layer->total_time_ms);
 
@@ -72,11 +73,11 @@ int test_record_layer(void) {
 
   bitraf64_monitor_layer_t *layer = &monitor.layers[0];
   printf("  Layer 0 package count: %u\n", layer->pkg_count);
-  printf("  Layer 0 mean phi: 0x%016lx (%.4f)\n", layer->mean_phi,
+  printf("  Layer 0 mean phi: 0x%016" PRIx64 " (%.4f)\n", layer->mean_phi,
          (double)layer->mean_phi / 65536.0);
-  printf("  Layer 0 min phi: 0x%016lx (%.4f)\n", layer->min_phi,
+  printf("  Layer 0 min phi: 0x%016" PRIx64 " (%.4f)\n", layer->min_phi,
          (double)layer->min_phi / 65536.0);
-  printf("  Layer 0 max phi: 0x%016lx (%.4f)\n", layer->max_phi,
+  printf("  Layer 0 max phi: 0x%016" PRIx64 " (%.4f)\n", layer->max_phi,
          (double)layer->max_phi / 65536.0);
 
   return 1;
@@ -162,7 +163,7 @@ int test_system_state_query(void) {
   }
 
   printf("  Total packages: %u\n", system_state.total_packages);
-  printf("  System mean phi: 0x%016lx (%.4f)\n", system_state.system_mean_phi,
+  printf("  System mean phi: 0x%016" PRIx64 " (%.4f)\n", system_state.system_mean_phi,
          (double)system_state.system_mean_phi / 65536.0);
   printf("  Total time: %u ms\n", system_state.total_time_ms);
   printf("  Phase count: %u\n", system_state.phase_count);

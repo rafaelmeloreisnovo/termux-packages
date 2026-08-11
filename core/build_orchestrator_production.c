@@ -8,6 +8,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <time.h>
+#include <inttypes.h>
 
 #define PRODUCTION_BENCHMARK_PACKAGES 2057
 #define PRODUCTION_BENCHMARK_LAYERS 42
@@ -126,7 +127,7 @@ int termux_orchestrator_production_run(production_build_context_t *ctx) {
   printf("  Total Packages: %u\n", PRODUCTION_BENCHMARK_PACKAGES);
   printf("  Threads Used: %u\n", ctx->scheduler.num_threads);
   printf("  Wall Time: %.2f minutes (%.2f seconds)\n", wall_time_min, wall_time_sec);
-  printf("  Total Cycles: %lu\n", ctx->total_cycles);
+  printf("  Total Cycles: %" PRIu64 "\n", ctx->total_cycles);
   printf("  Mean Coherence φ: %.4f\n", ctx->mean_phi);
 
   double packages_per_sec = (double)PRODUCTION_BENCHMARK_PACKAGES / wall_time_sec;

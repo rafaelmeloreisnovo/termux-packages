@@ -3,6 +3,7 @@
 #include <stdlib.h>
 #include <unistd.h>
 #include <pthread.h>
+#include <inttypes.h>
 
 typedef struct {
   unified_orchestrator_t *orch;
@@ -72,7 +73,7 @@ void *monitor_thread(void *arg) {
   printf("Monitor thread starting\n");
 
   for (uint32_t i = 0; i < 50; i++) {
-    printf("[Monitor] Current φ: %.4f | GPU Power: %.2fW | GPU Tasks: %lu/%lu\n",
+    printf("[Monitor] Current φ: %.4f | GPU Power: %.2fW | GPU Tasks: %" PRIu64 "/%" PRIu64 "\n",
            orch->coherence_module.phi_current, orch->gpu_module.gpu_power_watts,
            orch->gpu_module.gpu_tasks.completed_count, orch->gpu_module.gpu_tasks.count);
 

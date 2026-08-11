@@ -7,6 +7,7 @@
 #include <time.h>
 #include <sched.h>
 #include <unistd.h>
+#include <inttypes.h>
 
 
 int multicore_orchestrator_alloc(multicore_orchestrator_t *morch, uint32_t core_count) {
@@ -246,8 +247,8 @@ void multicore_orchestrator_print_stats(const multicore_orchestrator_t *morch) {
   printf("================================================================================\n");
   printf("Active Cores: %u / %u\n", morch->active_cores, TERMUX_MAX_CORES);
   printf("Wall time: %.2f seconds\n", morch->wall_time_sec);
-  printf("Total cycles: %lu\n", morch->total_cycles);
-  printf("Total Φ score: %lu\n", morch->total_phi);
+  printf("Total cycles: %" PRIu64 "\n", morch->total_cycles);
+  printf("Total Φ score: %" PRIu64 "\n", morch->total_phi);
 
   printf("\nPer-Core Breakdown:\n");
   for (uint32_t i = 0; i < morch->core_count; i++) {
@@ -258,7 +259,7 @@ void multicore_orchestrator_print_stats(const multicore_orchestrator_t *morch) {
     printf("  Core %u [%s] freq=%u MHz, l1=%u KB, l2=%u KB\n",
            prof->core_id, class_name, prof->cpu_freq_mhz,
            prof->l1_cache_kb, prof->l2_cache_kb);
-    printf("    Packages: %u, Cycles: %lu, Φ: %lu\n",
+    printf("    Packages: %u, Cycles: %" PRIu64 ", Φ: %" PRIu64 "\n",
            prof->packages_completed, prof->total_cycles, prof->total_phi);
   }
 

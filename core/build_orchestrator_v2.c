@@ -5,6 +5,7 @@
 #include <time.h>
 #include <unistd.h>
 #include <sys/time.h>
+#include <inttypes.h>
 
 /*
  * Phase 3: Build Orchestrator V2 Implementation
@@ -268,7 +269,7 @@ int build_orchestrator_v2_report(const build_state_v2_t *state,
   offset += snprintf(buffer + offset, buffer_size - offset,
                      "ABI: %s\n", arch_configs[state->arch_state].abi);
   offset += snprintf(buffer + offset, buffer_size - offset,
-                     "Coherence φ: %.4f (Q48.16: %lu)\n",
+                     "Coherence φ: %.4f (Q48.16: %" PRIu64 ")\n",
                      state->coherence_phi / 65536.0, state->coherence_phi);
   offset += snprintf(buffer + offset, buffer_size - offset,
                      "Elapsed: %.2f seconds\n", state->timestamp_ns / 1e9);

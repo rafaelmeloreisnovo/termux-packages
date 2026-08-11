@@ -6,6 +6,7 @@
 #include <stdlib.h>
 #include <assert.h>
 #include <string.h>
+#include <inttypes.h>
 
 static int test_cycle_budget_instrumentation(void) {
   printf("\n=== Sprint 3.1: Cycle Budget Instrumentation ===\n");
@@ -174,7 +175,7 @@ static int test_integration_sprint3(void) {
 
   printf("\nIntegration Results:\n");
   printf("  Workload packages: %u\n", wl.pkg_count);
-  printf("  Workload edges: %lu\n", wl.total_edges);
+  printf("  Workload edges: %" PRIu64 "\n", wl.total_edges);
   printf("  Profiler throughput: %.2f pkgs/sec\n",
          session.throughput_pkgs_per_sec);
   printf("  Speedup: %.2fx vs baseline\n", session.speedup_vs_baseline);

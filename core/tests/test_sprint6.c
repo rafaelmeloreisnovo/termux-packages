@@ -5,6 +5,7 @@
 #include <string.h>
 #include <time.h>
 #include <stdbool.h>
+#include <inttypes.h>
 
 static int test_simd_backend_detection(void) {
   printf("\n=== Sprint 6.1: SIMD Backend Detection ===\n");
@@ -109,7 +110,7 @@ static int test_vectorized_cycle_count(void) {
   assert(ret == 0);
   assert(sum > 0);
 
-  printf("  Total cycles: %lu\n", sum);
+  printf("  Total cycles: %" PRIu64 "\n", sum);
   printf("  Vector operations: %u\n", metrics.vector_ops_executed);
   printf("  Efficiency: %.2f ops/ns\n", metrics.efficiency);
 

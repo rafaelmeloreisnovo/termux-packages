@@ -7,6 +7,7 @@
 #include <stdlib.h>
 #include <assert.h>
 #include <string.h>
+#include <inttypes.h>
 
 static int test_multicore_alloc(void) {
   printf("\n=== Sprint 4.1: Multicore Orchestrator Allocation ===\n");
@@ -103,7 +104,7 @@ static int test_speedup_calculation(void) {
   assert(speedup > 1.0);
 
   printf("  Single-core cycles: 2000000\n");
-  printf("  Multi-core cycles: %lu\n", morch.total_cycles);
+  printf("  Multi-core cycles: %" PRIu64 "\n", morch.total_cycles);
   printf("  Speedup: %.2fx\n", speedup);
 
   printf("✓ Speedup calculation PASSED\n");

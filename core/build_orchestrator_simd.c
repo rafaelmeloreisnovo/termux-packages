@@ -75,19 +75,26 @@ static inline void compute_phi_neon_u32(uint32_t phases[4],
 
   uint32x4_t v_42 = vdupq_n_u32(42);
   uint32x4_t v_6 = vdupq_n_u32(6);
-  uint32x4_t v_65536 = vdupq_n_u32(65536);
 
   uint32x4_t v_depth = vaddq_u32(vmulq_u32(v_phase, v_6), v_arch);
   uint32x4_t v_depth_score = vsubq_u32(v_42, v_depth);
-
   uint32x4_t v_phase_plus_1 = vaddq_u32(v_phase, vdupq_n_u32(1));
 
+  /* NEON lane extraction requires an immediate lane index. Materialize the
+   * three vectors once, then preserve the existing scalar GCD/division tail. */
+  uint32_t depth_score[SIMD_VECTOR_WIDTH];
+  uint32_t phase_plus_1[SIMD_VECTOR_WIDTH];
+  uint32_t cycles[SIMD_VECTOR_WIDTH];
+  vst1q_u32(depth_score, v_depth_score);
+  vst1q_u32(phase_plus_1, v_phase_plus_1);
+  vst1q_u32(cycles, v_cycles);
+
   for (int i = 0; i < SIMD_VECTOR_WIDTH; i++) {
-    uint64_t coherence_base = ((uint64_t)vgetq_lane_u32(v_depth_score, i) * 65536) / 42;
-    uint32_t gcd_val = gcd_compute_simd(vgetq_lane_u32(v_phase_plus_1, i), 7);
+    uint64_t coherence_base = ((uint64_t)depth_score[i] * 65536) / 42;
+    uint32_t gcd_val = gcd_compute_simd(phase_plus_1[i], 7);
     uint64_t gcd_factor = (((uint64_t)gcd_val) * 65536) / 7;
     uint64_t result = (coherence_base * gcd_factor / 65536);
-    uint64_t overhead = vgetq_lane_u32(v_cycles, i) > 42 ? 1000ULL : 0ULL;
+    uint64_t overhead = cycles[i] > 42 ? 1000ULL : 0ULL;
     phi_out[i] = (result > overhead) ? (result - overhead) : 0;
   }
 }

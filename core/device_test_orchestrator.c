@@ -2,6 +2,7 @@
 #include "manifest_v2.h"
 #include <stdio.h>
 #include <string.h>
+#include <inttypes.h>
 
 /*
  * Phase 9.4 structural/model fixture.
@@ -63,7 +64,7 @@ static int test_coherence_model_trajectory(void) {
     uint64_t phi = termux_orchestrator_compute_phi(&orch.state);
     if (phase > 0 && phi < previous) decreases++;
     previous = phi;
-    printf("  phase=%u model_phi=%lu\n", phase, phi);
+    printf("  phase=%u model_phi=%" PRIu64 "\n", phase, phi);
   }
   printf("  decreases=%u/7\n", decreases);
   printf("  Observation only: no hardware/performance conclusion\n\n");

@@ -4,6 +4,7 @@
 #include <string.h>
 #include <math.h>
 #include <time.h>
+#include <inttypes.h>
 
 static const double SQRT3_2 = 0.866025403784438646;
 
@@ -29,10 +30,10 @@ int test_spiral_lut_values(void) {
   bitraf64_lut_cache_init(&cache);
 
   printf("  Spiral LUT entries (sample):\n");
-  printf("    n=0: 0x%016lx\n", cache.spiral_lut[0].value_q48_16);
-  printf("    n=5: 0x%016lx\n", cache.spiral_lut[5].value_q48_16);
-  printf("    n=10: 0x%016lx\n", cache.spiral_lut[10].value_q48_16);
-  printf("    n=29: 0x%016lx\n", cache.spiral_lut[29].value_q48_16);
+  printf("    n=0: 0x%016" PRIx64 "\n", cache.spiral_lut[0].value_q48_16);
+  printf("    n=5: 0x%016" PRIx64 "\n", cache.spiral_lut[5].value_q48_16);
+  printf("    n=10: 0x%016" PRIx64 "\n", cache.spiral_lut[10].value_q48_16);
+  printf("    n=29: 0x%016" PRIx64 "\n", cache.spiral_lut[29].value_q48_16);
 
   double expected_0 = pow(SQRT3_2, 0.0);
   double expected_10 = pow(SQRT3_2, 10.0);
@@ -40,8 +41,8 @@ int test_spiral_lut_values(void) {
   uint64_t expected_0_q48_16 = (uint64_t)(expected_0 * 65536.0);
   uint64_t expected_10_q48_16 = (uint64_t)(expected_10 * 65536.0);
 
-  printf("  Expected n=0: 0x%016lx\n", expected_0_q48_16);
-  printf("  Expected n=10: 0x%016lx\n", expected_10_q48_16);
+  printf("  Expected n=0: 0x%016" PRIx64 "\n", expected_0_q48_16);
+  printf("  Expected n=10: 0x%016" PRIx64 "\n", expected_10_q48_16);
 
   return 1;
 }
@@ -57,10 +58,10 @@ int test_spiral_lookup(void) {
   uint64_t result_29 = bitraf64_lut_spiral_lookup(29, &cache);
   uint64_t result_invalid = bitraf64_lut_spiral_lookup(30, &cache);
 
-  printf("  Lookup exponent 0: 0x%016lx\n", result_0);
-  printf("  Lookup exponent 5: 0x%016lx\n", result_5);
-  printf("  Lookup exponent 29: 0x%016lx\n", result_29);
-  printf("  Lookup exponent 30 (invalid): 0x%016lx (should be 0)\n", result_invalid);
+  printf("  Lookup exponent 0: 0x%016" PRIx64 "\n", result_0);
+  printf("  Lookup exponent 5: 0x%016" PRIx64 "\n", result_5);
+  printf("  Lookup exponent 29: 0x%016" PRIx64 "\n", result_29);
+  printf("  Lookup exponent 30 (invalid): 0x%016" PRIx64 " (should be 0)\n", result_invalid);
 
   return (result_invalid == 0) ? 1 : 0;
 }
@@ -165,7 +166,7 @@ int test_spiral_batch_lookup(void) {
 
   printf("  Batch lookup results:\n");
   for (size_t i = 0; i < 6; i++) {
-    printf("    exponent %u: 0x%016lx\n", exponents[i], results[i]);
+    printf("    exponent %u: 0x%016" PRIx64 "\n", exponents[i], results[i]);
   }
 
   return 1;

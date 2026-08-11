@@ -5,6 +5,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <math.h>
+#include <inttypes.h>
 
 #define GCD_SAFE(a, b) ({ uint32_t _a = (a), _b = (b); while (_b) { uint32_t _t = _b; _b = _a % _b; _a = _t; } _a; })
 #define PHI_PRECISION 16
@@ -199,7 +200,7 @@ int termux_orchestrator_execute(struct termux_orchestrator *orch,
     state->cycle_count += 42;
   }
 
-  fprintf(stdout, "[orchestrator] phases_completed=%u phi=%lu\n",
+  fprintf(stdout, "[orchestrator] phases_completed=%u phi=%" PRIu64 "\n",
           state->phase, state->coherence_phi);
 
   return 0;
@@ -213,7 +214,7 @@ void termux_orchestrator_print_state(struct termux_orchestrator *orch) {
   printf("Package: %s (idx=%u)\n", state->pkg_name, state->pkg_idx);
   printf("Phase: %u/%u, Arch State: %u\n", state->phase, TERMUX_BUILD_PHASES,
          state->arch_state);
-  printf("Coherence Φ: %lu (Q48.16)\n", state->coherence_phi);
+  printf("Coherence Φ: %" PRIu64 " (Q48.16)\n", state->coherence_phi);
   printf("Cycle Count: %u\n", state->cycle_count);
   printf("State Buffer: %s\n", (char *)state->state_buffer);
 }

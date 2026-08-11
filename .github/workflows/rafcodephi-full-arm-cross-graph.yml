@@ -1,0 +1,154 @@
+name: RAFCODEPHI Full ARM Cross Graph
+
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - 'core/**'
+      - '.github/workflows/rafcodephi-full-arm-cross-graph.yml'
+  push:
+    branches:
+      - main
+    paths:
+      - 'core/**'
+      - '.github/workflows/rafcodephi-full-arm-cross-graph.yml'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: rafcodephi-full-arm-cross-graph-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  CLAIM_ALLOWED: 'false'
+  PHYSICAL_ANDROID: 'TOKEN_VAZIO'
+  TEST_SCOPE: 'FULL_DEFAULT_GRAPH_CROSS_COMPILE_LINUX_NOT_ANDROID_RUNTIME'
+
+jobs:
+  full-cross-graph:
+    name: Full default graph ${{ matrix.arch }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: arm32
+            cc: arm-linux-gnueabihf-gcc
+            devpkg: libc6-dev-armhf-cross
+            machine: ARM
+          - arch: arm64
+            cc: aarch64-linux-gnu-gcc
+            devpkg: libc6-dev-arm64-cross
+            machine: AArch64
+
+    steps:
+      - name: Checkout exact revision
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+          fetch-depth: 1
+
+      - name: Install cross toolchain
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            gcc-arm-linux-gnueabihf \
+            gcc-aarch64-linux-gnu \
+            libc6-dev-armhf-cross \
+            libc6-dev-arm64-cross \
+            binutils-arm-linux-gnueabihf \
+            binutils-aarch64-linux-gnu \
+            file
+
+      - name: Record compiler and target graph
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "_full_cross/${{ matrix.arch }}"
+          "${{ matrix.cc }}" -dumpmachine | tee "_full_cross/${{ matrix.arch }}/triple.txt"
+          "${{ matrix.cc }}" --version | head -n 1 | tee "_full_cross/${{ matrix.arch }}/compiler.txt"
+          make -C core -s -pn CC="${{ matrix.cc }}" all 2>/dev/null \
+            | sed -n 's/^all: /all: /p' \
+            | head -n 1 \
+            | tee "_full_cross/${{ matrix.arch }}/all-targets.txt"
+          ! grep -Eq 'advanced-simd-(benchmark|test)' "_full_cross/${{ matrix.arch }}/all-targets.txt"
+
+      - name: Clean and compile complete default graph
+        shell: bash
+        run: |
+          set -euo pipefail
+          make -C core clean
+          set +e
+          make -C core -j2 CC="${{ matrix.cc }}" all \
+            >"_full_cross/${{ matrix.arch }}/build.log" 2>&1
+          rc=$?
+          set -e
+          cat "_full_cross/${{ matrix.arch }}/build.log"
+          printf '%s\n' "$rc" > "_full_cross/${{ matrix.arch }}/exit-code.txt"
+          if [ "$rc" -ne 0 ]; then
+            grep -nE 'error:|fatal error:|undefined reference|unrecognized|unsupported|incompatible' \
+              "_full_cross/${{ matrix.arch }}/build.log" \
+              > "_full_cross/${{ matrix.arch }}/errors.txt" || true
+            exit "$rc"
+          fi
+
+      - name: Verify representative target ELF identities
+        if: success()
+        shell: bash
+        run: |
+          set -euo pipefail
+          for bin in termux-build-core test-production-hardening pkg-real metrics-producer arch-probe; do
+            test -x "core/$bin"
+            file "core/$bin" | tee -a "_full_cross/${{ matrix.arch }}/elfs.txt"
+            readelf -h "core/$bin" | grep -Eq 'Machine:.*${{ matrix.machine }}'
+          done
+
+      - name: Emit cross-graph receipt
+        if: success()
+        shell: bash
+        run: |
+          set -euo pipefail
+          DIR="_full_cross/${{ matrix.arch }}"
+          LOG_SHA="$(sha256sum "$DIR/build.log" | awk '{print $1}')"
+          cat > "$DIR/receipt.json" <<EOF
+          {
+            "schema": "rafcodephi_full_arm_cross_graph/1.0.0",
+            "status": "PASS",
+            "claim_allowed": false,
+            "physical_android": "TOKEN_VAZIO",
+            "architecture": "${{ matrix.arch }}",
+            "compiler": "${{ matrix.cc }}",
+            "git_sha": "$GITHUB_SHA",
+            "build_log_sha256": "$LOG_SHA",
+            "scope": "FULL_DEFAULT_GRAPH_CROSS_COMPILE_LINUX_NOT_ANDROID_RUNTIME"
+          }
+          EOF
+          sha256sum "$DIR/receipt.json" > "$DIR/receipt.json.sha256"
+
+      - name: Upload cross-graph evidence
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: rafcodephi-full-cross-${{ matrix.arch }}-${{ github.run_id }}
+          path: _full_cross/${{ matrix.arch }}/
+          if-no-files-found: error
+          retention-days: 30
+
+  transit:
+    name: Full ARM cross graph transit
+    runs-on: ubuntu-24.04
+    needs: [full-cross-graph]
+    if: always()
+    steps:
+      - name: Fail closed on any architecture red
+        shell: bash
+        env:
+          RESULT: ${{ needs.full-cross-graph.result }}
+        run: |
+          set -euo pipefail
+          test "$RESULT" = success
+          printf 'FULL_ARM_CROSS_GRAPH_PASS claim_allowed=false physical_android=TOKEN_VAZIO\n'

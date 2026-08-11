@@ -2,6 +2,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <stdint.h>
+#include <inttypes.h>
 #include <unistd.h>
 #include <fcntl.h>
 #include <sys/stat.h>
@@ -83,9 +84,9 @@ int main(int argc, char *argv[]) {
     return 1;
   }
 
-  size_t num_packages = sb.st_size / sizeof(struct termux_pkg_manifest);
+  size_t num_packages = (size_t)(sb.st_size / (off_t)sizeof(struct termux_pkg_manifest));
   printf("Manifest file: %s\n", manifest_path);
-  printf("File size: %ld bytes\n", sb.st_size);
+  printf("File size: %" PRIdMAX " bytes\n", (intmax_t)sb.st_size);
   printf("Packages: %zu\n\n", num_packages);
 
   struct termux_pkg_manifest pkg;
