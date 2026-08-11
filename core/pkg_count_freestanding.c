@@ -58,7 +58,7 @@ static real_u32 count_build_sh_in(const char *pkgs_dir,
       /* We only care about directories (packages) */
       if (ent->d_type != DT_DIR && ent->d_type != DT_UNKNOWN) continue;
 
-      /* Check <pkgs_dir>/<pkg>/build.sh exists (regular file) */
+      /* Check <pkgs_dir>/<pkg>/build.sh exists and is a regular file. */
       char pkg_dir[PATH_MAX_R];
       if (real_join_path(pkg_dir, sizeof(pkg_dir), pkgs_dir, ent->d_name) < 0)
         continue;
@@ -67,10 +67,10 @@ static real_u32 count_build_sh_in(const char *pkgs_dir,
       if (real_join_path(build_sh, sizeof(build_sh), pkg_dir, "build.sh") < 0)
         continue;
 
-      struct real_kstat st;
+      struct real_statx st;
       real_memset(&st, 0, sizeof(st));
-      if (real_newfstatat(AT_FDCWD, build_sh, &st, 0) == 0 &&
-          S_ISREG(st.st_mode)) {
+      if (real_statx(AT_FDCWD, build_sh, 0, STATX_TYPE | STATX_MODE, &st) == 0 &&
+          S_ISREG(st.stx_mode)) {
         build_sh_count++;
       }
 
@@ -113,7 +113,7 @@ static void emit_pair(const char *key, real_u32 value) {
   real_writes(STDOUT, "\n");
 }
 
-/* Regular C main-like function called from _start. */
+/* Regular C main-like function called from the architecture entrypoint. */
 __attribute__((used, noreturn))
 static void real_main(long argc, char **argv) {
   const char *base = ".";
@@ -138,20 +138,45 @@ static void real_main(long argc, char **argv) {
   real_exit(totals > 0 ? 0 : 1);
 }
 
-/* Kernel entrypoint: on x86_64 Linux, %rsp points to argc, followed by argv
- * pointers. We must NOT let the compiler emit any prologue that touches rsp
- * before we've captured argc/argv. Hand-written asm avoids that.
- *
- * ABI transition: pass argc in %rdi (first arg), argv in %rsi (second arg),
- * per System V AMD64. Then call real_main. Never returns. */
+/*
+ * Kernel process entrypoints.  Capture argc/argv directly from the initial
+ * stack before any compiler-generated prologue can move SP, then enter the
+ * normal C ABI for real_main().  Linux supplies an ABI-aligned initial stack.
+ */
+#if defined(__x86_64__)
 __asm__(
     ".global _start\n\t"
     ".type _start, @function\n\t"
     "_start:\n\t"
-    "  xor  %rbp, %rbp\n\t"          /* mark outermost frame per ABI */
-    "  mov  (%rsp), %rdi\n\t"         /* argc */
-    "  lea  8(%rsp), %rsi\n\t"        /* argv */
-    "  and  $-16, %rsp\n\t"           /* align stack to 16 for SysV */
+    "  xor  %rbp, %rbp\n\t"
+    "  mov  (%rsp), %rdi\n\t"
+    "  lea  8(%rsp), %rsi\n\t"
+    "  and  $-16, %rsp\n\t"
     "  call real_main\n\t"
-    "  ud2\n\t"                       /* real_main is noreturn */
+    "  ud2\n\t"
 );
+#elif defined(__aarch64__)
+__asm__(
+    ".global _start\n\t"
+    ".type _start, %function\n\t"
+    "_start:\n\t"
+    "  mov x29, xzr\n\t"
+    "  ldr x0, [sp]\n\t"
+    "  add x1, sp, #8\n\t"
+    "  bl real_main\n\t"
+    "1: b 1b\n\t"
+);
+#elif defined(__arm__)
+__asm__(
+    ".global _start\n\t"
+    ".type _start, %function\n\t"
+    "_start:\n\t"
+    "  mov r11, #0\n\t"
+    "  ldr r0, [sp]\n\t"
+    "  add r1, sp, #4\n\t"
+    "  bl real_main\n\t"
+    "1: b 1b\n\t"
+);
+#else
+#error "pkg-count-freestanding has no process entrypoint for this architecture"
+#endif
