@@ -3,6 +3,7 @@
 #include <string.h>
 #include <time.h>
 #include <stdlib.h>
+#include <inttypes.h>
 
 int profiler_session_init(profiler_session_t *session, const char *build_id) {
   if (!session || !build_id) return -1;
@@ -131,7 +132,7 @@ void profiler_session_print_timeline(const profiler_session_t *session) {
   printf("\nLayers & Coherence:\n");
   for (uint32_t i = 0; i < TERMUX_DAG_LAYERS; i++) {
     const layer_coherence_t *l = &session->coherence_layers[i];
-    printf("  Layer %2u: Φ=%6lu, Cache=%.0f%%, Mem=%.0f%%\n",
+    printf("  Layer %2u: Φ=%6" PRIu64 ", Cache=%.0f%%, Mem=%.0f%%\n",
            i, l->coherence_phi,
            l->cache_locality * 100.0,
            l->memory_efficiency * 100.0);
