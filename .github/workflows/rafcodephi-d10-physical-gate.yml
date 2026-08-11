@@ -1,0 +1,87 @@
+name: RAFCODEPHI D10 Physical Device Gate Contract
+
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - 'scripts/rafcodephi_d10_device_probe.sh'
+      - '.github/workflows/rafcodephi-d10-physical-gate.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'scripts/rafcodephi_d10_device_probe.sh'
+      - '.github/workflows/rafcodephi-d10-physical-gate.yml'
+
+permissions:
+  contents: read
+
+env:
+  CLAIM_ALLOWED: 'false'
+  PHYSICAL_ANDROID: 'TOKEN_VAZIO'
+  PERSISTENT_TRUST_ROOT: 'TOKEN_VAZIO'
+
+jobs:
+  d10-contract:
+    name: D10 — physical probe contract readiness, never synthetic device PASS
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - name: Checkout exact revision
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+          fetch-depth: 1
+
+      - name: Install static-analysis tools
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends shellcheck jq
+
+      - name: Validate shell syntax and contract literals
+        shell: bash
+        run: |
+          set -euo pipefail
+          sh -n scripts/rafcodephi_d10_device_probe.sh
+          shellcheck -s sh scripts/rafcodephi_d10_device_probe.sh
+          grep -Fq 'D10_PHYSICAL_DEVICE_PASS' scripts/rafcodephi_d10_device_probe.sh
+          grep -Fq 'PHYSICAL_PASS_REQUIRES_THIS_RECEIPT_FROM_THE_DEVICE_ITSELF' scripts/rafcodephi_d10_device_probe.sh
+          grep -Fq 'persistent_trust_root":"TOKEN_VAZIO' scripts/rafcodephi_d10_device_probe.sh
+
+      - name: Prove non-Android runner is rejected fail-closed
+        shell: bash
+        run: |
+          set -euo pipefail
+          chmod +x scripts/rafcodephi_d10_device_probe.sh
+          rm -f _d10-should-not-exist.json _d10.stderr
+          set +e
+          PREFIX=/tmp/not-termux scripts/rafcodephi_d10_device_probe.sh _d10-should-not-exist.json 2>_d10.stderr
+          RC=$?
+          set -e
+          test "$RC" -ne 0
+          test ! -e _d10-should-not-exist.json
+          grep -Eq 'D10_BLOCKED: (22|23|24|25|26|27|28|29):' _d10.stderr
+
+      - name: Ensure CI cannot promote physical evidence
+        shell: bash
+        run: |
+          set -euo pipefail
+          jq -n \
+            --arg sha "$GITHUB_SHA" \
+            '{schema:"rafcodephi_d10_gate_readiness/1.0.0",status:"D10_GATE_READY",git_sha:$sha,probe_syntax:"PASS",fail_closed_non_android:"PASS",physical_android:"TOKEN_VAZIO",android_bionic_runtime:"TOKEN_VAZIO",persistent_trust_root:"TOKEN_VAZIO",claim_allowed:false,rule:"CI_READINESS_NEVER_EQUALS_PHYSICAL_DEVICE_PASS"}' \
+            > d10-gate-readiness.json
+          jq -e '.status=="D10_GATE_READY" and .physical_android=="TOKEN_VAZIO" and .android_bionic_runtime=="TOKEN_VAZIO" and .persistent_trust_root=="TOKEN_VAZIO" and .claim_allowed==false' d10-gate-readiness.json >/dev/null
+          sha256sum d10-gate-readiness.json > d10-gate-readiness.json.sha256
+
+      - name: Upload D10 gate readiness evidence
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: rafcodephi-d10-gate-${{ github.run_id }}
+          path: |
+            d10-gate-readiness.json
+            d10-gate-readiness.json.sha256
+            _d10.stderr
+          if-no-files-found: error
+          retention-days: 30
