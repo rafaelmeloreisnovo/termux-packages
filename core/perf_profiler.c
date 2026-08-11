@@ -3,6 +3,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <time.h>
+#include <inttypes.h>
 
 #define PERF_MAX_SAMPLES 2057
 #define PERF_HISTOGRAM_BUCKETS 10
@@ -193,7 +194,8 @@ static void perf_print_wall_time_histogram(void) {
     uint32_t count = histogram[b];
     double percent = (double)count / (double)profile.sample_count * 100.0;
 
-    printf("  [%3lu-%3lu) ms: ", bucket_start / 1000000, bucket_end / 1000000);
+    printf("  [%3" PRIu64 "-%3" PRIu64 ") ms: ",
+           bucket_start / 1000000, bucket_end / 1000000);
     for (uint32_t i = 0; i < count && i < 40; i++) printf("█");
     printf(" %u (%.1f%%)\n", count, percent);
   }
