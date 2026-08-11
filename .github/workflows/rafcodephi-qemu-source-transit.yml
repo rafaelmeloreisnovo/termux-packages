@@ -1,0 +1,224 @@
+name: RAFCODEPHI QEMU Source Transit Invariant
+
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - 'core/**'
+      - '.github/workflows/rafcodephi-qemu-source-transit.yml'
+  push:
+    branches:
+      - main
+    paths:
+      - 'core/**'
+      - '.github/workflows/rafcodephi-qemu-source-transit.yml'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: rafcodephi-qemu-source-transit-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  CLAIM_ALLOWED: 'false'
+  DEVICE_RUNTIME: 'NOT_MEASURED'
+  TEST_SCOPE: 'EMULATED_LINUX_USERMODE_NOT_ANDROID_DEVICE'
+
+jobs:
+  emulated-source:
+    name: QEMU ${{ matrix.arch }} — source -> ELF -> execute -> test
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    strategy:
+      fail-fast: true
+      matrix:
+        include:
+          - arch: arm32
+            cc: arm-linux-gnueabihf-gcc
+            qemu: qemu-arm
+            sysroot: /usr/arm-linux-gnueabihf
+            machine_regex: 'ARM'
+          - arch: arm64
+            cc: aarch64-linux-gnu-gcc
+            qemu: qemu-aarch64
+            sysroot: /usr/aarch64-linux-gnu
+            machine_regex: 'AArch64'
+
+    steps:
+      - name: Checkout exact revision
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+          fetch-depth: 1
+
+      - name: Install QEMU and cross toolchains
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            qemu-user \
+            gcc-arm-linux-gnueabihf \
+            gcc-aarch64-linux-gnu \
+            binutils-arm-linux-gnueabihf \
+            binutils-aarch64-linux-gnu \
+            file \
+            jq
+
+      - name: Record emulator and toolchain provenance
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "_emulation/${{ matrix.arch }}"
+          {
+            echo "git_sha=${GITHUB_SHA}"
+            echo "arch=${{ matrix.arch }}"
+            echo "cc=${{ matrix.cc }}"
+            echo "qemu=${{ matrix.qemu }}"
+            echo "sysroot=${{ matrix.sysroot }}"
+            echo "claim_allowed=${CLAIM_ALLOWED}"
+            echo "device_runtime=${DEVICE_RUNTIME}"
+            echo "test_scope=${TEST_SCOPE}"
+            "${{ matrix.cc }}" --version | head -n 1
+            "${{ matrix.qemu }}" --version | head -n 1
+          } | tee "_emulation/${{ matrix.arch }}/provenance.txt"
+
+      - name: Cross-compile production hardening source
+        shell: bash
+        run: |
+          set -euo pipefail
+          "${{ matrix.cc }}" \
+            -std=c11 -Wall -Wextra -Wshadow -Werror -O2 -g \
+            -o "_emulation/${{ matrix.arch }}/test-production-hardening" \
+            core/tests/test_production_hardening.c \
+            core/production_hardening.c \
+            -lm
+
+      - name: Verify ELF architecture before transit
+        shell: bash
+        run: |
+          set -euo pipefail
+          BIN="_emulation/${{ matrix.arch }}/test-production-hardening"
+          file "$BIN" | tee "_emulation/${{ matrix.arch }}/file.txt"
+          readelf -h "$BIN" | tee "_emulation/${{ matrix.arch }}/elf-header.txt"
+          grep -Eq 'Machine:.*${{ matrix.machine_regex }}' "_emulation/${{ matrix.arch }}/elf-header.txt"
+
+      - name: Execute source-derived binary under QEMU
+        shell: bash
+        run: |
+          set -euo pipefail
+          BIN="_emulation/${{ matrix.arch }}/test-production-hardening"
+          "${{ matrix.qemu }}" -L "${{ matrix.sysroot }}" "$BIN" \
+            | tee "_emulation/${{ matrix.arch }}/execution.log"
+          grep -Fq 'Passed: 6/6 tests' "_emulation/${{ matrix.arch }}/execution.log"
+          grep -Fq 'Phase 9.15 Core Tests PASSED' "_emulation/${{ matrix.arch }}/execution.log"
+
+      - name: Emit emulation receipt
+        shell: bash
+        run: |
+          set -euo pipefail
+          ARCH='${{ matrix.arch }}'
+          DIR="_emulation/$ARCH"
+          BIN="$DIR/test-production-hardening"
+          BIN_SHA="$(sha256sum "$BIN" | awk '{print $1}')"
+          LOG_SHA="$(sha256sum "$DIR/execution.log" | awk '{print $1}')"
+          cat > "$DIR/receipt.json" <<EOF
+          {
+            "schema": "rafcodephi_qemu_source_transit/1.0.0",
+            "status": "EMULATED_PASS",
+            "claim_allowed": false,
+            "architecture": "$ARCH",
+            "source": [
+              "core/tests/test_production_hardening.c",
+              "core/production_hardening.c"
+            ],
+            "git_sha": "$GITHUB_SHA",
+            "binary_sha256": "$BIN_SHA",
+            "execution_log_sha256": "$LOG_SHA",
+            "emulator": "${{ matrix.qemu }}",
+            "sysroot": "${{ matrix.sysroot }}",
+            "test_scope": "EMULATED_LINUX_USERMODE_NOT_ANDROID_DEVICE",
+            "device_runtime": "NOT_MEASURED",
+            "physical_device": "TOKEN_VAZIO",
+            "transit": {
+              "cross_compile": "PASS",
+              "elf_identity": "PASS",
+              "qemu_execution": "PASS",
+              "source_tests": "PASS"
+            }
+          }
+          EOF
+          jq -e '
+            .status == "EMULATED_PASS" and
+            .claim_allowed == false and
+            .device_runtime == "NOT_MEASURED" and
+            .transit.cross_compile == "PASS" and
+            .transit.elf_identity == "PASS" and
+            .transit.qemu_execution == "PASS" and
+            .transit.source_tests == "PASS"
+          ' "$DIR/receipt.json" >/dev/null
+          sha256sum "$DIR/receipt.json" > "$DIR/receipt.json.sha256"
+
+      - name: Upload emulation evidence
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: rafcodephi-qemu-${{ matrix.arch }}-${{ github.run_id }}
+          path: _emulation/${{ matrix.arch }}/
+          if-no-files-found: error
+          retention-days: 30
+
+  transit-gate:
+    name: Transit invariant — all emulated architectures must be green
+    runs-on: ubuntu-24.04
+    needs: [emulated-source]
+    if: always()
+    steps:
+      - name: Fail closed on any red architecture
+        shell: bash
+        env:
+          MATRIX_RESULT: ${{ needs.emulated-source.result }}
+        run: |
+          set -euo pipefail
+          mkdir -p _transit
+          if [ "$MATRIX_RESULT" != "success" ]; then
+            cat > _transit/transit-receipt.json <<EOF
+          {
+            "schema": "rafcodephi_qemu_transit_gate/1.0.0",
+            "status": "BLOCKED",
+            "claim_allowed": false,
+            "matrix_result": "$MATRIX_RESULT",
+            "rule": "ANY_RED_STOPS_TRANSIT",
+            "device_runtime": "NOT_MEASURED"
+          }
+          EOF
+            cat _transit/transit-receipt.json
+            exit 1
+          fi
+
+          cat > _transit/transit-receipt.json <<EOF
+          {
+            "schema": "rafcodephi_qemu_transit_gate/1.0.0",
+            "status": "EMULATED_TRANSIT_PASS",
+            "claim_allowed": false,
+            "matrix_result": "$MATRIX_RESULT",
+            "architectures": ["arm32", "arm64"],
+            "rule": "ALL_GREEN_TO_TRANSIT",
+            "scope": "QEMU_USERMODE_SOURCE_EXECUTION",
+            "device_runtime": "NOT_MEASURED",
+            "physical_android": "TOKEN_VAZIO"
+          }
+          EOF
+          jq -e '.status == "EMULATED_TRANSIT_PASS" and .claim_allowed == false' \
+            _transit/transit-receipt.json >/dev/null
+          sha256sum _transit/transit-receipt.json > _transit/transit-receipt.json.sha256
+
+      - name: Upload transit receipt
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: rafcodephi-qemu-transit-${{ github.run_id }}
+          path: _transit/
+          if-no-files-found: error
+          retention-days: 30
