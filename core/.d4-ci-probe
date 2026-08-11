@@ -1,0 +1,4 @@
+RAFCODEPHI D4 execution probe
+purpose=trigger pull_request execution of default-branch D4 workflow
+claim_allowed=false
+physical_android=TOKEN_VAZIO
