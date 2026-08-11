@@ -1,0 +1,372 @@
+name: RAFCODEPHI QEMU REAL Evidence Chain
+
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - 'core/**'
+      - 'scripts/rafcodephi_delivery_gate.py'
+      - '.github/workflows/rafcodephi-qemu-real-evidence-chain.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'core/**'
+      - 'scripts/rafcodephi_delivery_gate.py'
+      - '.github/workflows/rafcodephi-qemu-real-evidence-chain.yml'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: rafcodephi-qemu-real-evidence-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  CLAIM_ALLOWED: 'false'
+  DEVICE_RUNTIME: 'NOT_MEASURED'
+  PHYSICAL_ANDROID: 'TOKEN_VAZIO'
+  EVIDENCE_SCOPE: 'QEMU_LINUX_USERMODE_REAL_CHAIN_NOT_ANDROID_DEVICE'
+
+jobs:
+  qemu-real-chain:
+    name: QEMU ${{ matrix.arch }} — pkg-real -> metrics -> receipt -> ledger
+    runs-on: ubuntu-24.04
+    timeout-minutes: 40
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: arm32
+            cc: arm-linux-gnueabihf-gcc
+            qemu: qemu-arm
+            sysroot: /usr/arm-linux-gnueabihf
+            machine_regex: 'ARM'
+          - arch: arm64
+            cc: aarch64-linux-gnu-gcc
+            qemu: qemu-aarch64
+            sysroot: /usr/aarch64-linux-gnu
+            machine_regex: 'AArch64'
+
+    steps:
+      - name: Checkout exact revision
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+          fetch-depth: 1
+
+      - name: Install QEMU and cross toolchains
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            qemu-user \
+            gcc-arm-linux-gnueabihf \
+            gcc-aarch64-linux-gnu \
+            binutils-arm-linux-gnueabihf \
+            binutils-aarch64-linux-gnu \
+            file jq python3
+
+      - name: Prepare evidence workspace
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "_qemu_real/${{ matrix.arch }}"
+          {
+            echo "schema=rafcodephi_qemu_real_provenance/1.0.0"
+            echo "git_sha=${GITHUB_SHA}"
+            echo "arch=${{ matrix.arch }}"
+            echo "compiler=${{ matrix.cc }}"
+            echo "emulator=${{ matrix.qemu }}"
+            echo "sysroot=${{ matrix.sysroot }}"
+            echo "claim_allowed=${CLAIM_ALLOWED}"
+            echo "device_runtime=${DEVICE_RUNTIME}"
+            echo "physical_android=${PHYSICAL_ANDROID}"
+            "${{ matrix.cc }}" --version | head -n 1
+            "${{ matrix.qemu }}" --version | head -n 1
+          } | tee "_qemu_real/${{ matrix.arch }}/provenance.txt"
+
+      - name: Cross-build REAL binaries from source
+        shell: bash
+        run: |
+          set -euo pipefail
+          make -C core clean
+          make -C core \
+            CC='${{ matrix.cc }}' \
+            pkg-real metrics-producer contract-validate receipt-validate receipt-ledger arch-probe
+
+      - name: Verify target ELF identities
+        shell: bash
+        run: |
+          set -euo pipefail
+          OUT="_qemu_real/${{ matrix.arch }}/elf-identities.txt"
+          : > "$OUT"
+          for bin in pkg-real metrics-producer contract-validate receipt-validate receipt-ledger arch-probe; do
+            file "core/$bin" | tee -a "$OUT"
+            readelf -h "core/$bin" | grep -E 'Class:|Machine:' | tee -a "$OUT"
+            readelf -h "core/$bin" | grep -Eq 'Machine:.*${{ matrix.machine_regex }}'
+          done
+
+      - name: Execute pkg-real inventory and parser under QEMU
+        shell: bash
+        run: |
+          set -euo pipefail
+          D="_qemu_real/${{ matrix.arch }}"
+          Q='${{ matrix.qemu }}'
+          S='${{ matrix.sysroot }}'
+          "$Q" -L "$S" core/pkg-real inventory . --json > "$D/inventory.json"
+          jq -e . "$D/inventory.json" >/dev/null
+          "$Q" -L "$S" core/pkg-real parse packages/bash/build.sh --json > "$D/bash-parse.json"
+          jq -e . "$D/bash-parse.json" >/dev/null
+          test -s "$D/inventory.json"
+          test -s "$D/bash-parse.json"
+
+      - name: Execute metrics producer under QEMU
+        shell: bash
+        run: |
+          set -euo pipefail
+          D="_qemu_real/${{ matrix.arch }}"
+          Q='${{ matrix.qemu }}'
+          S='${{ matrix.sysroot }}'
+          "$Q" -L "$S" core/metrics-producer . "$D/metrics.json" \
+            2> "$D/metrics.stderr.log"
+          jq -e '.schema == "pkg_metrics/1.0.0" and .status == "REAL"' "$D/metrics.json" >/dev/null
+          test -f "$D/metrics.json.receipt"
+
+      - name: Validate metrics contract and receipt under QEMU
+        shell: bash
+        run: |
+          set -euo pipefail
+          D="_qemu_real/${{ matrix.arch }}"
+          Q='${{ matrix.qemu }}'
+          S='${{ matrix.sysroot }}'
+          "$Q" -L "$S" core/contract-validate "$D/metrics.json" \
+            | tee "$D/contract-validation.log"
+          "$Q" -L "$S" core/receipt-validate "$D/metrics.json.receipt" \
+            | tee "$D/receipt-validation.log"
+
+      - name: Append and verify chain-of-custody ledger under QEMU
+        shell: bash
+        run: |
+          set -euo pipefail
+          D="_qemu_real/${{ matrix.arch }}"
+          Q='${{ matrix.qemu }}'
+          S='${{ matrix.sysroot }}'
+          LEDGER="$D/ledger.jsonl"
+          "$Q" -L "$S" core/receipt-ledger append "$LEDGER" "$D/metrics.json.receipt"
+          "$Q" -L "$S" core/receipt-ledger verify "$LEDGER" \
+            | tee "$D/ledger-verify.log"
+          test -s "$LEDGER"
+
+      - name: Execute architecture probe under QEMU and join ledger
+        shell: bash
+        run: |
+          set -euo pipefail
+          D="_qemu_real/${{ matrix.arch }}"
+          Q='${{ matrix.qemu }}'
+          S='${{ matrix.sysroot }}'
+          "$Q" -L "$S" core/arch-probe "$D/arch-capability.json"
+          jq -e '.schema == "arch_capability/1.0.0"' "$D/arch-capability.json" >/dev/null
+          test -f "$D/arch-capability.json.receipt"
+          "$Q" -L "$S" core/receipt-validate "$D/arch-capability.json.receipt"
+          "$Q" -L "$S" core/receipt-ledger append "$D/ledger.jsonl" "$D/arch-capability.json.receipt"
+          "$Q" -L "$S" core/receipt-ledger verify "$D/ledger.jsonl" \
+            | tee "$D/ledger-after-arch.log"
+
+      - name: Emit per-architecture REAL transit receipt
+        shell: bash
+        run: |
+          set -euo pipefail
+          ARCH='${{ matrix.arch }}'
+          D="_qemu_real/$ARCH"
+          METRICS_SHA="$(sha256sum "$D/metrics.json" | awk '{print $1}')"
+          RECEIPT_SHA="$(sha256sum "$D/metrics.json.receipt" | awk '{print $1}')"
+          LEDGER_SHA="$(sha256sum "$D/ledger.jsonl" | awk '{print $1}')"
+          ARCH_SHA="$(sha256sum "$D/arch-capability.json" | awk '{print $1}')"
+          cat > "$D/transit-receipt.json" <<EOF
+          {
+            "schema": "rafcodephi_qemu_real_chain/1.0.0",
+            "status": "EMULATED_REAL_CHAIN_PASS",
+            "claim_allowed": false,
+            "architecture": "$ARCH",
+            "git_sha": "$GITHUB_SHA",
+            "scope": "$EVIDENCE_SCOPE",
+            "device_runtime": "$DEVICE_RUNTIME",
+            "physical_android": "$PHYSICAL_ANDROID",
+            "transit": {
+              "cross_build": "PASS",
+              "elf_identity": "PASS",
+              "pkg_real_inventory": "PASS",
+              "pkg_real_parse": "PASS",
+              "metrics_producer": "PASS",
+              "contract_validate": "PASS",
+              "receipt_validate": "PASS",
+              "ledger_append_verify": "PASS",
+              "arch_probe": "PASS"
+            },
+            "sha256": {
+              "metrics": "$METRICS_SHA",
+              "metrics_receipt": "$RECEIPT_SHA",
+              "ledger": "$LEDGER_SHA",
+              "arch_capability": "$ARCH_SHA"
+            }
+          }
+          EOF
+          jq -e '
+            .status == "EMULATED_REAL_CHAIN_PASS" and
+            .claim_allowed == false and
+            .device_runtime == "NOT_MEASURED" and
+            .physical_android == "TOKEN_VAZIO" and
+            ([.transit[]] | all(. == "PASS"))
+          ' "$D/transit-receipt.json" >/dev/null
+          sha256sum "$D/transit-receipt.json" > "$D/transit-receipt.json.sha256"
+
+      - name: Upload QEMU REAL evidence
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: rafcodephi-qemu-real-${{ matrix.arch }}-${{ github.run_id }}
+          path: _qemu_real/${{ matrix.arch }}/
+          if-no-files-found: error
+          retention-days: 30
+
+  native-delivery-preflight:
+    name: Native delivery source + mechanism preflight
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - name: Checkout exact revision
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+          fetch-depth: 1
+
+      - name: Install delivery validation tools
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends dpkg-dev jq python3 build-essential
+
+      - name: Execute RAFCODEPHI source delivery gate
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p _delivery_preflight
+          python3 scripts/rafcodephi_delivery_gate.py source \
+            --repo . \
+            --out _delivery_preflight/source-gate.json \
+            2> _delivery_preflight/source-gate.stderr.log
+          jq -e '
+            .gate == "source" and
+            .state == "PASS" and
+            .claim_allowed == false and
+            .artifact == "NOT_MEASURED" and
+            .physical_device_runtime == "NOT_MEASURED"
+          ' _delivery_preflight/source-gate.json >/dev/null
+
+      - name: Exercise artifact validator with controlled Debian fixture
+        shell: bash
+        run: |
+          set -euo pipefail
+          ROOT="_delivery_preflight/fixture-root"
+          mkdir -p "$ROOT/DEBIAN" "$ROOT/data/data/com.termux.rafacodephi/files/usr/bin"
+          cat > "$ROOT/DEBIAN/control" <<'EOF'
+          Package: com.termux.rafacodephi-fixture
+          Version: 0.0.0-fixture
+          Architecture: aarch64
+          Maintainer: RAFCODEPHI CI <noreply@example.invalid>
+          Description: CI fixture only; not a distributable runtime package
+          EOF
+          printf '#!/bin/sh\necho fixture-only\n' > "$ROOT/data/data/com.termux.rafacodephi/files/usr/bin/fixture"
+          chmod 0755 "$ROOT/data/data/com.termux.rafacodephi/files/usr/bin/fixture"
+          dpkg-deb --build "$ROOT" _delivery_preflight/fixture-aarch64.deb >/dev/null
+          python3 scripts/rafcodephi_delivery_gate.py artifact \
+            --repo . \
+            --artifact _delivery_preflight/fixture-aarch64.deb \
+            --expected-package com.termux.rafacodephi-fixture \
+            --arch aarch64 \
+            --out _delivery_preflight/artifact-mechanism-gate.json \
+            2> _delivery_preflight/artifact-mechanism.stderr.log
+          jq -e '
+            .gate == "artifact" and
+            .state == "PASS" and
+            .claim_allowed == false and
+            .repo_metadata_generated == "NOT_MEASURED" and
+            .apt_pkg_runtime == "NOT_MEASURED" and
+            .physical_device_runtime == "NOT_MEASURED"
+          ' _delivery_preflight/artifact-mechanism-gate.json >/dev/null
+
+      - name: Mark fixture boundary explicitly
+        shell: bash
+        run: |
+          set -euo pipefail
+          cat > _delivery_preflight/boundary.json <<EOF
+          {
+            "schema": "rafcodephi_delivery_preflight_boundary/1.0.0",
+            "claim_allowed": false,
+            "source_gate": "PASS",
+            "artifact_validator_mechanism": "PASS_ON_FIXTURE_ONLY",
+            "real_d3_artifact": "TOKEN_VAZIO",
+            "d4_repository": "TOKEN_VAZIO",
+            "apt_pkg_runtime": "TOKEN_VAZIO",
+            "physical_android": "TOKEN_VAZIO",
+            "rule": "FIXTURE_PASS_NEVER_PROMOTES_D3_D4_D8"
+          }
+          EOF
+          jq -e '.claim_allowed == false and .real_d3_artifact == "TOKEN_VAZIO"' \
+            _delivery_preflight/boundary.json >/dev/null
+          sha256sum _delivery_preflight/*.json > _delivery_preflight/json-sha256.txt
+
+      - name: Upload delivery preflight evidence
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: rafcodephi-delivery-preflight-${{ github.run_id }}
+          path: _delivery_preflight/
+          if-no-files-found: error
+          retention-days: 30
+
+  evidence-transit-gate:
+    name: Evidence transit invariant — QEMU REAL + delivery preflight
+    runs-on: ubuntu-24.04
+    needs: [qemu-real-chain, native-delivery-preflight]
+    if: always()
+    steps:
+      - name: Fail closed on any upstream red
+        shell: bash
+        env:
+          QEMU_RESULT: ${{ needs.qemu-real-chain.result }}
+          DELIVERY_RESULT: ${{ needs.native-delivery-preflight.result }}
+        run: |
+          set -euo pipefail
+          mkdir -p _evidence_transit
+          STATUS="BLOCKED"
+          if [ "$QEMU_RESULT" = "success" ] && [ "$DELIVERY_RESULT" = "success" ]; then
+            STATUS="EMULATED_EVIDENCE_TRANSIT_PASS"
+          fi
+          cat > _evidence_transit/receipt.json <<EOF
+          {
+            "schema": "rafcodephi_evidence_transit/1.0.0",
+            "status": "$STATUS",
+            "claim_allowed": false,
+            "qemu_real_chain": "$QEMU_RESULT",
+            "delivery_preflight": "$DELIVERY_RESULT",
+            "rule": "ANY_RED_STOPS_TRANSIT",
+            "real_d3_artifact": "TOKEN_VAZIO",
+            "d4_repository": "TOKEN_VAZIO",
+            "physical_android": "TOKEN_VAZIO"
+          }
+          EOF
+          cat _evidence_transit/receipt.json
+          sha256sum _evidence_transit/receipt.json > _evidence_transit/receipt.json.sha256
+          [ "$STATUS" = "EMULATED_EVIDENCE_TRANSIT_PASS" ]
+
+      - name: Upload final transit receipt
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: rafcodephi-evidence-transit-${{ github.run_id }}
+          path: _evidence_transit/
+          if-no-files-found: error
+          retention-days: 30
