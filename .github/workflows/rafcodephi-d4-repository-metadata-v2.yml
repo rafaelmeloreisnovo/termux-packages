@@ -1,0 +1,171 @@
+name: RAFCODEPHI D4 Repository Metadata Evidence V2
+
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - 'core/**'
+      - 'scripts/rafcodephi_delivery_gate.py'
+      - '.github/workflows/rafcodephi-d4-repository-metadata-v2.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'core/**'
+      - 'scripts/rafcodephi_delivery_gate.py'
+      - '.github/workflows/rafcodephi-d4-repository-metadata-v2.yml'
+
+permissions:
+  contents: read
+
+env:
+  CLAIM_ALLOWED: 'false'
+  SIGNED_REPOSITORY: 'TOKEN_VAZIO'
+  APT_PKG_RUNTIME: 'TOKEN_VAZIO'
+  PHYSICAL_ANDROID: 'TOKEN_VAZIO'
+
+jobs:
+  d4-repository:
+    name: D4 V2 — source -> D3 debs -> Packages/Release -> verify
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - name: Checkout exact revision
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+          fetch-depth: 1
+
+      - name: Install D3/D4 toolchains
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            gcc-arm-linux-gnueabihf gcc-aarch64-linux-gnu \
+            libc6-dev-armhf-cross libc6-dev-arm64-cross \
+            binutils-arm-linux-gnueabihf binutils-aarch64-linux-gnu \
+            dpkg-dev apt-utils jq gzip file
+
+      - name: Rebuild source-derived D3 debs
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p _d4/repo/pool/main/r/rafcodephi-real _d4/evidence _d4/work
+          build_one() {
+            ARCH="$1"
+            DEB_ARCH="$2"
+            CC="$3"
+            MACHINE_RE="$4"
+            ROOT="_d4/work/$ARCH/root"
+            mkdir -p "$ROOT/DEBIAN" "$ROOT/data/data/com.termux.rafacodephi/files/usr/bin"
+            # Makefile clean does not enumerate every legacy *.o target (notably
+            # pkg_real_cli.o/pkg_scanner.o/pkg_parser.o/pkg_dag.o). A cross-arch
+            # build must therefore remove all object files before changing CC;
+            # otherwise ARM objects can be reused by the AArch64 linker.
+            make -C core clean
+            find core -maxdepth 1 -type f -name '*.o' -delete
+            make -C core CC="$CC" pkg-real metrics-producer contract-validate receipt-validate receipt-ledger arch-probe
+            for bin in pkg-real metrics-producer contract-validate receipt-validate receipt-ledger arch-probe; do
+              readelf -h "core/$bin" | grep -Eq "Machine:.*$MACHINE_RE"
+              cp "core/$bin" "$ROOT/data/data/com.termux.rafacodephi/files/usr/bin/$bin"
+            done
+            printf '%s\n' \
+              'Package: com.termux.rafacodephi-real' \
+              "Version: 0.1.0+git${GITHUB_SHA::12}" \
+              "Architecture: $DEB_ARCH" \
+              'Maintainer: RAFCODEPHI CI <noreply@example.invalid>' \
+              'Section: utils' \
+              'Priority: optional' \
+              'Description: Source-derived RAFCODEPHI REAL evidence tooling package' \
+              > "$ROOT/DEBIAN/control"
+            DEB="_d4/repo/pool/main/r/rafcodephi-real/com.termux.rafcodephi-real_0.1.0+git${GITHUB_SHA::12}_${DEB_ARCH}.deb"
+            dpkg-deb --build --root-owner-group "$ROOT" "$DEB" >/dev/null
+            python3 scripts/rafcodephi_delivery_gate.py artifact \
+              --repo . --artifact "$DEB" \
+              --expected-package com.termux.rafcodephi-real \
+              --arch "$ARCH" \
+              --out "_d4/evidence/d3-${ARCH}.json"
+          }
+          build_one arm arm arm-linux-gnueabihf-gcc ARM
+          build_one aarch64 aarch64 aarch64-linux-gnu-gcc AArch64
+
+      - name: Generate Packages and Release
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd _d4/repo
+          dpkg-scanpackages --multiversion pool /dev/null > Packages
+          gzip -n -9 -c Packages > Packages.gz
+          test "$(grep -c '^Package: com.termux.rafacodephi-real$' Packages)" -eq 2
+          grep -q '^Architecture: arm$' Packages
+          grep -q '^Architecture: aarch64$' Packages
+          for deb in pool/main/r/rafcodephi-real/*.deb; do
+            base="$(basename "$deb")"
+            hash="$(sha256sum "$deb" | awk '{print $1}')"
+            grep -Fq "Filename: pool/main/r/rafcodephi-real/$base" Packages
+            grep -Fq "SHA256: $hash" Packages
+          done
+          apt-ftparchive \
+            -o APT::FTPArchive::Release::Origin=RAFCODEPHI \
+            -o APT::FTPArchive::Release::Label='RAFCODEPHI D4 Evidence' \
+            -o APT::FTPArchive::Release::Suite=stable \
+            -o APT::FTPArchive::Release::Codename=rafcodephi \
+            -o APT::FTPArchive::Release::Architectures='arm aarch64' \
+            -o APT::FTPArchive::Release::Components=main \
+            release . > Release
+          test -s Packages
+          test -s Packages.gz
+          test -s Release
+
+      - name: Verify Release SHA256 bindings
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd _d4/repo
+          P_SHA="$(sha256sum Packages | awk '{print $1}')"
+          PGZ_SHA="$(sha256sum Packages.gz | awk '{print $1}')"
+          P_SIZE="$(stat -c %s Packages)"
+          PGZ_SIZE="$(stat -c %s Packages.gz)"
+          grep -Eq "^[[:space:]]+$P_SHA[[:space:]]+$P_SIZE[[:space:]]+Packages$" Release
+          grep -Eq "^[[:space:]]+$PGZ_SHA[[:space:]]+$PGZ_SIZE[[:space:]]+Packages.gz$" Release
+
+      - name: Emit D4 receipt
+        shell: bash
+        run: |
+          set -euo pipefail
+          ARM_DEB="$(find _d4/repo/pool -name '*_arm.deb' -print -quit)"
+          A64_DEB="$(find _d4/repo/pool -name '*_aarch64.deb' -print -quit)"
+          ARM_SHA="$(sha256sum "$ARM_DEB" | awk '{print $1}')"
+          A64_SHA="$(sha256sum "$A64_DEB" | awk '{print $1}')"
+          P_SHA="$(sha256sum _d4/repo/Packages | awk '{print $1}')"
+          PGZ_SHA="$(sha256sum _d4/repo/Packages.gz | awk '{print $1}')"
+          R_SHA="$(sha256sum _d4/repo/Release | awk '{print $1}')"
+          jq -n \
+            --arg git_sha "$GITHUB_SHA" \
+            --arg arm_sha "$ARM_SHA" \
+            --arg a64_sha "$A64_SHA" \
+            --arg p_sha "$P_SHA" \
+            --arg pgz_sha "$PGZ_SHA" \
+            --arg r_sha "$R_SHA" \
+            '{schema:"rafcodephi_d4_repository_metadata/1.1.0",status:"D4_UNSIGNED_REPOSITORY_METADATA_PASS",claim_allowed:false,git_sha:$git_sha,d3_arm:"PASS",d3_aarch64:"PASS",packages_index:"PASS",release_sha256_validation:"PASS",signed_repository:"TOKEN_VAZIO",apt_pkg_runtime:"TOKEN_VAZIO",physical_android:"TOKEN_VAZIO",sha256:{deb_arm:$arm_sha,deb_aarch64:$a64_sha,Packages:$p_sha,"Packages.gz":$pgz_sha,Release:$r_sha},rule:"D4_METADATA_PASS_NEVER_PROMOTES_SIGNED_REPO_OR_LIVE_APT_OR_DEVICE"}' \
+            > _d4/evidence/d4-receipt.json
+          jq -e '.status == "D4_UNSIGNED_REPOSITORY_METADATA_PASS" and .claim_allowed == false and .signed_repository == "TOKEN_VAZIO" and .apt_pkg_runtime == "TOKEN_VAZIO" and .physical_android == "TOKEN_VAZIO"' _d4/evidence/d4-receipt.json >/dev/null
+          sha256sum _d4/evidence/d4-receipt.json > _d4/evidence/d4-receipt.json.sha256
+
+      - name: Fail closed on D4 invariant
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -s _d4/repo/Packages
+          test -s _d4/repo/Packages.gz
+          test -s _d4/repo/Release
+          test -s _d4/evidence/d4-receipt.json
+
+      - name: Upload D4 repository evidence
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: rafcodephi-d4-v2-${{ github.run_id }}
+          path: _d4/
+          if-no-files-found: error
+          retention-days: 30
