@@ -1,0 +1,207 @@
+name: RAFCODEPHI Internal Execution Excellence
+
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - 'core/**'
+      - '.github/workflows/rafcodephi-internal-execution-excellence.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'core/**'
+      - '.github/workflows/rafcodephi-internal-execution-excellence.yml'
+
+permissions:
+  contents: read
+
+env:
+  CLAIM_ALLOWED: 'false'
+  PHYSICAL_ANDROID: 'TOKEN_VAZIO'
+  RULE: 'ANY_RED_STOPS_TRANSIT'
+
+jobs:
+  execution-excellence:
+    name: Internal excellence — ${{ matrix.compiler }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 35
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - compiler: gcc
+            cc: gcc
+          - compiler: clang
+            cc: clang
+
+    steps:
+      - name: Checkout exact revision
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+          fetch-depth: 1
+
+      - name: Install execution tools
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends jq time
+
+      - name: Establish clean-room baseline
+        shell: bash
+        env:
+          CC: ${{ matrix.cc }}
+        run: |
+          set -euo pipefail
+          mkdir -p _excellence/${{ matrix.compiler }}/logs _excellence/${{ matrix.compiler }}/receipts
+          make -C core clean
+          find core -maxdepth 1 -type f -name '*.o' -delete
+          test -z "$(find core -maxdepth 1 -type f -name '*.o' -print -quit)"
+          git status --porcelain > _excellence/${{ matrix.compiler }}/logs/baseline-status.txt
+
+      - name: Build functional execution surface
+        shell: bash
+        env:
+          CC: ${{ matrix.cc }}
+        run: |
+          set -euo pipefail
+          START="$(date +%s%N)"
+          make -C core CC="$CC" \
+            test-production-hardening \
+            test-pkg-real \
+            test-security-hardening \
+            test-integration-e2e \
+            pkg-real arch-probe \
+            > _excellence/${{ matrix.compiler }}/logs/build.log 2>&1
+          END="$(date +%s%N)"
+          printf '%s\n' "$(( (END-START)/1000000 ))" > _excellence/${{ matrix.compiler }}/receipts/build_ms.txt
+          for f in test-production-hardening test-pkg-real test-security-hardening test-integration-e2e pkg-real arch-probe; do
+            test -x "core/$f"
+          done
+
+      - name: Functional pass 1
+        shell: bash
+        run: |
+          set -euo pipefail
+          ROOT="_excellence/${{ matrix.compiler }}"
+          run_test() {
+            NAME="$1"
+            START="$(date +%s%N)"
+            "core/$NAME" > "$ROOT/logs/${NAME}.pass1.log" 2>&1
+            RC=$?
+            END="$(date +%s%N)"
+            test "$RC" -eq 0
+            printf '%s\n' "$(( (END-START)/1000000 ))" > "$ROOT/receipts/${NAME}.pass1_ms.txt"
+          }
+          run_test test-production-hardening
+          run_test test-pkg-real
+          run_test test-security-hardening
+          run_test test-integration-e2e
+
+          core/arch-probe "$ROOT/receipts/arch-probe.pass1.json"
+          jq -e 'type == "object"' "$ROOT/receipts/arch-probe.pass1.json" >/dev/null
+
+          RC=0
+          core/pkg-real --help > "$ROOT/logs/pkg-real.pass1.log" 2>&1 || RC=$?
+          test "$RC" -le 2
+
+      - name: Functional pass 2 and repeatability
+        shell: bash
+        run: |
+          set -euo pipefail
+          ROOT="_excellence/${{ matrix.compiler }}"
+          for NAME in test-production-hardening test-pkg-real test-security-hardening test-integration-e2e; do
+            START="$(date +%s%N)"
+            "core/$NAME" > "$ROOT/logs/${NAME}.pass2.log" 2>&1
+            RC=$?
+            END="$(date +%s%N)"
+            test "$RC" -eq 0
+            printf '%s\n' "$(( (END-START)/1000000 ))" > "$ROOT/receipts/${NAME}.pass2_ms.txt"
+          done
+
+          core/arch-probe "$ROOT/receipts/arch-probe.pass2.json"
+          jq -e 'type == "object"' "$ROOT/receipts/arch-probe.pass2.json" >/dev/null
+
+          # generated_unix_ms is observational time, not capability state.
+          # Every other field must remain byte-identical between consecutive probes.
+          jq -S 'walk(if type=="object" then del(.timestamp,.observed_at_utc,.build_timestamp,.generated_at,.generated_unix_ms,.provenance.build_timestamp) else . end)' \
+            "$ROOT/receipts/arch-probe.pass1.json" > "$ROOT/receipts/arch-probe.pass1.normalized.json"
+          jq -S 'walk(if type=="object" then del(.timestamp,.observed_at_utc,.build_timestamp,.generated_at,.generated_unix_ms,.provenance.build_timestamp) else . end)' \
+            "$ROOT/receipts/arch-probe.pass2.json" > "$ROOT/receipts/arch-probe.pass2.normalized.json"
+          cmp "$ROOT/receipts/arch-probe.pass1.normalized.json" "$ROOT/receipts/arch-probe.pass2.normalized.json"
+
+      - name: Clean rebuild and deterministic artifact check
+        shell: bash
+        env:
+          CC: ${{ matrix.cc }}
+        run: |
+          set -euo pipefail
+          ROOT="_excellence/${{ matrix.compiler }}"
+          sha256sum \
+            core/test-production-hardening \
+            core/test-pkg-real \
+            core/test-security-hardening \
+            core/test-integration-e2e \
+            core/pkg-real \
+            > "$ROOT/receipts/build1.sha256"
+
+          make -C core clean
+          find core -maxdepth 1 -type f -name '*.o' -delete
+          make -C core CC="$CC" \
+            test-production-hardening test-pkg-real test-security-hardening test-integration-e2e pkg-real \
+            > "$ROOT/logs/rebuild.log" 2>&1
+
+          sha256sum \
+            core/test-production-hardening \
+            core/test-pkg-real \
+            core/test-security-hardening \
+            core/test-integration-e2e \
+            core/pkg-real \
+            > "$ROOT/receipts/build2.sha256"
+          cmp "$ROOT/receipts/build1.sha256" "$ROOT/receipts/build2.sha256"
+
+      - name: Emit operational excellence receipt
+        shell: bash
+        env:
+          CC: ${{ matrix.cc }}
+        run: |
+          set -euo pipefail
+          ROOT="_excellence/${{ matrix.compiler }}"
+          SOURCE_SHA="$(find core -type f \( -name '*.c' -o -name '*.h' -o -name 'Makefile' \) -print0 | sort -z | xargs -0 sha256sum | sha256sum | awk '{print $1}')"
+          COMPILER_VERSION="$($CC --version | head -n1)"
+          BUILD_MS="$(cat "$ROOT/receipts/build_ms.txt")"
+          jq -n \
+            --arg schema 'rafcodephi_internal_execution_excellence/1.0.0' \
+            --arg status 'INTERNAL_EXECUTION_EXCELLENCE_PASS' \
+            --arg git_sha "$GITHUB_SHA" \
+            --arg compiler '${{ matrix.compiler }}' \
+            --arg compiler_version "$COMPILER_VERSION" \
+            --arg source_sha256 "$SOURCE_SHA" \
+            --arg build_ms "$BUILD_MS" \
+            '{schema:$schema,status:$status,claim_allowed:false,git_sha:$git_sha,compiler:$compiler,compiler_version:$compiler_version,source_sha256:$source_sha256,checks:{clean_room:"PASS",build_surface:"PASS",functional_pass_1:"PASS",functional_pass_2:"PASS",arch_probe_repeatability:"PASS",clean_rebuild:"PASS",byte_reproducibility:"PASS",hardening:"PASS",security:"PASS",integration_e2e:"PASS",pkg_real:"PASS"},timing:{build_ms:($build_ms|tonumber)},physical_android:"TOKEN_VAZIO",rule:"ANY_RED_STOPS_TRANSIT"}' \
+            > "$ROOT/receipts/internal-excellence.json"
+          jq -e '.status=="INTERNAL_EXECUTION_EXCELLENCE_PASS" and .claim_allowed==false and .physical_android=="TOKEN_VAZIO" and ([.checks[]] | all(.=="PASS"))' "$ROOT/receipts/internal-excellence.json" >/dev/null
+          sha256sum "$ROOT/receipts/internal-excellence.json" > "$ROOT/receipts/internal-excellence.json.sha256"
+
+      - name: Upload execution evidence
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: rafcodephi-internal-excellence-${{ matrix.compiler }}-${{ github.run_id }}
+          path: _excellence/${{ matrix.compiler }}/
+          if-no-files-found: error
+          retention-days: 30
+
+  excellence-transit:
+    name: Internal excellence — global transit
+    needs: [execution-excellence]
+    if: always()
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Fail closed if any compiler path is red
+        shell: bash
+        run: |
+          set -euo pipefail
+          test '${{ needs.execution-excellence.result }}' = 'success'
+          printf '%s\n' 'INTERNAL_EXECUTION_EXCELLENCE_GLOBAL_PASS'
