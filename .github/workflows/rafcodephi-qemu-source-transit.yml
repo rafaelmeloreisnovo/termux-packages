@@ -61,10 +61,25 @@ jobs:
             qemu-user \
             gcc-arm-linux-gnueabihf \
             gcc-aarch64-linux-gnu \
+            libc6-dev-armhf-cross \
+            libc6-dev-arm64-cross \
             binutils-arm-linux-gnueabihf \
             binutils-aarch64-linux-gnu \
             file \
             jq
+
+      - name: Verify cross sysroot development headers
+        shell: bash
+        run: |
+          set -euo pipefail
+          SYSROOT='${{ matrix.sysroot }}'
+          test -d "$SYSROOT"
+          test -f "$SYSROOT/include/stdio.h"
+          test -f "$SYSROOT/include/stdint.h"
+          BITS_HEADER="$(find "$SYSROOT/include" -path '*/bits/libc-header-start.h' -print -quit)"
+          test -n "$BITS_HEADER"
+          printf 'SYSROOT_HEADERS_PASS arch=%s sysroot=%s bits=%s\n' \
+            '${{ matrix.arch }}' "$SYSROOT" "$BITS_HEADER"
 
       - name: Record emulator and toolchain provenance
         shell: bash
