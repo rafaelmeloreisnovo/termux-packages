@@ -5,6 +5,7 @@
 #include <unistd.h>
 #include <sys/stat.h>
 #include <time.h>
+#include <inttypes.h>
 
 /* Simple tar header (USTAR format, 512 bytes aligned) */
 typedef struct {
@@ -85,8 +86,8 @@ int termux_create_tar(const char *output_path, const char *pkg_name,
 
   char metadata_content[512];
   snprintf(metadata_content, sizeof(metadata_content),
-           "{\"name\":\"%s\",\"version\":\"%s\",\"arch\":\"%s\",\"timestamp\":%ld}\n",
-           pkg_name, version, arch, now);
+           "{\"name\":\"%s\",\"version\":\"%s\",\"arch\":\"%s\",\"timestamp\":%" PRIdMAX "}\n",
+           pkg_name, version, arch, (intmax_t)now);
 
   size_t metadata_size = strlen(metadata_content);
   create_tar_header(&metadata, metadata_name, metadata_size, now);
