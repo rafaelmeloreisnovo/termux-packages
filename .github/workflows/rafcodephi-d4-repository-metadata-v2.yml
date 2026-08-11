@@ -82,7 +82,7 @@ jobs:
             dpkg-deb --build --root-owner-group "$ROOT" "$DEB" >/dev/null
             python3 scripts/rafcodephi_delivery_gate.py artifact \
               --repo . --artifact "$DEB" \
-              --expected-package com.termux.rafcodephi-real \
+              --expected-package com.termux.rafacodephi-real \
               --arch "$ARCH" \
               --out "_d4/evidence/d3-${ARCH}.json"
           }
