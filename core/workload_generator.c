@@ -4,6 +4,7 @@
 #include <stdio.h>
 #include <string.h>
 #include <time.h>
+#include <inttypes.h>
 
 static const char *base_packages[] = {
   "ncurses", "openssl", "readline", "zlib", "bzip2",
@@ -145,7 +146,7 @@ void termux_workload_print_stats(const termux_workload_t *wl) {
 
   printf("\n=== Workload Statistics ===\n");
   printf("Total packages: %u\n", wl->pkg_count);
-  printf("Total edges: %lu\n", wl->total_edges);
+  printf("Total edges: %" PRIu64 "\n", wl->total_edges);
   printf("Avg deps/pkg: %.2f\n", (double)wl->total_edges / (double)wl->pkg_count);
 
   uint64_t total_build_time = 0, total_install_size = 0;
