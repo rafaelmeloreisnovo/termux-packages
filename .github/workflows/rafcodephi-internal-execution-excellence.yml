@@ -118,17 +118,16 @@ jobs:
             END="$(date +%s%N)"
             test "$RC" -eq 0
             printf '%s\n' "$(( (END-START)/1000000 ))" > "$ROOT/receipts/${NAME}.pass2_ms.txt"
-            # Functional repeatability: both executions must reach successful termination.
-            test -s "$ROOT/logs/${NAME}.pass1.log" || true
           done
 
           core/arch-probe "$ROOT/receipts/arch-probe.pass2.json"
           jq -e 'type == "object"' "$ROOT/receipts/arch-probe.pass2.json" >/dev/null
 
-          # Compare the architecture receipts after removing common volatile time/provenance fields.
-          jq -S 'walk(if type=="object" then del(.timestamp,.observed_at_utc,.build_timestamp,.generated_at,.provenance.build_timestamp) else . end)' \
+          # generated_unix_ms is observational time, not capability state.
+          # Every other field must remain byte-identical between consecutive probes.
+          jq -S 'walk(if type=="object" then del(.timestamp,.observed_at_utc,.build_timestamp,.generated_at,.generated_unix_ms,.provenance.build_timestamp) else . end)' \
             "$ROOT/receipts/arch-probe.pass1.json" > "$ROOT/receipts/arch-probe.pass1.normalized.json"
-          jq -S 'walk(if type=="object" then del(.timestamp,.observed_at_utc,.build_timestamp,.generated_at,.provenance.build_timestamp) else . end)' \
+          jq -S 'walk(if type=="object" then del(.timestamp,.observed_at_utc,.build_timestamp,.generated_at,.generated_unix_ms,.provenance.build_timestamp) else . end)' \
             "$ROOT/receipts/arch-probe.pass2.json" > "$ROOT/receipts/arch-probe.pass2.normalized.json"
           cmp "$ROOT/receipts/arch-probe.pass1.normalized.json" "$ROOT/receipts/arch-probe.pass2.normalized.json"
 
@@ -139,8 +138,6 @@ jobs:
         run: |
           set -euo pipefail
           ROOT="_excellence/${{ matrix.compiler }}"
-          # These targets do not embed the REAL_BUILD_TIMESTAMP and are suitable
-          # for byte-level reproducibility checks within the same source revision.
           sha256sum \
             core/test-production-hardening \
             core/test-pkg-real \
