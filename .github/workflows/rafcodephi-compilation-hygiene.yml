@@ -1,0 +1,124 @@
+name: RAFCODEPHI Core Compilation Hygiene
+
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - 'core/Makefile'
+      - 'core/GNUmakefile'
+      - 'core/**/*.c'
+      - 'core/**/*.h'
+      - 'core/tests/test_makefile_compilation_hygiene.sh'
+      - '.github/workflows/rafcodephi-compilation-hygiene.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'core/Makefile'
+      - 'core/GNUmakefile'
+      - 'core/**/*.c'
+      - 'core/**/*.h'
+      - 'core/tests/test_makefile_compilation_hygiene.sh'
+      - '.github/workflows/rafcodephi-compilation-hygiene.yml'
+
+permissions:
+  contents: read
+
+env:
+  CLAIM_ALLOWED: 'false'
+  PHYSICAL_ANDROID: 'TOKEN_VAZIO'
+  RULE: 'ANY_RED_STOPS_TRANSIT'
+
+jobs:
+  compilation-hygiene:
+    name: Make graph + clean cross-arch proof
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    steps:
+      - name: Checkout exact revision
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+          fetch-depth: 1
+
+      - name: Install cross compilers
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            make file \
+            gcc-arm-linux-gnueabihf gcc-aarch64-linux-gnu \
+            libc6-dev-armhf-cross libc6-dev-arm64-cross \
+            binutils-arm-linux-gnueabihf binutils-aarch64-linux-gnu
+
+      - name: Prove target graph filtering and complete clean
+        shell: bash
+        run: |
+          set -euo pipefail
+          bash core/tests/test_makefile_compilation_hygiene.sh | tee compilation-hygiene.log
+          grep -Fq 'COMPILATION_HYGIENE_PASS' compilation-hygiene.log
+
+      - name: Reproduce and close stale cross-architecture object class
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          make -C core clean
+          make -C core CC=arm-linux-gnueabihf-gcc pkg-real
+          readelf -h core/pkg-real | grep -Eq 'Machine:.*ARM'
+          sha256sum core/pkg-real > pkg-real-arm.sha256
+
+          # This is intentionally only `make clean`: no workflow-side
+          # `find ... -delete` escape hatch is allowed. The build system itself
+          # must remove every stale object before the architecture changes.
+          make -C core clean
+          test -z "$(find core -type f -name '*.o' -print -quit)"
+
+          make -C core CC=aarch64-linux-gnu-gcc pkg-real
+          readelf -h core/pkg-real | grep -Eq 'Machine:.*AArch64'
+          sha256sum core/pkg-real > pkg-real-aarch64.sha256
+
+      - name: Emit fail-closed receipt
+        shell: bash
+        run: |
+          set -euo pipefail
+          ARM_SHA="$(awk '{print $1}' pkg-real-arm.sha256)"
+          A64_SHA="$(awk '{print $1}' pkg-real-aarch64.sha256)"
+          cat > compilation-hygiene-receipt.json <<EOF
+          {
+            "schema": "rafcodephi_compilation_hygiene/1.0.0",
+            "status": "COMPILATION_HYGIENE_PASS",
+            "claim_allowed": false,
+            "git_sha": "$GITHUB_SHA",
+            "checks": {
+              "arm_graph_excludes_avx512": "PASS",
+              "aarch64_graph_excludes_avx512": "PASS",
+              "termux_default_graph_is_install_scoped": "PASS",
+              "install_graph_is_install_scoped": "PASS",
+              "clean_removes_unlisted_objects": "PASS",
+              "arm_to_aarch64_rebuild_after_make_clean": "PASS"
+            },
+            "sha256": {
+              "pkg_real_arm": "$ARM_SHA",
+              "pkg_real_aarch64": "$A64_SHA"
+            },
+            "physical_android": "TOKEN_VAZIO",
+            "rule": "ANY_RED_STOPS_TRANSIT"
+          }
+          EOF
+          python3 -m json.tool compilation-hygiene-receipt.json >/dev/null
+          sha256sum compilation-hygiene-receipt.json > compilation-hygiene-receipt.json.sha256
+
+      - name: Upload compilation evidence
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: rafcodephi-compilation-hygiene-${{ github.run_id }}
+          path: |
+            compilation-hygiene.log
+            compilation-hygiene-receipt.json
+            compilation-hygiene-receipt.json.sha256
+            pkg-real-arm.sha256
+            pkg-real-aarch64.sha256
+          if-no-files-found: warn
+          retention-days: 30
