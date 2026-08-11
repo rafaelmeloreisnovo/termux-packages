@@ -3,6 +3,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <stdatomic.h>
+#include <inttypes.h>
 
 int termux_work_stealing_init(work_stealing_scheduler_t *scheduler, uint32_t worker_count) {
   if (!scheduler || worker_count == 0 || worker_count > TERMUX_MAX_WORKERS) return -1;
@@ -159,8 +160,8 @@ void termux_work_stealing_print_stats(const work_stealing_scheduler_t *scheduler
   printf("                    WORK STEALING SCHEDULER STATISTICS\n");
   printf("================================================================================\n");
   printf("Active Workers: %u\n", scheduler->active_workers);
-  printf("Total Steals: %lu\n", termux_work_stealing_total_steals(scheduler));
-  printf("Total Items Processed: %lu\n", termux_work_stealing_total_processed(scheduler));
+  printf("Total Steals: %" PRIu64 "\n", termux_work_stealing_total_steals(scheduler));
+  printf("Total Items Processed: %" PRIu64 "\n", termux_work_stealing_total_processed(scheduler));
   printf("Steal Efficiency: %.2f%%\n", termux_work_stealing_efficiency(scheduler) * 100.0);
 
   printf("\nPer-Worker Queue Status:\n");
