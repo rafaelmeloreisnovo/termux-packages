@@ -3,6 +3,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <math.h>
+#include <inttypes.h>
 
 int test_backend_detection(void) {
   printf("Test 1: SIMD Backend Detection\n");
@@ -66,12 +67,12 @@ int test_spiral_distances(void) {
     return 0;
   }
 
-  printf("  Exponent 0:  0x%016lx\n", results[0]);
-  printf("  Exponent 5:  0x%016lx\n", results[1]);
-  printf("  Exponent 10: 0x%016lx\n", results[2]);
-  printf("  Exponent 15: 0x%016lx\n", results[3]);
-  printf("  Exponent 20: 0x%016lx\n", results[4]);
-  printf("  Exponent 29: 0x%016lx\n", results[5]);
+  printf("  Exponent 0:  0x%016" PRIx64 "\n", results[0]);
+  printf("  Exponent 5:  0x%016" PRIx64 "\n", results[1]);
+  printf("  Exponent 10: 0x%016" PRIx64 "\n", results[2]);
+  printf("  Exponent 15: 0x%016" PRIx64 "\n", results[3]);
+  printf("  Exponent 20: 0x%016" PRIx64 "\n", results[4]);
+  printf("  Exponent 29: 0x%016" PRIx64 "\n", results[5]);
 
   return 1;
 }
@@ -136,8 +137,8 @@ int test_coherence_mean(void) {
   uint64_t mean = bitraf64_simd_coherence_mean(phi_scores, 4, &caps);
 
   printf("  Input scores: 1.0, 2.0, 1.5, 1.0 (Q48.16)\n");
-  printf("  Mean: 0x%016lx (%.4f in floating point)\n", mean, (double)mean / 65536.0);
-  printf("  Expected: ~1.375 (0x%016lx)\n", (uint64_t)(1.375 * 65536.0));
+  printf("  Mean: 0x%016" PRIx64 " (%.4f in floating point)\n", mean, (double)mean / 65536.0);
+  printf("  Expected: ~1.375 (0x%016" PRIx64 ")\n", (uint64_t)(1.375 * 65536.0));
 
   return 1;
 }
