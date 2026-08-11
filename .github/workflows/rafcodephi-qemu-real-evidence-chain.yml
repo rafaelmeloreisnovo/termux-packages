@@ -63,6 +63,8 @@ jobs:
             qemu-user \
             gcc-arm-linux-gnueabihf \
             gcc-aarch64-linux-gnu \
+            libc6-dev-armhf-cross \
+            libc6-dev-arm64-cross \
             binutils-arm-linux-gnueabihf \
             binutils-aarch64-linux-gnu \
             file jq python3
