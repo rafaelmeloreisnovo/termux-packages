@@ -53,10 +53,9 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          chmod +x scripts/rafcodephi_d10_device_probe.sh
           rm -f _d10-should-not-exist.json _d10.stderr
           set +e
-          PREFIX=/tmp/not-termux scripts/rafcodephi_d10_device_probe.sh _d10-should-not-exist.json 2>_d10.stderr
+          PREFIX=/tmp/not-termux sh scripts/rafcodephi_d10_device_probe.sh _d10-should-not-exist.json 2>_d10.stderr
           RC=$?
           set -e
           test "$RC" -ne 0
