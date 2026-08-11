@@ -200,14 +200,16 @@ jobs:
             mkdir -p "$ROOT"
             dpkg-deb -x "$DEB" "$ROOT"
             BIN="$ROOT/data/data/com.termux.rafacodephi/files/usr/bin/arch-probe"
+            PROBE_JSON="_d9/evidence/d7-${ARCH}-arch-probe.json"
             test -x "$BIN"
-            "$QEMU" -L "$SYSROOT" "$BIN" > "_d9/evidence/d7-${ARCH}-arch-probe.txt"
-            test -s "_d9/evidence/d7-${ARCH}-arch-probe.txt"
+            "$QEMU" -L "$SYSROOT" "$BIN" "$PROBE_JSON" > "_d9/evidence/d7-${ARCH}-arch-probe.txt"
+            test -s "$PROBE_JSON"
+            jq -e 'type == "object"' "$PROBE_JSON" >/dev/null
 
             PKGREAL="$ROOT/data/data/com.termux.rafacodephi/files/usr/bin/pkg-real"
             test -x "$PKGREAL"
+            RC=0
             "$QEMU" -L "$SYSROOT" "$PKGREAL" --help > "_d9/evidence/d7-${ARCH}-pkg-real.txt" 2>&1 || RC=$?
-            RC="${RC:-0}"
             test "$RC" -le 2
           }
 
