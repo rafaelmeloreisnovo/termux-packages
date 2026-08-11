@@ -4,6 +4,7 @@
 #include <assert.h>
 #include <string.h>
 #include <time.h>
+#include <inttypes.h>
 
 static int test_work_queue_init(void) {
   printf("\n=== Sprint 10.1: Work Queue Initialization ===\n");
@@ -203,7 +204,7 @@ static int test_rebalancing(void) {
 
   uint32_t rebalance_count = termux_work_stealing_rebalance(&scheduler, TERMUX_STEAL_THRESHOLD);
   printf("  Items rebalanced: %u\n", rebalance_count);
-  printf("  Total steals: %lu\n", termux_work_stealing_total_steals(&scheduler));
+  printf("  Total steals: %" PRIu64 "\n", termux_work_stealing_total_steals(&scheduler));
 
   printf("✓ Rebalancing completed\n");
   return 0;
@@ -269,7 +270,7 @@ static int test_statistics(void) {
   termux_work_stealing_rebalance(&scheduler, TERMUX_STEAL_THRESHOLD);
 
   uint64_t steals = termux_work_stealing_total_steals(&scheduler);
-  printf("  Total steals: %lu\n", steals);
+  printf("  Total steals: %" PRIu64 "\n", steals);
 
   double efficiency = termux_work_stealing_efficiency(&scheduler);
   printf("  Efficiency: %.2f%%\n", efficiency * 100.0);
