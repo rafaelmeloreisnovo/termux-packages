@@ -6,6 +6,7 @@
 #include <string.h>
 #include <time.h>
 #include <math.h>
+#include <inttypes.h>
 
 /*
  * Phase 9.14: End-to-End Build Validation
@@ -62,7 +63,7 @@ int test_workload_generation(void) {
 
   printf("  ✓ Workload generated and populated\n");
   printf("    Packages: %u\n", workload.pkg_count);
-  printf("    Edges: %lu\n", workload.total_edges);
+  printf("    Edges: %" PRIu64 "\n", workload.total_edges);
   printf("    Avg deps/pkg: %.1f\n",
          (double)workload.total_edges / workload.pkg_count);
 
