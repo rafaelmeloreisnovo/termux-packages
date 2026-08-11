@@ -41,6 +41,13 @@ override TEST_OBJECTS = $(TEST_SOURCES:.c=.o) $(wildcard tests/*.o)
 
 include $(BASE_MAKEFILE)
 
+# The core intentionally uses POSIX interfaces such as symlink(2) and usleep(3).
+# GCC with -std=c11 enables __STRICT_ANSI__, which hides those declarations in
+# glibc unless the default feature set is explicitly requested.  Keep the
+# source unchanged and make the build contract explicit.  Bionic safely ignores
+# this glibc feature-test macro while retaining its own declarations.
+override CFLAGS += -D_DEFAULT_SOURCE
+
 .PHONY: compilation-hygiene-test
 compilation-hygiene-test:
 	@bash tests/test_makefile_compilation_hygiene.sh
