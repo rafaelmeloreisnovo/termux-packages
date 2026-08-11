@@ -1,0 +1,179 @@
+name: RAFCODEPHI D5 Signed Repository Evidence
+
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - 'core/**'
+      - 'scripts/rafcodephi_delivery_gate.py'
+      - '.github/workflows/rafcodephi-d5-signed-repository-evidence.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'core/**'
+      - 'scripts/rafcodephi_delivery_gate.py'
+      - '.github/workflows/rafcodephi-d5-signed-repository-evidence.yml'
+
+permissions:
+  contents: read
+
+env:
+  CLAIM_ALLOWED: 'false'
+  APT_PKG_RUNTIME: 'TOKEN_VAZIO'
+  PHYSICAL_ANDROID: 'TOKEN_VAZIO'
+  PERSISTENT_TRUST_ROOT: 'TOKEN_VAZIO'
+
+jobs:
+  d5-signed-repository:
+    name: D5 — D3/D4 rebuild -> ephemeral signing -> verify trust chain
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - name: Checkout exact revision
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+          fetch-depth: 1
+
+      - name: Install toolchains and signing tools
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            gcc-arm-linux-gnueabihf gcc-aarch64-linux-gnu \
+            libc6-dev-armhf-cross libc6-dev-arm64-cross \
+            binutils-arm-linux-gnueabihf binutils-aarch64-linux-gnu \
+            dpkg-dev apt-utils jq gzip file gnupg
+
+      - name: Rebuild D3 artifacts and D4 metadata
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p _d5/repo/pool/main/r/rafcodephi-real _d5/evidence _d5/work
+          build_one() {
+            ARCH="$1"; DEB_ARCH="$2"; CC="$3"; MACHINE_RE="$4"
+            ROOT="_d5/work/$ARCH/root"
+            mkdir -p "$ROOT/DEBIAN" "$ROOT/data/data/com.termux.rafacodephi/files/usr/bin"
+            make -C core clean
+            find core -maxdepth 1 -type f -name '*.o' -delete
+            make -C core CC="$CC" pkg-real metrics-producer contract-validate receipt-validate receipt-ledger arch-probe
+            for bin in pkg-real metrics-producer contract-validate receipt-validate receipt-ledger arch-probe; do
+              readelf -h "core/$bin" | grep -Eq "Machine:.*$MACHINE_RE"
+              cp "core/$bin" "$ROOT/data/data/com.termux.rafacodephi/files/usr/bin/$bin"
+            done
+            printf '%s\n' \
+              'Package: com.termux.rafacodephi-real' \
+              "Version: 0.1.0+git${GITHUB_SHA::12}" \
+              "Architecture: $DEB_ARCH" \
+              'Maintainer: RAFCODEPHI CI <noreply@example.invalid>' \
+              'Section: utils' \
+              'Priority: optional' \
+              'Description: Source-derived RAFCODEPHI REAL evidence tooling package' \
+              > "$ROOT/DEBIAN/control"
+            DEB="_d5/repo/pool/main/r/rafcodephi-real/com.termux.rafacodephi-real_0.1.0+git${GITHUB_SHA::12}_${DEB_ARCH}.deb"
+            dpkg-deb --build --root-owner-group "$ROOT" "$DEB" >/dev/null
+            python3 scripts/rafcodephi_delivery_gate.py artifact --repo . --artifact "$DEB" \
+              --expected-package com.termux.rafacodephi-real --arch "$ARCH" \
+              --out "_d5/evidence/d3-${ARCH}.json"
+          }
+          build_one arm arm arm-linux-gnueabihf-gcc ARM
+          build_one aarch64 aarch64 aarch64-linux-gnu-gcc AArch64
+          cd _d5/repo
+          dpkg-scanpackages --multiversion pool /dev/null > Packages
+          gzip -n -9 -c Packages > Packages.gz
+          apt-ftparchive \
+            -o APT::FTPArchive::Release::Origin=RAFCODEPHI \
+            -o APT::FTPArchive::Release::Label='RAFCODEPHI D5 Evidence' \
+            -o APT::FTPArchive::Release::Suite=stable \
+            -o APT::FTPArchive::Release::Codename=rafcodephi \
+            -o APT::FTPArchive::Release::Architectures='arm aarch64' \
+            -o APT::FTPArchive::Release::Components=main \
+            release . > Release
+          test -s Packages && test -s Packages.gz && test -s Release
+          grep -q '^Architecture: arm$' Packages
+          grep -q '^Architecture: aarch64$' Packages
+
+      - name: Create ephemeral D5 signing key
+        shell: bash
+        run: |
+          set -euo pipefail
+          export GNUPGHOME="$PWD/_d5/gnupg"
+          mkdir -p "$GNUPGHOME" && chmod 700 "$GNUPGHOME"
+          cat > _d5/key.conf <<'EOF'
+          Key-Type: RSA
+          Key-Length: 3072
+          Name-Real: RAFCODEPHI D5 CI Evidence
+          Name-Email: noreply@example.invalid
+          Expire-Date: 1d
+          %no-protection
+          %commit
+          EOF
+          gpg --batch --generate-key _d5/key.conf
+          FPR="$(gpg --batch --with-colons --list-secret-keys | awk -F: '$1=="fpr"{print $10; exit}')"
+          test -n "$FPR"
+          printf '%s\n' "$FPR" > _d5/evidence/signing-key.fingerprint
+          gpg --batch --armor --export "$FPR" > _d5/evidence/rafcodephi-d5-public.asc
+
+      - name: Sign Release as InRelease and Release.gpg
+        shell: bash
+        run: |
+          set -euo pipefail
+          export GNUPGHOME="$PWD/_d5/gnupg"
+          FPR="$(cat _d5/evidence/signing-key.fingerprint)"
+          gpg --batch --yes --local-user "$FPR" --clearsign \
+            --output _d5/repo/InRelease _d5/repo/Release
+          gpg --batch --yes --local-user "$FPR" --detach-sign \
+            --output _d5/repo/Release.gpg _d5/repo/Release
+          test -s _d5/repo/InRelease
+          test -s _d5/repo/Release.gpg
+
+      - name: Verify isolated trust chain
+        shell: bash
+        run: |
+          set -euo pipefail
+          export VERIFY_HOME="$PWD/_d5/verify-gnupg"
+          mkdir -p "$VERIFY_HOME" && chmod 700 "$VERIFY_HOME"
+          gpg --homedir "$VERIFY_HOME" --batch --import _d5/evidence/rafcodephi-d5-public.asc
+          gpg --homedir "$VERIFY_HOME" --batch --verify _d5/repo/InRelease
+          gpg --homedir "$VERIFY_HOME" --batch --verify _d5/repo/Release.gpg _d5/repo/Release
+          FPR_EXPECTED="$(cat _d5/evidence/signing-key.fingerprint)"
+          FPR_IMPORTED="$(gpg --homedir "$VERIFY_HOME" --batch --with-colons --fingerprint | awk -F: '$1=="fpr"{print $10; exit}')"
+          test "$FPR_EXPECTED" = "$FPR_IMPORTED"
+
+      - name: Emit D5 receipt
+        shell: bash
+        run: |
+          set -euo pipefail
+          FPR="$(cat _d5/evidence/signing-key.fingerprint)"
+          R_SHA="$(sha256sum _d5/repo/Release | awk '{print $1}')"
+          IR_SHA="$(sha256sum _d5/repo/InRelease | awk '{print $1}')"
+          RG_SHA="$(sha256sum _d5/repo/Release.gpg | awk '{print $1}')"
+          KEY_SHA="$(sha256sum _d5/evidence/rafcodephi-d5-public.asc | awk '{print $1}')"
+          jq -n \
+            --arg git_sha "$GITHUB_SHA" --arg fpr "$FPR" \
+            --arg release_sha "$R_SHA" --arg inrelease_sha "$IR_SHA" \
+            --arg release_gpg_sha "$RG_SHA" --arg key_sha "$KEY_SHA" \
+            '{schema:"rafcodephi_d5_signed_repository/1.0.0",status:"D5_EPHEMERAL_SIGNED_REPOSITORY_PASS",claim_allowed:false,git_sha:$git_sha,d4_metadata:"PASS",inrelease_signature:"PASS",release_gpg_signature:"PASS",isolated_public_key_verification:"PASS",signing_key_fingerprint:$fpr,persistent_trust_root:"TOKEN_VAZIO",apt_pkg_runtime:"TOKEN_VAZIO",physical_android:"TOKEN_VAZIO",sha256:{Release:$release_sha,InRelease:$inrelease_sha,"Release.gpg":$release_gpg_sha,public_key:$key_sha},rule:"EPHEMERAL_CI_SIGNATURE_NEVER_PROMOTES_PERSISTENT_TRUST_OR_LIVE_APT_OR_DEVICE"}' \
+            > _d5/evidence/d5-receipt.json
+          jq -e '.status == "D5_EPHEMERAL_SIGNED_REPOSITORY_PASS" and .claim_allowed == false and .persistent_trust_root == "TOKEN_VAZIO" and .apt_pkg_runtime == "TOKEN_VAZIO" and .physical_android == "TOKEN_VAZIO"' _d5/evidence/d5-receipt.json >/dev/null
+          sha256sum _d5/evidence/d5-receipt.json > _d5/evidence/d5-receipt.json.sha256
+
+      - name: Fail closed on D5 invariant
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -s _d5/repo/Release
+          test -s _d5/repo/InRelease
+          test -s _d5/repo/Release.gpg
+          test -s _d5/evidence/rafcodephi-d5-public.asc
+          test -s _d5/evidence/d5-receipt.json
+
+      - name: Upload D5 evidence
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: rafcodephi-d5-${{ github.run_id }}
+          path: _d5/
+          if-no-files-found: error
+          retention-days: 30
