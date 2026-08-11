@@ -3,6 +3,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <inttypes.h>
 
 /*
  * SIMULATED_FIXTURE GPU backend.
@@ -233,7 +234,7 @@ void termux_gpu_print_stats(const gpu_integration_t *gpu) {
   printf("================================================================================\n");
   printf("fixture_enabled=%s\n", gpu_fixture_enabled() ? "true" : "false");
   printf("fixture_devices=%u\n", gpu->device_count);
-  printf("fixture_kernel_calls=%lu\n", gpu->total_gpu_kernel_calls);
+  printf("fixture_kernel_calls=%" PRIu64 "\n", gpu->total_gpu_kernel_calls);
   printf("claim_allowed=false\n");
   printf("physical_gpu_verified=false\n");
   printf("================================================================================\n\n");
