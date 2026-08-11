@@ -42,6 +42,8 @@ static inline uint32_t atomic_add_return(volatile uint32_t *addr, uint32_t val) 
 }
 
 static inline uint32_t atomic_cas(volatile uint32_t *addr, uint32_t old,
+                                   uint32_t new) __attribute__((unused));
+static inline uint32_t atomic_cas(volatile uint32_t *addr, uint32_t old,
                                    uint32_t new) {
 #ifdef __GNUC__
   return __sync_val_compare_and_swap(addr, old, new);

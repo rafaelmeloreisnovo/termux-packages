@@ -30,7 +30,7 @@ OBJECTS := $(SOURCES:.c=.o)
 TEST_OBJECTS := $(TEST_SOURCES:.c=.o)
 DUMPER_OBJECTS := $(DUMPER_SOURCES:.c=.o)
 
-.PHONY: all clean test manifest real-all real-tour real-test
+.PHONY: all clean test manifest real-all real-tour real-test real-hygiene
 
 all: $(TARGETS)
 
@@ -221,12 +221,18 @@ arch_probe_cli.real.o: arch_probe_cli.c real_arch.h real_provenance.h real_recei
 
 # REAL freestanding: NO libc, NO CRT, direct syscalls only.
 # Warnings still act as linker commands via -fdata-sections + gc-sections.
+# -no-pie is a LINK-time flag (clang warns if seen at compile-only with
+# -Werror -Wunused-command-line-argument). Keep it only in LDFLAGS.
 FREESTANDING_CFLAGS := -Wall -Wextra -Wshadow -Werror -O2 \
                        -nostdlib -nostartfiles -ffreestanding -static \
-                       -fno-builtin -fno-stack-protector -no-pie \
+                       -fno-builtin -fno-stack-protector \
                        -fdata-sections -ffunction-sections \
                        -fvisibility=hidden
-FREESTANDING_LDFLAGS := -nostdlib -nostartfiles -static -no-pie \
+# -static implies no-pie behavior; drop -no-pie (clang warns even in
+# link stage of a compile+link driver invocation because it evaluates
+# unused args per compile job). This does NOT change the emitted
+# binary — static ELF is always non-PIE.
+FREESTANDING_LDFLAGS := -nostdlib -nostartfiles -static \
                         -Wl,--gc-sections -Wl,--build-id=none
 
 pkg-count-freestanding: pkg_count_freestanding.c real_syscalls.h real_mem.h
@@ -409,6 +415,12 @@ real-test: real-all
 	@cd .. && bash core/tests/test_hotfix_f6_ledger_line_length.sh
 	@cd .. && bash core/tests/test_hotfix_g6_producer_exit_code.sh
 	@echo "✓ All REAL test suites passed"
+
+# Compile-hygiene suite lives in a separate target because each run
+# does two full clean rebuilds (gcc + clang) and takes ~3 minutes.
+# CI can invoke it independently after real-test.
+real-hygiene:
+	@cd .. && bash core/tests/test_hotfix_h_compile_hygiene.sh
 
 # Run the executable documentation tour; refreshes docs/REAL_TOUR_OUTPUT.md
 real-tour: real-all

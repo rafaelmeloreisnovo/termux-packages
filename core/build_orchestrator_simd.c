@@ -48,6 +48,9 @@ static inline uint32_t gcd_compute_simd(uint32_t a, uint32_t b) {
 }
 
 static inline uint64_t phi_compute_simd(uint32_t phase, uint32_t arch_state,
+                                        uint32_t cycle_count)
+    __attribute__((unused));
+static inline uint64_t phi_compute_simd(uint32_t phase, uint32_t arch_state,
                                         uint32_t cycle_count) {
   uint64_t overhead_penalty = cycle_count > 42 ? 1000ULL : 0ULL;
   uint64_t depth = phase * 6 + arch_state;
@@ -133,6 +136,12 @@ static inline void simd_batch_init(simd_batch_t *batch, uint32_t count) {
   batch->valid_mask = (1 << count) - 1;
 }
 
+static inline void simd_batch_add_package(simd_batch_t *batch,
+                                          uint32_t slot,
+                                          uint32_t phase,
+                                          uint32_t arch_state,
+                                          uint32_t pkg_idx)
+    __attribute__((unused));
 static inline void simd_batch_add_package(simd_batch_t *batch,
                                           uint32_t slot,
                                           uint32_t phase,

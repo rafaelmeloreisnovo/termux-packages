@@ -165,6 +165,7 @@ int termux_orchestrator_execute_batched(struct termux_orchestrator *orch,
   return 0;
 }
 
+static inline uint32_t phase_transition_count(void) __attribute__((unused));
 static inline uint32_t phase_transition_count(void) {
   return TERMUX_BUILD_PHASES;
 }
