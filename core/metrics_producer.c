@@ -237,23 +237,40 @@ int main(int argc, char **argv) {
           dag.alternative_dep_fields, inv.roots_present, inv.roots_expected,
           dag.parse_failures);
 
-  /* Emit receipt alongside the JSON output (path.receipt). */
+  /* Emit receipt alongside the JSON output (path.receipt).
+   * G6 fix: track receipt outcome so the producer's exit code
+   * reflects whether the FULL contract (metrics JSON + signed
+   * receipt) succeeded. Governance requires both — if the receipt
+   * fails to seal or write, downstream fails-closed at step 8
+   * anyway, but this producer's own exit code should not lie about
+   * success. Semantics: if we started a receipt (have_receipt=1)
+   * and any subsequent step failed, exit 3 (partial success —
+   * metrics OK but audit trail incomplete). If we never had a
+   * receipt (real_receipt_begin failed at line 60), that's a
+   * design-choice best-effort case, exit 0. */
+  int receipt_failure = 0;
   if (have_receipt) {
-    if (real_receipt_add_output(&receipt, out_path) == 0 &&
-        real_receipt_seal(&receipt, 0) == 0) {
+    if (real_receipt_add_output(&receipt, out_path) != 0) {
+      fprintf(stderr, "REAL_WARN: could not add output to receipt\n");
+      receipt_failure = 1;
+    } else if (real_receipt_seal(&receipt, 0) != 0) {
+      fprintf(stderr, "REAL_WARN: could not seal receipt\n");
+      receipt_failure = 1;
+    } else {
       char rcpt_path[512];
       snprintf(rcpt_path, sizeof(rcpt_path), "%s.receipt", out_path);
       if (real_receipt_write(&receipt, rcpt_path) == 0) {
         fprintf(stdout, "REAL receipt sealed: %s (sha=%.16s...)\n",
                 rcpt_path, receipt.content_sha256_hex);
       } else {
-        fprintf(stderr, "REAL_WARN: could not write receipt to %s\n",
-                rcpt_path);
+        fprintf(stderr,
+                "REAL_WARN: could not write receipt to %s\n", rcpt_path);
+        receipt_failure = 1;
       }
     }
   }
 
   pkg_dag_free(&dag);
   pkg_inventory_free(&inv);
-  return 0;
+  return receipt_failure ? 3 : 0;
 }

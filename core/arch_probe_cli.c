@@ -250,16 +250,33 @@ int main(int argc, char **argv) {
           observed_simd,
           nominal ? nominal->simd : 0);
 
+  /* G6 fix (same class as metrics-producer): exit code must reflect
+   * whether the receipt companion succeeded. If we started a receipt
+   * and any step failed, exit 3 (partial success — JSON OK, audit
+   * trail missing). Governance would fail-closed at "capability
+   * receipt not emitted" anyway; this makes the producer's own exit
+   * code honest. */
+  int receipt_failure = 0;
   if (have_receipt) {
-    if (real_receipt_add_output(&receipt, out_path) == 0 &&
-        real_receipt_seal(&receipt, 0) == 0) {
+    if (real_receipt_add_output(&receipt, out_path) != 0) {
+      fprintf(stderr, "REAL_WARN: could not add output to arch-probe receipt\n");
+      receipt_failure = 1;
+    } else if (real_receipt_seal(&receipt, 0) != 0) {
+      fprintf(stderr, "REAL_WARN: could not seal arch-probe receipt\n");
+      receipt_failure = 1;
+    } else {
       char rcpt_path[512];
       snprintf(rcpt_path, sizeof(rcpt_path), "%s.receipt", out_path);
       if (real_receipt_write(&receipt, rcpt_path) == 0) {
         fprintf(stdout, "OBSERVED receipt sealed: %s (sha=%.16s...)\n",
                 rcpt_path, receipt.content_sha256_hex);
+      } else {
+        fprintf(stderr,
+                "REAL_WARN: could not write arch-probe receipt to %s\n",
+                rcpt_path);
+        receipt_failure = 1;
       }
     }
   }
-  return 0;
+  return receipt_failure ? 3 : 0;
 }

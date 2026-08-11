@@ -407,6 +407,7 @@ real-test: real-all
 	@cd .. && bash core/tests/test_hotfix_d3_d4_d5_json_roundtrip.sh
 	@cd .. && bash core/tests/test_hotfix_e9_ledger_path_escape.sh
 	@cd .. && bash core/tests/test_hotfix_f6_ledger_line_length.sh
+	@cd .. && bash core/tests/test_hotfix_g6_producer_exit_code.sh
 	@echo "✓ All REAL test suites passed"
 
 # Run the executable documentation tour; refreshes docs/REAL_TOUR_OUTPUT.md
