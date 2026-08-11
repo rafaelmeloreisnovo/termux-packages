@@ -2,6 +2,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <stdio.h>
+#include <inttypes.h>
 
 #define GCD_SAFE(a, b) ({ uint32_t _a = (a), _b = (b); while (_b) { uint32_t _t = _b; _b = _a % _b; _a = _t; } _a; })
 
@@ -291,7 +292,7 @@ void termux_dep_resolver_print_stats(struct termux_dep_resolver *resolver) {
 
   for (uint32_t layer = 0; layer < TERMUX_TOROIDAL_LAYERS; layer++) {
     if (resolver->layers[layer].pkg_count > 0) {
-      printf("  Layer %2u: %u packages, φ=%lu\n",
+      printf("  Layer %2u: %u packages, φ=%" PRIu64 "\n",
              layer, resolver->layers[layer].pkg_count,
              resolver->layers[layer].coherence_phi);
     }
