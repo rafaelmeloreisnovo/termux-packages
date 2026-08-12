@@ -10,6 +10,7 @@
 #define UNIFIED_MAX_DEVICES 16
 #define UNIFIED_MAX_LAYERS 32
 #define UNIFIED_TASK_QUEUE_SIZE 4096
+#define UNIFIED_PHASE_COUNT 9
 
 typedef struct {
   char device_name[256];
@@ -81,7 +82,7 @@ typedef struct {
 typedef struct {
   char build_id[64];
   uint64_t timestamp_start;
-  double wall_time_phases[8];
+  double wall_time_phases[UNIFIED_PHASE_COUNT];
   volatile uint32_t ci_reported;
   double overall_speedup;
 } cicd_module_t;

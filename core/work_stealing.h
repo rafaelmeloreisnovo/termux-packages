@@ -4,6 +4,7 @@
 #include <stdint.h>
 #include <stddef.h>
 #include <pthread.h>
+#include <stdatomic.h>
 
 #define TERMUX_WORK_QUEUE_SIZE 256
 #define TERMUX_MAX_WORKERS 8
@@ -18,18 +19,18 @@ typedef struct {
 } work_item_t;
 
 typedef struct {
-  volatile uint32_t head;
-  volatile uint32_t tail;
-  volatile uint32_t count;
+  _Atomic uint32_t head;
+  _Atomic uint32_t tail;
+  _Atomic uint32_t count;
   work_item_t items[TERMUX_WORK_QUEUE_SIZE];
   uint8_t _pad[64];
 } __attribute__((aligned(128))) work_queue_t;
 
 typedef struct {
   work_queue_t queues[TERMUX_MAX_WORKERS];
-  volatile uint64_t total_steals;
-  volatile uint64_t total_items_processed;
-  volatile uint32_t active_workers;
+  _Atomic uint64_t total_steals;
+  _Atomic uint64_t total_items_processed;
+  _Atomic uint32_t active_workers;
   uint32_t worker_count;
   uint8_t _pad[32];
 } work_stealing_scheduler_t;

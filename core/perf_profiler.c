@@ -35,6 +35,12 @@ static inline uint64_t get_time_ns(void) {
   return (uint64_t)ts.tv_sec * 1000000000ULL + (uint64_t)ts.tv_nsec;
 }
 
+static int compare_u64(const void *lhs, const void *rhs) {
+  const uint64_t a = *(const uint64_t *)lhs;
+  const uint64_t b = *(const uint64_t *)rhs;
+  return (a > b) - (a < b);
+}
+
 static void perf_record_sample(uint32_t pkg_idx, const char *pkg_name,
                                uint64_t wall_time_ns,
                                struct termux_build_state *state) {
@@ -221,8 +227,7 @@ static void perf_identify_outliers(void) {
     times[i] = profile.samples[i].wall_time_ns;
   }
 
-  qsort(times, profile.sample_count, sizeof(uint64_t),
-        (int (*)(const void *, const void *))strcmp);
+  qsort(times, profile.sample_count, sizeof(uint64_t), compare_u64);
 
   uint32_t q1_idx = profile.sample_count / 4;
   uint32_t q3_idx = (profile.sample_count * 3) / 4;

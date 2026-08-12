@@ -10,15 +10,17 @@ int termux_work_stealing_init(work_stealing_scheduler_t *scheduler, uint32_t wor
 
   memset(scheduler, 0, sizeof(*scheduler));
   scheduler->worker_count = worker_count;
-  scheduler->active_workers = worker_count;
+  atomic_store(&scheduler->active_workers, worker_count);
 
   for (uint32_t i = 0; i < worker_count; i++) {
     work_queue_t *queue = &scheduler->queues[i];
-    queue->head = 0;
-    queue->tail = 0;
-    queue->count = 0;
+    atomic_store(&queue->head, 0);
+    atomic_store(&queue->tail, 0);
+    atomic_store(&queue->count, 0);
   }
 
+  atomic_store(&scheduler->total_steals, UINT64_C(0));
+  atomic_store(&scheduler->total_items_processed, UINT64_C(0));
   return 0;
 }
 
@@ -30,16 +32,16 @@ void termux_work_stealing_destroy(work_stealing_scheduler_t *scheduler) {
 int termux_work_queue_push(work_queue_t *queue, const work_item_t *item) {
   if (!queue || !item) return -1;
 
-  uint32_t tail = atomic_load((atomic_uint *)&queue->tail);
+  uint32_t tail = atomic_load(&queue->tail);
   uint32_t next_tail = (tail + 1) % TERMUX_WORK_QUEUE_SIZE;
 
-  if (next_tail == atomic_load((atomic_uint *)&queue->head)) {
+  if (next_tail == atomic_load(&queue->head)) {
     return -2;
   }
 
   queue->items[tail] = *item;
-  atomic_store((atomic_uint *)&queue->tail, next_tail);
-  atomic_fetch_add((atomic_uint *)&queue->count, 1);
+  atomic_store(&queue->tail, next_tail);
+  atomic_fetch_add(&queue->count, 1);
 
   return 0;
 }
@@ -47,16 +49,16 @@ int termux_work_queue_push(work_queue_t *queue, const work_item_t *item) {
 int termux_work_queue_pop(work_queue_t *queue, work_item_t *item) {
   if (!queue || !item) return -1;
 
-  uint32_t head = atomic_load((atomic_uint *)&queue->head);
-  uint32_t tail = atomic_load((atomic_uint *)&queue->tail);
+  uint32_t head = atomic_load(&queue->head);
+  uint32_t tail = atomic_load(&queue->tail);
 
   if (head == tail) {
     return -2;
   }
 
   *item = queue->items[head];
-  atomic_store((atomic_uint *)&queue->head, (head + 1) % TERMUX_WORK_QUEUE_SIZE);
-  atomic_fetch_sub((atomic_uint *)&queue->count, 1);
+  atomic_store(&queue->head, (head + 1) % TERMUX_WORK_QUEUE_SIZE);
+  atomic_fetch_sub(&queue->count, 1);
 
   return 0;
 }
@@ -64,8 +66,8 @@ int termux_work_queue_pop(work_queue_t *queue, work_item_t *item) {
 int termux_work_queue_try_steal(work_queue_t *from_queue, work_item_t *item) {
   if (!from_queue || !item) return -1;
 
-  uint32_t head = atomic_load((atomic_uint *)&from_queue->head);
-  uint32_t tail = atomic_load((atomic_uint *)&from_queue->tail);
+  uint32_t head = atomic_load(&from_queue->head);
+  uint32_t tail = atomic_load(&from_queue->tail);
 
   if (head == tail || (tail + TERMUX_WORK_QUEUE_SIZE - head) % TERMUX_WORK_QUEUE_SIZE < 2) {
     return -2;
@@ -79,7 +81,7 @@ int termux_work_queue_try_steal(work_queue_t *from_queue, work_item_t *item) {
 
 uint32_t termux_work_queue_size(const work_queue_t *queue) {
   if (!queue) return 0;
-  return atomic_load((atomic_uint *)&queue->count);
+  return atomic_load(&queue->count);
 }
 
 uint32_t termux_work_queue_estimate_load(work_stealing_scheduler_t *scheduler, uint32_t worker_id) {
@@ -119,7 +121,7 @@ int termux_work_stealing_rebalance(work_stealing_scheduler_t *scheduler, uint32_
           if (termux_work_queue_try_steal(&scheduler->queues[i], &item) == 0) {
             if (termux_work_queue_push(&scheduler->queues[j], &item) == 0) {
               rebalance_count++;
-              atomic_fetch_add((atomic_ulong *)&scheduler->total_steals, 1);
+              atomic_fetch_add(&scheduler->total_steals, UINT64_C(1));
             }
           }
         }
@@ -132,16 +134,16 @@ int termux_work_stealing_rebalance(work_stealing_scheduler_t *scheduler, uint32_
 
 uint64_t termux_work_stealing_total_steals(const work_stealing_scheduler_t *scheduler) {
   if (!scheduler) return 0;
-  return atomic_load((atomic_ulong *)&scheduler->total_steals);
+  return atomic_load(&scheduler->total_steals);
 }
 
 uint64_t termux_work_stealing_total_processed(const work_stealing_scheduler_t *scheduler) {
   if (!scheduler) return 0;
-  return atomic_load((atomic_ulong *)&scheduler->total_items_processed);
+  return atomic_load(&scheduler->total_items_processed);
 }
 
 double termux_work_stealing_efficiency(const work_stealing_scheduler_t *scheduler) {
-  if (!scheduler || scheduler->total_items_processed == 0) return 0.0;
+  if (!scheduler) return 0.0;
 
   uint64_t steals = termux_work_stealing_total_steals(scheduler);
   uint64_t processed = termux_work_stealing_total_processed(scheduler);
@@ -159,7 +161,7 @@ void termux_work_stealing_print_stats(const work_stealing_scheduler_t *scheduler
   printf("================================================================================\n");
   printf("                    WORK STEALING SCHEDULER STATISTICS\n");
   printf("================================================================================\n");
-  printf("Active Workers: %u\n", scheduler->active_workers);
+  printf("Active Workers: %u\n", atomic_load(&scheduler->active_workers));
   printf("Total Steals: %" PRIu64 "\n", termux_work_stealing_total_steals(scheduler));
   printf("Total Items Processed: %" PRIu64 "\n", termux_work_stealing_total_processed(scheduler));
   printf("Steal Efficiency: %.2f%%\n", termux_work_stealing_efficiency(scheduler) * 100.0);
