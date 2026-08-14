@@ -30,6 +30,17 @@ jobs:
           fetch-depth: 0
           persist-credentials: true
 
+      - name: Materialize RAFCODEPHI package/prefix contract
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p build/reports
+          python3 scripts/apply-rafcodephi-build-properties.py \
+            --properties scripts/properties.sh \
+            --receipt build/reports/rafcodephi-dev-apt-properties.json
+          bash scripts/validate-rafcodephi-build-properties.sh
+          grep -Fx 'TERMUX_APP__PACKAGE_NAME="com.termux.rafacodephi"' scripts/properties.sh
+
       - name: Build ARM32 custom-prefix package closure + live bootstrap
         shell: bash
         run: |
