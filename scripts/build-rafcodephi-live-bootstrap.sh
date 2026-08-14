@@ -17,7 +17,8 @@ if [[ "$TRUST_MODE" != "development-trusted" ]]; then
     exit 2
 fi
 
-"$ROOT/scripts/build-rafcodephi-real-bootstrap.sh" "$@"
+# Do not depend on the executable bit surviving checkout/container bind mounts.
+bash "$ROOT/scripts/build-rafcodephi-real-bootstrap.sh" "$@"
 OUT_DIR="${RAFCODEPHI_BOOTSTRAP_OUT_DIR:-$ROOT/artifacts/rafcodephi-bootstrap}"
 
 python3 - "$OUT_DIR" "$REPOSITORY_URL" "$TRUST_MODE" <<'PY'
