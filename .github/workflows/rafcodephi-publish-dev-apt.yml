@@ -50,13 +50,17 @@ jobs:
           case "$RAFCODEPHI_APT_REPOSITORY_URL" in https://*) ;; *) exit 1 ;; esac
           grep -q 'TERMUX_APP__PACKAGE_NAME="com.termux"' scripts/properties.sh
 
-      - name: Build real ARM32 package closure and bootstrap
+      - name: Build live real-pkg ARM32 bootstrap and package closure
         shell: bash
         run: |
           set -euo pipefail
-          bash scripts/build-rafcodephi-real-bootstrap.sh --architectures arm
+          bash scripts/build-rafcodephi-live-bootstrap.sh --architectures arm
           test -s artifacts/rafcodephi-bootstrap/rafcodephi-bootstrap-arm.zip
           test -n "$(find output -maxdepth 1 -type f -name '*.deb' -print -quit)"
+          unzip -p artifacts/rafcodephi-bootstrap/rafcodephi-bootstrap-arm.zip etc/apt/sources.list.d/termux.sources | tee /tmp/termux.sources
+          grep -Fx 'Enabled: yes' /tmp/termux.sources
+          grep -Fx "URIs: $RAFCODEPHI_APT_REPOSITORY_URL" /tmp/termux.sources
+          unzip -p artifacts/rafcodephi-bootstrap/rafcodephi-bootstrap-arm.zip BOOTSTRAP_PROFILE.json | grep -F '"package_repo_runtime_state":"DEVELOPMENT_REPOSITORY_CONFIGURED"'
 
       - name: Materialize deterministic flat repository
         shell: bash
@@ -98,17 +102,6 @@ jobs:
           sha256sum -c SHA256SUMS
           ! grep -R -aF '/data/data/com.termux/files/usr' . --include='Packages' --include='RAFCODEPHI_REPOSITORY_MANIFEST.txt'
 
-      - name: Build live bootstrap pointed at generated repository contract
-        shell: bash
-        run: |
-          set -euo pipefail
-          # Reuse source-built output; the wrapper intentionally rebuilds and then rewrites only repository metadata.
-          bash scripts/build-rafcodephi-live-bootstrap.sh --architectures arm
-          unzip -p artifacts/rafcodephi-bootstrap/rafcodephi-bootstrap-arm.zip etc/apt/sources.list.d/termux.sources | tee /tmp/termux.sources
-          grep -Fx 'Enabled: yes' /tmp/termux.sources
-          grep -Fx "URIs: $RAFCODEPHI_APT_REPOSITORY_URL" /tmp/termux.sources
-          unzip -p artifacts/rafcodephi-bootstrap/rafcodephi-bootstrap-arm.zip BOOTSTRAP_PROFILE.json | grep -F '"package_repo_runtime_state":"DEVELOPMENT_REPOSITORY_CONFIGURED"'
-
       - name: Upload validation artifacts
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
         with:
@@ -118,7 +111,7 @@ jobs:
             artifacts/rafcodephi-bootstrap/rafcodephi-bootstrap-arm.zip
             artifacts/rafcodephi-bootstrap/RAFCODEPHI_REAL_BOOTSTRAP_MANIFEST.txt
 
-      - name: Publish immutable observed package set to rafcodephi-apt branch
+      - name: Publish observed package set to rafcodephi-apt branch
         if: github.event_name != 'pull_request'
         shell: bash
         run: |
