@@ -1,0 +1,142 @@
+name: RAFCODEPHI Publish Development APT Repository
+
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - 'packages/**'
+      - 'scripts/build-rafcodephi-real-bootstrap.sh'
+      - 'scripts/build-rafcodephi-live-bootstrap.sh'
+      - '.github/workflows/rafcodephi-publish-dev-apt.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'packages/**'
+      - 'scripts/build-rafcodephi-real-bootstrap.sh'
+      - 'scripts/build-rafcodephi-live-bootstrap.sh'
+      - '.github/workflows/rafcodephi-publish-dev-apt.yml'
+
+permissions:
+  contents: write
+
+concurrency:
+  group: rafcodephi-dev-apt-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  arm32-repository:
+    name: Build ARM32 custom-prefix packages and flat APT repository
+    runs-on: ubuntu-latest
+    timeout-minutes: 240
+    env:
+      CI: 'true'
+      TERMUX_DOCKER_USE_SUDO: '1'
+      RAFCODEPHI_PACKAGE_NAME: com.termux.rafacodephi
+      RAFCODEPHI_APT_REPOSITORY_URL: https://raw.githubusercontent.com/rafaelmeloreisnovo/termux-packages/rafcodephi-apt/repo
+      RAFCODEPHI_APT_TRUST_MODE: development-trusted
+
+    steps:
+      - name: Checkout source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          fetch-depth: 0
+          persist-credentials: true
+
+      - name: Validate target contract
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$RAFCODEPHI_PACKAGE_NAME" = com.termux.rafacodephi
+          case "$RAFCODEPHI_APT_REPOSITORY_URL" in https://*) ;; *) exit 1 ;; esac
+          grep -q 'TERMUX_APP__PACKAGE_NAME="com.termux"' scripts/properties.sh
+
+      - name: Build real ARM32 package closure and bootstrap
+        shell: bash
+        run: |
+          set -euo pipefail
+          bash scripts/build-rafcodephi-real-bootstrap.sh --architectures arm
+          test -s artifacts/rafcodephi-bootstrap/rafcodephi-bootstrap-arm.zip
+          test -n "$(find output -maxdepth 1 -type f -name '*.deb' -print -quit)"
+
+      - name: Materialize deterministic flat repository
+        shell: bash
+        run: |
+          set -euo pipefail
+          command -v dpkg-scanpackages >/dev/null || { sudo apt-get update; sudo apt-get install -y dpkg-dev; }
+          command -v apt-ftparchive >/dev/null || { sudo apt-get update; sudo apt-get install -y apt-utils; }
+
+          rm -rf /tmp/rafcodephi-apt-publish
+          mkdir -p /tmp/rafcodephi-apt-publish/repo
+          cp output/*.deb /tmp/rafcodephi-apt-publish/repo/
+          cd /tmp/rafcodephi-apt-publish/repo
+          LC_ALL=C dpkg-scanpackages . /dev/null > Packages
+          gzip -9n -c Packages > Packages.gz
+          LC_ALL=C apt-ftparchive release . > Release
+          sha256sum ./*.deb Packages Packages.gz Release | LC_ALL=C sort -k2 > SHA256SUMS
+          printf '%s\n' \
+            'schema=rafcodephi.dev-apt-repository/v1' \
+            'package_name=com.termux.rafacodephi' \
+            'prefix=/data/data/com.termux.rafacodephi/files/usr' \
+            'architecture=arm' \
+            "source_commit=${GITHUB_SHA}" \
+            'trust=GITHUB_HTTPS_TRANSPORT_ONLY' \
+            'production_signing_root=TOKEN_VAZIO' \
+            'claim_allowed_release=false' \
+            > RAFCODEPHI_REPOSITORY_MANIFEST.txt
+
+      - name: Verify repository can be indexed
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd /tmp/rafcodephi-apt-publish/repo
+          test -s Packages
+          test -s Packages.gz
+          test -s Release
+          test -s SHA256SUMS
+          grep -q '^Package: ' Packages
+          grep -q '^Architecture: arm$' Packages
+          sha256sum -c SHA256SUMS
+          ! grep -R -aF '/data/data/com.termux/files/usr' . --include='Packages' --include='RAFCODEPHI_REPOSITORY_MANIFEST.txt'
+
+      - name: Build live bootstrap pointed at generated repository contract
+        shell: bash
+        run: |
+          set -euo pipefail
+          # Reuse source-built output; the wrapper intentionally rebuilds and then rewrites only repository metadata.
+          bash scripts/build-rafcodephi-live-bootstrap.sh --architectures arm
+          unzip -p artifacts/rafcodephi-bootstrap/rafcodephi-bootstrap-arm.zip etc/apt/sources.list.d/termux.sources | tee /tmp/termux.sources
+          grep -Fx 'Enabled: yes' /tmp/termux.sources
+          grep -Fx "URIs: $RAFCODEPHI_APT_REPOSITORY_URL" /tmp/termux.sources
+          unzip -p artifacts/rafcodephi-bootstrap/rafcodephi-bootstrap-arm.zip BOOTSTRAP_PROFILE.json | grep -F '"package_repo_runtime_state":"DEVELOPMENT_REPOSITORY_CONFIGURED"'
+
+      - name: Upload validation artifacts
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: rafcodephi-arm32-dev-apt-${{ github.sha }}
+          path: |
+            /tmp/rafcodephi-apt-publish/repo
+            artifacts/rafcodephi-bootstrap/rafcodephi-bootstrap-arm.zip
+            artifacts/rafcodephi-bootstrap/RAFCODEPHI_REAL_BOOTSTRAP_MANIFEST.txt
+
+      - name: Publish immutable observed package set to rafcodephi-apt branch
+        if: github.event_name != 'pull_request'
+        shell: bash
+        run: |
+          set -euo pipefail
+          publish=/tmp/rafcodephi-apt-publish
+          git config user.name 'RAFCODEPHI CI'
+          git config user.email 'actions@users.noreply.github.com'
+          git switch --orphan rafcodephi-apt-publication
+          git rm -rf .
+          mkdir -p repo
+          cp -a "$publish/repo/." repo/
+          cat > README.md <<'EOF'
+          # RAFCODEPHI development APT repository
+
+          Generated from `termux-packages` for the custom `com.termux.rafacodephi` prefix.
+
+          This branch is a development transport surface, not a production trust root. The beta bootstrap uses HTTPS transport with `Trusted: yes`; release/security claims remain false until persistent signing-key governance is established.
+          EOF
+          git add README.md repo
+          git commit -m "repo: publish RAFCODEPHI ARM32 development packages from ${GITHUB_SHA}"
+          git push --force origin HEAD:rafcodephi-apt
