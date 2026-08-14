@@ -1,0 +1,118 @@
+name: RAFCODEPHI Publish Development APT Repository
+
+on:
+  workflow_dispatch:
+  pull_request:
+    paths: ['packages/**', 'scripts/build-rafcodephi-*.sh', '.github/workflows/rafcodephi-publish-dev-apt.yml']
+  push:
+    branches:
+      - main
+      - fix/rafcodephi-live-apt-repository-20260814
+    paths: ['packages/**', 'scripts/build-rafcodephi-*.sh', '.github/workflows/rafcodephi-publish-dev-apt.yml']
+
+permissions:
+  contents: write
+
+concurrency:
+  group: rafcodephi-dev-apt-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  arm32-repository:
+    runs-on: ubuntu-latest
+    timeout-minutes: 240
+    env:
+      CI: 'true'
+      TERMUX_DOCKER_USE_SUDO: '1'
+      RAFCODEPHI_APT_REPOSITORY_URL: ${{ github.ref_name == 'main' && 'https://raw.githubusercontent.com/rafaelmeloreisnovo/termux-packages/rafcodephi-apt/repo' || 'https://raw.githubusercontent.com/rafaelmeloreisnovo/termux-packages/rafcodephi-apt-preview/repo' }}
+      RAFCODEPHI_APT_PUBLISH_BRANCH: ${{ github.ref_name == 'main' && 'rafcodephi-apt' || 'rafcodephi-apt-preview' }}
+      RAFCODEPHI_APT_TRUST_MODE: development-trusted
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          fetch-depth: 0
+          persist-credentials: true
+
+      - name: Materialize RAFCODEPHI package/prefix contract
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p build/reports
+          python3 scripts/apply-rafcodephi-build-properties.py \
+            --properties scripts/properties.sh \
+            --receipt build/reports/rafcodephi-dev-apt-properties.json
+          bash scripts/validate-rafcodephi-build-properties.sh
+          grep -Fx 'TERMUX_APP__PACKAGE_NAME="com.termux.rafacodephi"' scripts/properties.sh
+
+      - name: Build ARM32 custom-prefix package closure + live bootstrap
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -x scripts/run-docker.sh
+          ./scripts/run-docker.sh env \
+            RAFCODEPHI_APT_REPOSITORY_URL="$RAFCODEPHI_APT_REPOSITORY_URL" \
+            RAFCODEPHI_APT_TRUST_MODE="$RAFCODEPHI_APT_TRUST_MODE" \
+            bash ./scripts/build-rafcodephi-live-bootstrap.sh --architectures arm
+          test -s artifacts/rafcodephi-bootstrap/rafcodephi-bootstrap-arm.zip
+          test -n "$(find output -maxdepth 1 -type f -name '*.deb' -print -quit)"
+          unzip -p artifacts/rafcodephi-bootstrap/rafcodephi-bootstrap-arm.zip etc/apt/sources.list.d/termux.sources > /tmp/termux.sources
+          grep -Fx 'Enabled: yes' /tmp/termux.sources
+          grep -Fx "URIs: $RAFCODEPHI_APT_REPOSITORY_URL" /tmp/termux.sources
+          unzip -p artifacts/rafcodephi-bootstrap/rafcodephi-bootstrap-arm.zip BOOTSTRAP_PROFILE.json | grep -F '"package_repo_runtime_state":"DEVELOPMENT_REPOSITORY_CONFIGURED"'
+
+      - name: Materialize flat APT repository
+        shell: bash
+        run: |
+          set -euo pipefail
+          command -v dpkg-scanpackages >/dev/null || { sudo apt-get update; sudo apt-get install -y dpkg-dev; }
+          command -v apt-ftparchive >/dev/null || { sudo apt-get update; sudo apt-get install -y apt-utils; }
+          rm -rf /tmp/rafcodephi-apt-publish
+          mkdir -p /tmp/rafcodephi-apt-publish/repo
+          cp output/*.deb /tmp/rafcodephi-apt-publish/repo/
+          cd /tmp/rafcodephi-apt-publish/repo
+          LC_ALL=C dpkg-scanpackages . /dev/null > Packages
+          gzip -9n -c Packages > Packages.gz
+          LC_ALL=C apt-ftparchive release . > Release
+          sha256sum ./*.deb Packages Packages.gz Release | LC_ALL=C sort -k2 > SHA256SUMS
+          printf '%s\n' \
+            'schema=rafcodephi.dev-apt-repository/v1' \
+            'package_name=com.termux.rafacodephi' \
+            'prefix=/data/data/com.termux.rafacodephi/files/usr' \
+            'architecture=arm' \
+            "source_commit=${GITHUB_SHA}" \
+            "publish_branch=${RAFCODEPHI_APT_PUBLISH_BRANCH}" \
+            "repository_url=${RAFCODEPHI_APT_REPOSITORY_URL}" \
+            'trust=GITHUB_HTTPS_TRANSPORT_ONLY' \
+            'production_signing_root=TOKEN_VAZIO' \
+            'claim_allowed_release=false' > RAFCODEPHI_REPOSITORY_MANIFEST.txt
+          grep -q '^Package: ' Packages
+          grep -q '^Architecture: arm$' Packages
+          sha256sum -c SHA256SUMS
+
+      - name: Upload bootstrap + repository evidence
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: rafcodephi-arm32-dev-apt-${{ github.sha }}
+          path: |
+            /tmp/rafcodephi-apt-publish/repo
+            artifacts/rafcodephi-bootstrap/rafcodephi-bootstrap-arm.zip
+            artifacts/rafcodephi-bootstrap/RAFCODEPHI_REAL_BOOTSTRAP_MANIFEST.txt
+
+      - name: Publish development repository branch
+        if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name 'RAFCODEPHI CI'
+          git config user.email 'actions@users.noreply.github.com'
+          git switch --orphan rafcodephi-apt-publication
+          git rm -rf .
+          mkdir repo
+          cp -a /tmp/rafcodephi-apt-publish/repo/. repo/
+          printf '%s\n' '# RAFCODEPHI development APT repository' '' \
+            'Custom-prefix ARM32 packages for com.termux.rafacodephi.' '' \
+            "Transport branch: ${RAFCODEPHI_APT_PUBLISH_BRANCH}" \
+            'Development transport only; production signing root remains TOKEN_VAZIO.' > README.md
+          git add README.md repo
+          git commit -m "repo: publish RAFCODEPHI ARM32 dev packages from ${GITHUB_SHA}"
+          git push --force origin "HEAD:${RAFCODEPHI_APT_PUBLISH_BRANCH}"
