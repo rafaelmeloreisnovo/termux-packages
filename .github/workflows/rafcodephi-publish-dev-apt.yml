@@ -5,7 +5,9 @@ on:
   pull_request:
     paths: ['packages/**', 'scripts/build-rafcodephi-*.sh', '.github/workflows/rafcodephi-publish-dev-apt.yml']
   push:
-    branches: [main]
+    branches:
+      - main
+      - fix/rafcodephi-live-apt-repository-20260814
     paths: ['packages/**', 'scripts/build-rafcodephi-*.sh', '.github/workflows/rafcodephi-publish-dev-apt.yml']
 
 permissions:
@@ -22,7 +24,8 @@ jobs:
     env:
       CI: 'true'
       TERMUX_DOCKER_USE_SUDO: '1'
-      RAFCODEPHI_APT_REPOSITORY_URL: https://raw.githubusercontent.com/rafaelmeloreisnovo/termux-packages/rafcodephi-apt/repo
+      RAFCODEPHI_APT_REPOSITORY_URL: ${{ github.ref_name == 'main' && 'https://raw.githubusercontent.com/rafaelmeloreisnovo/termux-packages/rafcodephi-apt/repo' || 'https://raw.githubusercontent.com/rafaelmeloreisnovo/termux-packages/rafcodephi-apt-preview/repo' }}
+      RAFCODEPHI_APT_PUBLISH_BRANCH: ${{ github.ref_name == 'main' && 'rafcodephi-apt' || 'rafcodephi-apt-preview' }}
       RAFCODEPHI_APT_TRUST_MODE: development-trusted
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
@@ -77,6 +80,8 @@ jobs:
             'prefix=/data/data/com.termux.rafacodephi/files/usr' \
             'architecture=arm' \
             "source_commit=${GITHUB_SHA}" \
+            "publish_branch=${RAFCODEPHI_APT_PUBLISH_BRANCH}" \
+            "repository_url=${RAFCODEPHI_APT_REPOSITORY_URL}" \
             'trust=GITHUB_HTTPS_TRANSPORT_ONLY' \
             'production_signing_root=TOKEN_VAZIO' \
             'claim_allowed_release=false' > RAFCODEPHI_REPOSITORY_MANIFEST.txt
@@ -93,8 +98,8 @@ jobs:
             artifacts/rafcodephi-bootstrap/rafcodephi-bootstrap-arm.zip
             artifacts/rafcodephi-bootstrap/RAFCODEPHI_REAL_BOOTSTRAP_MANIFEST.txt
 
-      - name: Publish rafcodephi-apt branch
-        if: github.event_name != 'pull_request'
+      - name: Publish development repository branch
+        if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
         shell: bash
         run: |
           set -euo pipefail
@@ -106,7 +111,8 @@ jobs:
           cp -a /tmp/rafcodephi-apt-publish/repo/. repo/
           printf '%s\n' '# RAFCODEPHI development APT repository' '' \
             'Custom-prefix ARM32 packages for com.termux.rafacodephi.' '' \
+            "Transport branch: ${RAFCODEPHI_APT_PUBLISH_BRANCH}" \
             'Development transport only; production signing root remains TOKEN_VAZIO.' > README.md
           git add README.md repo
           git commit -m "repo: publish RAFCODEPHI ARM32 dev packages from ${GITHUB_SHA}"
-          git push --force origin HEAD:rafcodephi-apt
+          git push --force origin "HEAD:${RAFCODEPHI_APT_PUBLISH_BRANCH}"
