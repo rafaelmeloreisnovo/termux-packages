@@ -39,6 +39,8 @@ def main() -> int:
         "etc/apt/sources.list.d/termux.sources",
         "RAFCODEPHI_PACKAGE_REPOSITORY_NOT_PUBLISHED",
         "Enabled: no",
+        '"runtime_materialized": False',
+        '"RAFCODEPHI_RUNTIME_MATERIALIZED": "0"',
     ]:
         require(token in BUILDER, f"BUILDER_TOKEN_MISSING:{token}")
     require("device_runtime_proof=TOKEN_VAZIO" in BUILDER, "DEVICE_PROOF_BOUNDARY_MISSING")
