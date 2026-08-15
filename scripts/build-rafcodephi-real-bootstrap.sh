@@ -228,6 +228,9 @@ profile = {
     "required_entries": required,
     "legacy_prefix_forbidden": True,
     "bridge_markers_forbidden": True,
+    # This describes the archive itself. TermuxInstaller atomically rewrites
+    # this field to true only after extraction at the Android-assigned prefix.
+    "runtime_materialized": False,
     "claim_allowed": False,
     "release_allowed": False,
     "device_validation": "TOKEN_VAZIO",
@@ -242,6 +245,7 @@ bootstrap_info = {
     "RAFCODEPHI_PACKAGE_LAYER": "real-pkg",
     "RAFCODEPHI_DEVICE_VALIDATION": "TOKEN_VAZIO",
     "RAFCODEPHI_CLAIM_ALLOWED": "0",
+    "RAFCODEPHI_RUNTIME_MATERIALIZED": "0",
     "BOOTSTRAP_FULLENGINE_READY": "0",
     "BOOTSTRAP_PKG_REAL": "1",
     "BOOTSTRAP_APT_REAL": "1",
@@ -312,6 +316,7 @@ expected = {
     "api_package": sys.argv[3] + ".api",
     "api_receiver_component": sys.argv[6],
     "api_access_control": "SIGNATURE_PERMISSION_NO_SHARED_UID",
+    "runtime_materialized": False,
     "claim_allowed": False,
     "release_allowed": False,
     "device_validation": "TOKEN_VAZIO",
@@ -329,6 +334,7 @@ for key, value in {
     "RAFCODEPHI_PACKAGE_LAYER": "real-pkg",
     "RAFCODEPHI_DEVICE_VALIDATION": "TOKEN_VAZIO",
     "RAFCODEPHI_CLAIM_ALLOWED": "0",
+    "RAFCODEPHI_RUNTIME_MATERIALIZED": "0",
     "BOOTSTRAP_FULLENGINE_READY": "0",
     "BOOTSTRAP_PKG_REAL": "1",
     "BOOTSTRAP_APT_REAL": "1",

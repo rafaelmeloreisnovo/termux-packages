@@ -3,12 +3,12 @@ name: RAFCODEPHI Publish Development APT Repository
 on:
   workflow_dispatch:
   pull_request:
-    paths: ['packages/**', 'scripts/build-rafcodephi-*.sh', '.github/workflows/rafcodephi-publish-dev-apt.yml']
+    paths: ['packages/**', 'scripts/build-rafcodephi-*.sh', 'scripts/tests/test_rafcodephi_publish_dev_apt_workflow_contract.py', '.github/workflows/rafcodephi-publish-dev-apt.yml']
   push:
     branches:
       - main
       - fix/rafcodephi-live-apt-repository-20260814
-    paths: ['packages/**', 'scripts/build-rafcodephi-*.sh', '.github/workflows/rafcodephi-publish-dev-apt.yml']
+    paths: ['packages/**', 'scripts/build-rafcodephi-*.sh', 'scripts/tests/test_rafcodephi_publish_dev_apt_workflow_contract.py', '.github/workflows/rafcodephi-publish-dev-apt.yml']
 
 permissions:
   contents: write
@@ -33,6 +33,10 @@ jobs:
           fetch-depth: 0
           persist-credentials: true
 
+      - name: Validate development APT workflow contract
+        shell: bash
+        run: python3 scripts/tests/test_rafcodephi_publish_dev_apt_workflow_contract.py
+
       - name: Materialize RAFCODEPHI package/prefix contract
         shell: bash
         run: |
@@ -48,17 +52,56 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          test -x scripts/run-docker.sh
-          ./scripts/run-docker.sh env \
-            RAFCODEPHI_APT_REPOSITORY_URL="$RAFCODEPHI_APT_REPOSITORY_URL" \
-            RAFCODEPHI_APT_TRUST_MODE="$RAFCODEPHI_APT_TRUST_MODE" \
-            bash ./scripts/build-rafcodephi-live-bootstrap.sh --architectures arm
+          mkdir -p build/reports
+          set +e
+          (
+            test -x scripts/run-docker.sh || {
+              echo "RAFCODEPHI_LIVE_APT_BUILD=BLOCKED reason=DOCKER_RUNNER_MISSING" >&2
+              exit 126
+            }
+            exec ./scripts/run-docker.sh env \
+              RAFCODEPHI_APT_REPOSITORY_URL="$RAFCODEPHI_APT_REPOSITORY_URL" \
+              RAFCODEPHI_APT_TRUST_MODE="$RAFCODEPHI_APT_TRUST_MODE" \
+              bash ./scripts/build-rafcodephi-live-bootstrap.sh --architectures arm
+          ) 2>&1 | tee build/reports/rafcodephi-live-bootstrap.log
+          build_status="${PIPESTATUS[0]}"
+          set -e
+          python3 - "$build_status" > build/reports/rafcodephi-live-bootstrap-status.json <<'PY'
+          import json
+          import sys
+
+          status = int(sys.argv[1])
+          print(json.dumps({
+              "schema": "rafcodephi.live-bootstrap-build-status/v1",
+              "state": "PASS" if status == 0 else "BLOCKED",
+              "exit_code": status,
+              "claim_allowed_release": False,
+              "device_runtime_proof": "TOKEN_VAZIO",
+          }, sort_keys=True))
+          PY
+          if [[ "$build_status" -ne 0 ]]; then
+            echo "RAFCODEPHI_LIVE_APT_BUILD=BLOCKED exit_code=$build_status; inspect uploaded source-build evidence" >&2
+            exit "$build_status"
+          fi
           test -s artifacts/rafcodephi-bootstrap/rafcodephi-bootstrap-arm.zip
           test -n "$(find output -maxdepth 1 -type f -name '*.deb' -print -quit)"
           unzip -p artifacts/rafcodephi-bootstrap/rafcodephi-bootstrap-arm.zip etc/apt/sources.list.d/termux.sources > /tmp/termux.sources
           grep -Fx 'Enabled: yes' /tmp/termux.sources
           grep -Fx "URIs: $RAFCODEPHI_APT_REPOSITORY_URL" /tmp/termux.sources
           unzip -p artifacts/rafcodephi-bootstrap/rafcodephi-bootstrap-arm.zip BOOTSTRAP_PROFILE.json | grep -F '"package_repo_runtime_state":"DEVELOPMENT_REPOSITORY_CONFIGURED"'
+
+      - name: Upload source-build evidence
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: rafcodephi-arm32-source-build-evidence-${{ github.sha }}
+          if-no-files-found: warn
+          path: |
+            build/reports/rafcodephi-live-bootstrap.log
+            build/reports/rafcodephi-live-bootstrap-status.json
+            output/*.deb
+            artifacts/rafcodephi-bootstrap/rafcodephi-bootstrap-arm.zip
+            artifacts/rafcodephi-bootstrap/RAFCODEPHI_REAL_BOOTSTRAP_MANIFEST.txt
 
       - name: Materialize flat APT repository
         shell: bash
@@ -89,12 +132,69 @@ jobs:
           grep -q '^Architecture: arm$' Packages
           sha256sum -c SHA256SUMS
 
+      - name: Resolve development repository through isolated APT
+        shell: bash
+        run: |
+          set -euo pipefail
+          repo=/tmp/rafcodephi-apt-publish/repo
+          apt_root=/tmp/rafcodephi-apt-client
+          mkdir -p build/reports "$apt_root/etc/apt" "$apt_root/lists/partial" \
+            "$apt_root/cache/archives/partial" "$apt_root/var/lib/dpkg"
+          : > "$apt_root/var/lib/dpkg/status"
+          package_name="$(awk -F ': ' '$1 == "Package" { print $2; exit }' "$repo/Packages")"
+          test -n "$package_name"
+          printf 'deb [trusted=yes] file:%s ./\n' "$repo" > "$apt_root/etc/apt/sources.list"
+          apt_options=(
+            -o "Dir=$apt_root"
+            -o 'Dir::Etc::sourcelist=etc/apt/sources.list'
+            -o 'Dir::Etc::sourceparts=-'
+            -o 'Dir::State::status=var/lib/dpkg/status'
+            -o 'Dir::State::lists=lists'
+            -o 'Dir::Cache::archives=cache/archives'
+            -o 'APT::Architecture=arm'
+            -o 'APT::Architectures=arm'
+            -o 'Acquire::Languages=none'
+          )
+          set +e
+          (
+            apt-get "${apt_options[@]}" update
+            apt-cache "${apt_options[@]}" show "$package_name"
+            apt-get "${apt_options[@]}" -y --download-only --no-install-recommends install "$package_name"
+            find "$apt_root/cache/archives" -maxdepth 1 -type f -name '*.deb' -print -quit | grep -q .
+          ) 2>&1 | tee build/reports/rafcodephi-isolated-apt.log
+          apt_status="${PIPESTATUS[0]}"
+          set -e
+          python3 - "$apt_status" "$package_name" > build/reports/rafcodephi-isolated-apt-status.json <<'PY'
+          import json
+          import sys
+
+          status = int(sys.argv[1])
+          print(json.dumps({
+              "schema": "rafcodephi.isolated-apt-resolution/v1",
+              "state": "PASS" if status == 0 else "BLOCKED",
+              "exit_code": status,
+              "package": sys.argv[2],
+              "architecture": "arm",
+              "claim_allowed_release": False,
+              "device_runtime_proof": "TOKEN_VAZIO",
+          }, sort_keys=True))
+          PY
+          if [[ "$apt_status" -ne 0 ]]; then
+            echo "RAFCODEPHI_ISOLATED_APT=BLOCKED exit_code=$apt_status" >&2
+            exit "$apt_status"
+          fi
+          echo "RAFCODEPHI_ISOLATED_APT=PASS package=$package_name architecture=arm"
+
       - name: Upload bootstrap + repository evidence
+        if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
         with:
           name: rafcodephi-arm32-dev-apt-${{ github.sha }}
+          if-no-files-found: warn
           path: |
             /tmp/rafcodephi-apt-publish/repo
+            build/reports/rafcodephi-isolated-apt.log
+            build/reports/rafcodephi-isolated-apt-status.json
             artifacts/rafcodephi-bootstrap/rafcodephi-bootstrap-arm.zip
             artifacts/rafcodephi-bootstrap/RAFCODEPHI_REAL_BOOTSTRAP_MANIFEST.txt
 

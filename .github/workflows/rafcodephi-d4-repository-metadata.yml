@@ -68,14 +68,14 @@ jobs:
             done
 
             cat > "$ROOT/DEBIAN/control" <<EOF
-Package: com.termux.rafacodephi-real
-Version: 0.1.0+git${GITHUB_SHA::12}
-Architecture: $DEB_ARCH
-Maintainer: RAFCODEPHI CI <noreply@example.invalid>
-Section: utils
-Priority: optional
-Description: Source-derived RAFCODEPHI REAL evidence tooling package
-EOF
+          Package: com.termux.rafacodephi-real
+          Version: 0.1.0+git${GITHUB_SHA::12}
+          Architecture: $DEB_ARCH
+          Maintainer: RAFCODEPHI CI <noreply@example.invalid>
+          Section: utils
+          Priority: optional
+          Description: Source-derived RAFCODEPHI REAL evidence tooling package
+          EOF
 
             DEB="_d4/repo/pool/main/r/rafcodephi-real/com.termux.rafacodephi-real_0.1.0+git${GITHUB_SHA::12}_${DEB_ARCH}.deb"
             dpkg-deb --build --root-owner-group "$ROOT" "$DEB" >/dev/null
@@ -122,14 +122,14 @@ EOF
           cd _d4/repo
           export LC_ALL=C TZ=UTC
           cat > apt-ftparchive.conf <<'EOF'
-APT::FTPArchive::Release::Origin "RAFCODEPHI";
-APT::FTPArchive::Release::Label "RAFCODEPHI D4 Evidence";
-APT::FTPArchive::Release::Suite "stable";
-APT::FTPArchive::Release::Codename "rafcodephi";
-APT::FTPArchive::Release::Architectures "arm aarch64";
-APT::FTPArchive::Release::Components "main";
-APT::FTPArchive::Release::Description "Unsigned D4 repository metadata evidence; not live Android runtime";
-EOF
+          APT::FTPArchive::Release::Origin "RAFCODEPHI";
+          APT::FTPArchive::Release::Label "RAFCODEPHI D4 Evidence";
+          APT::FTPArchive::Release::Suite "stable";
+          APT::FTPArchive::Release::Codename "rafcodephi";
+          APT::FTPArchive::Release::Architectures "arm aarch64";
+          APT::FTPArchive::Release::Components "main";
+          APT::FTPArchive::Release::Description "Unsigned D4 repository metadata evidence; not live Android runtime";
+          EOF
           apt-ftparchive -c apt-ftparchive.conf release . > Release.raw
           # Date is intentionally removed from the evidence artifact to keep the same source tree reproducible.
           grep -v '^Date:' Release.raw > Release
@@ -144,34 +144,34 @@ EOF
           set -euo pipefail
           cd _d4/repo
           python3 - <<'PY'
-from pathlib import Path
-release = Path('Release').read_text().splitlines()
-in_sha = False
-checked = 0
-for line in release:
-    if line == 'SHA256:':
-        in_sha = True
-        continue
-    if in_sha and line and not line.startswith(' '):
-        break
-    if in_sha and line.startswith(' '):
-        parts = line.split()
-        if len(parts) != 3:
-            raise SystemExit(f'bad SHA256 line: {line!r}')
-        expected, size, name = parts
-        p = Path(name)
-        if name not in {'Packages', 'Packages.gz'}:
-            continue
-        import hashlib
-        data = p.read_bytes()
-        actual = hashlib.sha256(data).hexdigest()
-        if actual != expected or len(data) != int(size):
-            raise SystemExit(f'hash/size mismatch for {name}')
-        checked += 1
-if checked != 2:
-    raise SystemExit(f'expected 2 verified metadata files, got {checked}')
-print('D4_RELEASE_SHA256_VERIFIED=2/2')
-PY
+          from pathlib import Path
+          release = Path('Release').read_text().splitlines()
+          in_sha = False
+          checked = 0
+          for line in release:
+              if line == 'SHA256:':
+                  in_sha = True
+                  continue
+              if in_sha and line and not line.startswith(' '):
+                  break
+              if in_sha and line.startswith(' '):
+                  parts = line.split()
+                  if len(parts) != 3:
+                      raise SystemExit(f'bad SHA256 line: {line!r}')
+                  expected, size, name = parts
+                  p = Path(name)
+                  if name not in {'Packages', 'Packages.gz'}:
+                      continue
+                  import hashlib
+                  data = p.read_bytes()
+                  actual = hashlib.sha256(data).hexdigest()
+                  if actual != expected or len(data) != int(size):
+                      raise SystemExit(f'hash/size mismatch for {name}')
+                  checked += 1
+          if checked != 2:
+              raise SystemExit(f'expected 2 verified metadata files, got {checked}')
+          print('D4_RELEASE_SHA256_VERIFIED=2/2')
+          PY
 
       - name: Emit D4 provenance receipt
         shell: bash
@@ -184,30 +184,30 @@ PY
           PGZ_SHA="$(sha256sum repo/Packages.gz | awk '{print $1}')"
           R_SHA="$(sha256sum repo/Release | awk '{print $1}')"
           cat > evidence/d4-receipt.json <<EOF
-{
-  "schema": "rafcodephi_d4_repository_metadata/1.0.0",
-  "status": "D4_UNSIGNED_REPOSITORY_METADATA_PASS",
-  "claim_allowed": false,
-  "git_sha": "$GITHUB_SHA",
-  "d3_arm": "PASS",
-  "d3_aarch64": "PASS",
-  "packages_index": "PASS",
-  "packages_gzip": "PASS",
-  "release_metadata": "PASS",
-  "release_sha256_validation": "PASS",
-  "signed_repository": "$SIGNED_REPOSITORY",
-  "apt_pkg_runtime": "$APT_PKG_RUNTIME",
-  "physical_android": "$PHYSICAL_ANDROID",
-  "sha256": {
-    "deb_arm": "$ARM_SHA",
-    "deb_aarch64": "$A64_SHA",
-    "Packages": "$P_SHA",
-    "Packages.gz": "$PGZ_SHA",
-    "Release": "$R_SHA"
-  },
-  "rule": "D4_METADATA_PASS_NEVER_PROMOTES_SIGNED_REPO_OR_LIVE_APT_OR_DEVICE"
-}
-EOF
+          {
+            "schema": "rafcodephi_d4_repository_metadata/1.0.0",
+            "status": "D4_UNSIGNED_REPOSITORY_METADATA_PASS",
+            "claim_allowed": false,
+            "git_sha": "$GITHUB_SHA",
+            "d3_arm": "PASS",
+            "d3_aarch64": "PASS",
+            "packages_index": "PASS",
+            "packages_gzip": "PASS",
+            "release_metadata": "PASS",
+            "release_sha256_validation": "PASS",
+            "signed_repository": "$SIGNED_REPOSITORY",
+            "apt_pkg_runtime": "$APT_PKG_RUNTIME",
+            "physical_android": "$PHYSICAL_ANDROID",
+            "sha256": {
+              "deb_arm": "$ARM_SHA",
+              "deb_aarch64": "$A64_SHA",
+              "Packages": "$P_SHA",
+              "Packages.gz": "$PGZ_SHA",
+              "Release": "$R_SHA"
+            },
+            "rule": "D4_METADATA_PASS_NEVER_PROMOTES_SIGNED_REPO_OR_LIVE_APT_OR_DEVICE"
+          }
+          EOF
           jq -e '
             .status == "D4_UNSIGNED_REPOSITORY_METADATA_PASS" and
             .claim_allowed == false and

@@ -108,6 +108,8 @@ for path in sorted(out_dir.glob("rafcodephi-bootstrap-*.zip")):
             raise SystemExit(f"{path.name}: real-pkg contract regressed")
         if profile.get("package_repo_runtime_state") != "DEVELOPMENT_REPOSITORY_CONFIGURED":
             raise SystemExit(f"{path.name}: repository state mismatch")
+        if profile.get("runtime_materialized") is not False:
+            raise SystemExit(f"{path.name}: archive must not claim installed runtime materialization")
         if profile.get("claim_allowed") is not False or profile.get("release_allowed") is not False:
             raise SystemExit(f"{path.name}: claim boundary regressed")
     artifacts[arch] = (hashlib.sha256(path.read_bytes()).hexdigest(), path.stat().st_size)
