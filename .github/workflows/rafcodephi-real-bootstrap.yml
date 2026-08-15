@@ -16,10 +16,13 @@ on:
     branches: [main]
     paths:
       - 'scripts/build-rafcodephi-real-bootstrap.sh'
+      - 'scripts/apply-rafcodephi-build-properties.py'
+      - 'scripts/validate-rafcodephi-build-properties.sh'
       - 'scripts/generate-bootstraps.sh'
       - 'scripts/properties.sh'
       - 'packages/**'
       - 'scripts/tests/test_rafcodephi_termux_api_contract.py'
+      - 'scripts/tests/test_rafcodephi_real_bootstrap_workflow_contract.py'
       - '.github/workflows/rafcodephi-real-bootstrap.yml'
 
 concurrency:
@@ -71,23 +74,19 @@ jobs:
 
       - name: Validate Termux API client route
         shell: bash
-        run: python3 scripts/tests/test_rafcodephi_termux_api_contract.py
+        run: |
+          python3 scripts/tests/test_rafcodephi_termux_api_contract.py
+          python3 scripts/tests/test_rafcodephi_real_bootstrap_workflow_contract.py
 
       - name: Materialize RAFCODEPHI package prefix on host checkout
         shell: bash
         run: |
           set -euo pipefail
-          python3 - <<'PY'
-          from pathlib import Path
-          path = Path('scripts/properties.sh')
-          text = path.read_text(encoding='utf-8')
-          old = 'TERMUX_APP__PACKAGE_NAME="com.termux"'
-          new = 'TERMUX_APP__PACKAGE_NAME="com.termux.rafacodephi"'
-          count = text.count(old)
-          if count != 1:
-              raise SystemExit(f'expected one canonical package assignment, found {count}')
-          path.write_text(text.replace(old, new, 1), encoding='utf-8')
-          PY
+          mkdir -p build/reports
+          python3 scripts/apply-rafcodephi-build-properties.py \
+            --properties scripts/properties.sh \
+            --receipt build/reports/rafcodephi-real-bootstrap-properties.json
+          bash scripts/validate-rafcodephi-build-properties.sh
           resolved="$(bash -c 'set -euo pipefail; source scripts/properties.sh; printf "%s|%s" "$TERMUX_APP__PACKAGE_NAME" "$TERMUX__PREFIX"')"
           test "$resolved" = 'com.termux.rafacodephi|/data/data/com.termux.rafacodephi/files/usr'
           echo "Resolved build identity: $resolved"
@@ -96,10 +95,32 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          mkdir -p build/reports
           chmod +x scripts/build-rafcodephi-real-bootstrap.sh scripts/run-docker.sh
+          set +e
           ./scripts/run-docker.sh \
             ./scripts/build-rafcodephi-real-bootstrap.sh \
-            --architectures '${{ steps.arch.outputs.architectures }}'
+            --architectures '${{ steps.arch.outputs.architectures }}' \
+            2>&1 | tee build/reports/rafcodephi-real-bootstrap.log
+          build_status="${PIPESTATUS[0]}"
+          set -e
+          python3 - "$build_status" > build/reports/rafcodephi-real-bootstrap-status.json <<'PY'
+          import json
+          import sys
+
+          status = int(sys.argv[1])
+          print(json.dumps({
+              "schema": "rafcodephi.real-bootstrap-source-build-status/v1",
+              "state": "PASS" if status == 0 else "BLOCKED",
+              "exit_code": status,
+              "claim_allowed_release": False,
+              "device_runtime_proof": "TOKEN_VAZIO",
+          }, sort_keys=True))
+          PY
+          if [[ "$build_status" -ne 0 ]]; then
+            echo "RAFCODEPHI_REAL_BOOTSTRAP_BUILD=BLOCKED exit_code=$build_status" >&2
+            exit "$build_status"
+          fi
 
       - name: Verify manifest is fail-closed
         shell: bash
@@ -122,9 +143,14 @@ jobs:
           cat "$manifest"
 
       - name: Upload real bootstrap artifacts
+        if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
         with:
           name: rafcodephi-real-bootstrap-${{ steps.arch.outputs.architectures }}-${{ github.sha }}
-          path: artifacts/rafcodephi-bootstrap/
-          if-no-files-found: error
+          path: |
+            artifacts/rafcodephi-bootstrap/
+            build/reports/rafcodephi-real-bootstrap-properties.json
+            build/reports/rafcodephi-real-bootstrap.log
+            build/reports/rafcodephi-real-bootstrap-status.json
+          if-no-files-found: warn
           retention-days: 30
