@@ -11,8 +11,20 @@ TERMUX_PKG_SETUP_PYTHON=true
 # disabled due to compiler warnings
 #	-Dthread-alloc=enabled
 #	-Dtls=enabled
+
+# RAFCODEPHI bootstrap needs the libxml2 runtime and Python bindings, not generated
+# API documentation. Keeping docs enabled makes the cross-build execute a host
+# doxygen binary whose Ubuntu bundle can depend on host libLLVM; that host-only
+# documentation dependency must not block the ARM/AArch64 runtime bootstrap.
+# Normal Termux package builds keep the upstream recipe behavior.
+if [[ "${TERMUX_APP__PACKAGE_NAME:-}" == "com.termux.rafacodephi" ]]; then
+	_LIBXML2_DOCS=disabled
+else
+	_LIBXML2_DOCS=enabled
+fi
+
 TERMUX_PKG_EXTRA_CONFIGURE_ARGS="
-	-Ddocs=enabled
+	-Ddocs=${_LIBXML2_DOCS}
 	-Dhttp=enabled
 	-Dicu=enabled
 	-Dlegacy=enabled
