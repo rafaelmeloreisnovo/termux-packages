@@ -90,6 +90,33 @@ jobs:
           grep -Fx "URIs: $RAFCODEPHI_APT_REPOSITORY_URL" /tmp/termux.sources
           unzip -p artifacts/rafcodephi-bootstrap/rafcodephi-bootstrap-arm.zip BOOTSTRAP_PROFILE.json | grep -F '"package_repo_runtime_state":"DEVELOPMENT_REPOSITORY_CONFIGURED"'
 
+      - name: Bundle portable source-build evidence
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p build/reports
+          bundle=build/reports/rafcodephi-arm32-source-built-debs.tar
+          state=build/reports/rafcodephi-arm32-source-built-debs.state
+          rm -f "$bundle" "$bundle.sha256"
+          if [[ -d output ]] && compgen -G 'output/*.deb' >/dev/null; then
+            tar --sort=name --mtime='@0' --owner=0 --group=0 --numeric-owner \
+              -cf "$bundle" -C output .
+            sha256sum "$bundle" > "$bundle.sha256"
+            printf '%s\n' \
+              'schema=rafcodephi.portable-source-build-evidence/v1' \
+              'state=PASS' \
+              "archive=$bundle" \
+              'claim_allowed_release=false' \
+              'device_runtime_proof=TOKEN_VAZIO' > "$state"
+          else
+            printf '%s\n' \
+              'schema=rafcodephi.portable-source-build-evidence/v1' \
+              'state=TOKEN_VAZIO' \
+              'reason=NO_DEB_OUTPUT' \
+              'claim_allowed_release=false' \
+              'device_runtime_proof=TOKEN_VAZIO' > "$state"
+          fi
       - name: Upload source-build evidence
         if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
@@ -99,7 +126,9 @@ jobs:
           path: |
             build/reports/rafcodephi-live-bootstrap.log
             build/reports/rafcodephi-live-bootstrap-status.json
-            output/*.deb
+            build/reports/rafcodephi-arm32-source-built-debs.tar
+            build/reports/rafcodephi-arm32-source-built-debs.tar.sha256
+            build/reports/rafcodephi-arm32-source-built-debs.state
             artifacts/rafcodephi-bootstrap/rafcodephi-bootstrap-arm.zip
             artifacts/rafcodephi-bootstrap/RAFCODEPHI_REAL_BOOTSTRAP_MANIFEST.txt
 
@@ -185,6 +214,34 @@ jobs:
           fi
           echo "RAFCODEPHI_ISOLATED_APT=PASS package=$package_name architecture=arm"
 
+      - name: Bundle portable APT repository evidence
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p build/reports
+          repo=/tmp/rafcodephi-apt-publish/repo
+          bundle=build/reports/rafcodephi-arm32-dev-apt-repository.tar
+          state=build/reports/rafcodephi-arm32-dev-apt-repository.state
+          rm -f "$bundle" "$bundle.sha256"
+          if [[ -d "$repo" ]] && compgen -G "$repo/*.deb" >/dev/null; then
+            tar --sort=name --mtime='@0' --owner=0 --group=0 --numeric-owner \
+              -cf "$bundle" -C "$(dirname "$repo")" "$(basename "$repo")"
+            sha256sum "$bundle" > "$bundle.sha256"
+            printf '%s\n' \
+              'schema=rafcodephi.portable-apt-repository-evidence/v1' \
+              'state=PASS' \
+              "archive=$bundle" \
+              'claim_allowed_release=false' \
+              'device_runtime_proof=TOKEN_VAZIO' > "$state"
+          else
+            printf '%s\n' \
+              'schema=rafcodephi.portable-apt-repository-evidence/v1' \
+              'state=TOKEN_VAZIO' \
+              'reason=APT_REPOSITORY_NOT_MATERIALIZED' \
+              'claim_allowed_release=false' \
+              'device_runtime_proof=TOKEN_VAZIO' > "$state"
+          fi
       - name: Upload bootstrap + repository evidence
         if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
@@ -192,7 +249,9 @@ jobs:
           name: rafcodephi-arm32-dev-apt-${{ github.sha }}
           if-no-files-found: warn
           path: |
-            /tmp/rafcodephi-apt-publish/repo
+            build/reports/rafcodephi-arm32-dev-apt-repository.tar
+            build/reports/rafcodephi-arm32-dev-apt-repository.tar.sha256
+            build/reports/rafcodephi-arm32-dev-apt-repository.state
             build/reports/rafcodephi-isolated-apt.log
             build/reports/rafcodephi-isolated-apt-status.json
             artifacts/rafcodephi-bootstrap/rafcodephi-bootstrap-arm.zip
