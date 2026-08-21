@@ -39,8 +39,9 @@ TERMUX_PKG_REPLACES="libxml2-dev"
 
 termux_step_host_build() {
 	if [[ "$TERMUX_ON_DEVICE_BUILD" == "false" ]]; then
-		# We need doxygen, other packages are it's dependencies
-		termux_download_ubuntu_packages doxygen libfmt10 libspdlog1.15 libxapian30
+		# Doxygen's Noble host binary requires the LLVM 18 runtime in the
+		# extracted host-build closure; keep it beside the other host deps.
+		termux_download_ubuntu_packages doxygen libllvm18 libfmt10 libspdlog1.15 libxapian30
 	fi
 }
 
