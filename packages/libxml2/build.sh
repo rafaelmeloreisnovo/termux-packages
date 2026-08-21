@@ -38,7 +38,10 @@ TERMUX_PKG_REPLACES="libxml2-dev"
 
 termux_step_host_build() {
 	if [[ "$TERMUX_ON_DEVICE_BUILD" == "false" ]]; then
-		termux_download_ubuntu_packages doxygen libclang-cpp18 libclang1-18 libfmt9 libxapian30
+		# doxygen from Ubuntu Noble links against libLLVM.so.18.1. Keep the
+		# runtime in the extracted host-build closure so docs generation works
+		# inside the Termux package-builder container as well as on the runner.
+		termux_download_ubuntu_packages doxygen libllvm18 libclang-cpp18 libclang1-18 libfmt9 libxapian30
 	fi
 }
 
