@@ -3,7 +3,10 @@ TERMUX_PKG_DESCRIPTION="Front-end for the dpkg package manager"
 TERMUX_PKG_LICENSE="GPL-2.0"
 TERMUX_PKG_MAINTAINER="@termux"
 TERMUX_PKG_VERSION="3.1.15"
-TERMUX_PKG_SRCURL=https://deb.debian.org/debian/pool/main/a/apt/apt_${TERMUX_PKG_VERSION}.tar.xz
+# Debian removes superseded source tarballs from the live pool. Keep the
+# exact 3.1.15 source immutable through snapshot.debian.org; the official
+# Debian source SHA-256 below remains the integrity authority.
+TERMUX_PKG_SRCURL=https://snapshot.debian.org/archive/debian/20260201/pool/main/a/apt/apt_${TERMUX_PKG_VERSION}.tar.xz
 TERMUX_PKG_SHA256=208d58ff5bf6d9ebb93da0d77d480ef87b4618b0210dc88cb977aadd88d1c1c6
 # apt-key requires utilities from coreutils, findutils, gpgv, grep, sed.
 TERMUX_PKG_DEPENDS="coreutils, dpkg, findutils, gpgv, grep, libc++, openssl, liblzma, sed, termux-keyring, termux-licenses, xxhash"

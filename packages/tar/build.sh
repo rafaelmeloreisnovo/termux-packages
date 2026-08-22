@@ -3,7 +3,7 @@ TERMUX_PKG_DESCRIPTION="GNU tar for manipulating tar archives"
 TERMUX_PKG_LICENSE="GPL-3.0"
 TERMUX_PKG_MAINTAINER="@termux"
 TERMUX_PKG_VERSION=1.35
-TERMUX_PKG_REVISION=2
+TERMUX_PKG_REVISION=3
 TERMUX_PKG_SRCURL=https://mirrors.kernel.org/gnu/tar/tar-${TERMUX_PKG_VERSION}.tar.xz
 TERMUX_PKG_SHA256=4d62ff37342ec7aed748535323930c7cf94acf71c3591882b26a7ea50f3edc16
 TERMUX_PKG_DEPENDS="libacl, libandroid-glob, libandroid-selinux, libiconv"
@@ -26,4 +26,9 @@ termux_step_pre_configure() {
 	if [ $TERMUX_ARCH_BITS = 32 ]; then
 		TERMUX_PKG_EXTRA_CONFIGURE_ARGS+=" --disable-year2038"
 	fi
+
+	# Regenerate the Autotools files with one coherent host toolchain before
+	# configure/make. This avoids mixing GNU tar 1.35's shipped Automake 1.16.5
+	# metadata with the builder's current Automake during an implicit rebuild.
+	autoreconf -fi
 }
