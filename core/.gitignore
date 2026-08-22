@@ -5,6 +5,9 @@ termux-build-core
 test-manifest
 test-cycle2-1
 test-cycle2-2
+test-cycle2-3
+test-cycle2-4
+test-cycle2-5
 manifest-dumper
 manifest.bin
 build/
