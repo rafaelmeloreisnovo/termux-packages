@@ -22,6 +22,12 @@ TERMUX_PKG_EXTRA_CONFIGURE_ARGS+=" --with-selinux"
 termux_step_pre_configure() {
 	CPPFLAGS+=" -D__USE_FORTIFY_LEVEL=0"
 	LDFLAGS+=" -landroid-glob"
+	# The package carries a patch to src/Makefile.am. GNU tar 1.35's generated
+	# configure defaults to the versioned helper name automake-1.16, while the
+	# current builder exposes the host Automake through the canonical `automake`
+	# command. Bind that existing host tool explicitly so make can regenerate
+	# src/Makefile.in instead of failing at the missing versioned alias.
+	export AUTOMAKE=automake
 	# https://android.googlesource.com/platform/bionic/+/master/docs/32-bit-abi.md#is-32_bit-on-lp32-y2038
 	if [ $TERMUX_ARCH_BITS = 32 ]; then
 		TERMUX_PKG_EXTRA_CONFIGURE_ARGS+=" --disable-year2038"
