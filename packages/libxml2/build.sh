@@ -46,6 +46,7 @@ termux_step_host_build() {
 		termux_download_ubuntu_packages \
 			doxygen \
 			libxml2 \
+			libicu74 \
 			libclang-cpp18 \
 			libclang1-18 \
 			libfmt9 \
