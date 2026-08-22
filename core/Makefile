@@ -50,7 +50,7 @@ test-cycle2-2: tests/test_cycle2_2_source_download.o manifest_loader.o source_do
 	$(CC) $(CFLAGS) $(LDFLAGS) -o $@ $^
 
 test-cycle2-3: tests/test_cycle2_3_source_patch.o patch_apply.o
-	$(CC) $(CFLAGS) $(LDFLAGS) -o $@ $^
+	$(CC) $(CFLAGS) $(LDFLAGS) -o $@ $^ -lssl -lcrypto
 
 test-build-orchestrator: tests/test_build_orchestrator.o build_orchestrator.o
 	$(CC) $(CFLAGS) $(LDFLAGS) -o $@ $^
@@ -246,6 +246,12 @@ tests/test_cycle2_1_manifesto_v2.o: tests/test_cycle2_1_manifesto_v2.c manifest.
 
 tests/test_cycle2_2_source_download.o: tests/test_cycle2_2_source_download.c manifest.h
 	$(CC) $(CFLAGS) -c -o $@ $<
+
+tests/test_cycle2_3_source_patch.o: ../tests/test_cycle2_3_source_patch.c
+	$(CC) $(CFLAGS) -D_DEFAULT_SOURCE -c -o $@ $<
+
+patch_apply.o: patch_apply.c
+	$(CC) $(CFLAGS) -D_DEFAULT_SOURCE -c -o $@ $<
 
 tests/test_build_orchestrator.o: tests/test_build_orchestrator.c build_orchestrator.h
 	$(CC) $(CFLAGS) -c -o $@ $<
