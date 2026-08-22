@@ -68,4 +68,9 @@ int termux_manifest_v2_load_from_buffer(const uint8_t *buf, size_t buflen,
                                          struct termux_manifest_entry_v2 *entries,
                                          uint32_t *entry_count);
 
+int termux_resolve_manifest_dependencies(struct termux_manifest_entry_v2 *entries,
+                                         uint32_t entry_count);
+int termux_detect_manifest_circular_deps(struct termux_manifest_entry_v2 *entries,
+                                         uint32_t entry_count);
+
 #endif // TERMUX_MANIFEST_V2_H
