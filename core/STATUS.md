@@ -28,13 +28,16 @@
 | **Configure prefix separation** | --prefix=/usr (not build_dir), DESTDIR used for staging | Cycle 2: Verify with actual autotools package |
 | **Directory organization** | source_dir ≠ build_dir ≠ destdir_staging ≠ logical_prefix (/usr) | Cycle 2: Test with complex package |
 
+### ✅ PASS (Cycle 2 gates closed via test execution)
+
+- **TV-01** (SOURCE_FETCH) - Gate `cycle2-source-gate` PASS (2026-08-22)
+- **TV-02** (SOURCE_EXTRACT) - Gate `cycle2-extract-gate` PASS (2026-08-22)
+- **TV-03** (PATCH_APPLY) - Gate `cycle2-patch-gate` PASS (2026-08-22)
+- **TV-04** (MANIFEST_BINDING) - Gate `cycle2-manifest-gate` PASS (2026-08-22)
+
 ### ❌ TOKEN_VAZIO (Not yet proven, blocking Cycle 2+)
 
 #### P0 (Blocking)
-- **TV-01** (SOURCE_FETCH) - Real download + SHA-256 verification (Cycle 2)
-- **TV-02** (SOURCE_EXTRACT) - Safe tarball extraction + tree validation (Cycle 2)
-- **TV-03** (PATCH_APPLY) - Patch application from manifest with hash binding (Cycle 2)
-- **TV-04** (MANIFEST_BINDING) - Manifesto V2 with proper offsets and bounds checking (Cycle 2)
 - **TV-05** (DEP_GRAPH) - Real dependency resolution from manifest (Cycle 2)
 - **TV-06** (ARMV7_ELF) - Physical ARM32 build on device with readelf proof (Cycle 3)
 - **TV-07** (AARCH64_ELF) - Physical ARM64 build on device with readelf proof (Cycle 3)
@@ -111,3 +114,6 @@
 
 **Cycle 1.5 completion target:** All 5 gates closed before proceeding to Cycle 2.  
 **Current status:** ✅ 5/5 gates complete. Cycle 1.5 COMPLETE_LOCAL. Ready for Cycle 2 authorization.
+
+**Cycle 2 progression:** 4/5 gates PASS (TV-01, TV-02, TV-03, TV-04)  
+**Remaining:** TV-05 (DEP_GRAPH) dependency resolution from manifest
