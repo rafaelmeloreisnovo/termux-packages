@@ -45,6 +45,7 @@ termux_step_host_build() {
 		# non-base shared-library dependencies using Noble package names.
 		termux_download_ubuntu_packages \
 			doxygen \
+			libxml2 \
 			libclang-cpp18 \
 			libclang1-18 \
 			libfmt9 \
