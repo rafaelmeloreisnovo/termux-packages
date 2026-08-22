@@ -58,6 +58,7 @@ lib/apt/solvers/
 lib/dpkg/
 share/man/man1/apt-extracttemplates.1
 share/man/man1/apt-sortpkgs.1
+share/man/man1/apt-transport-mirror.1
 share/man/man8/apt-cdrom.8
 "
 
