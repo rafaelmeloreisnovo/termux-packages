@@ -38,7 +38,7 @@ termux_step_make() {
 	if [[ "$TERMUX_APP_PACKAGE" == "com.termux.rafacodephi" ]]; then
 		local source_sdk="$ANDROID_HOME"
 		local writable_sdk="$TERMUX_PKG_TMPDIR/android-sdk"
-		local entry name sdkmanager
+		local entry name sdkmanager sdkmanager_status
 		mkdir -p "$writable_sdk/platforms" "$writable_sdk/build-tools"
 
 		for entry in "$source_sdk"/*; do
@@ -66,9 +66,21 @@ termux_step_make() {
 			termux_error_exit "No sdkmanager available in RAFCODEPHI writable SDK view"
 		fi
 
-		yes | "$sdkmanager" --sdk_root="$writable_sdk" \
+		# With pipefail enabled, sdkmanager can finish successfully after consuming
+		# its required confirmations while `yes` receives SIGPIPE (141). Preserve
+		# fail-closed semantics on sdkmanager itself without treating that expected
+		# producer-side SIGPIPE as an SDK installation failure.
+		if yes | "$sdkmanager" --sdk_root="$writable_sdk" \
 			"platforms;android-33" \
-			"build-tools;34.0.0"
+			"build-tools;34.0.0"; then
+			sdkmanager_status=0
+		else
+			sdkmanager_status="${PIPESTATUS[1]}"
+		fi
+		if (( sdkmanager_status != 0 )); then
+			termux_error_exit "RAFCODEPHI sdkmanager provisioning failed with exit $sdkmanager_status"
+		fi
+
 		export ANDROID_HOME="$writable_sdk"
 		export ANDROID_SDK_ROOT="$writable_sdk"
 	fi
