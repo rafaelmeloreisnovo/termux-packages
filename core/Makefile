@@ -22,7 +22,7 @@ REAL_PROV_DEFS := \
   -DREAL_BUILD_TIMESTAMP=\"$(REAL_BUILD_TIMESTAMP)\" \
   -DREAL_CFLAGS_FP=\"$(REAL_CFLAGS_FP)\"
 
-TARGETS := termux-build-core test-manifest manifest-dumper test-cycle2-1 test-cycle2-2 test-cycle2-3 test-cycle2-4 test-build-orchestrator test-dep-resolver test-manifest-v2 device-test-orchestrator perf-profiler perf-analyzer simd-benchmark multicore-benchmark advanced-simd-benchmark advanced-simd-test orchestrator-production-benchmark unified-benchmark test-sprint3 test-sprint4 test-sprint5 test-sprint6 test-sprint10 test-sprint11 test-sprint12 orchestrator-build-main test-bitraf64-integration test-bitraf64-simd-ops test-bitraf64-lut-cache test-bitraf64-coherence-monitor test-ascii-grafo test-e2e-build test-production-hardening test-orchestrator-v2 test-performance-opt test-distributed test-security-hardening test-integration-e2e pkg-real metrics-producer pkg-count-freestanding contract-validate arch-detect receipt-validate receipt-ledger arch-probe
+TARGETS := termux-build-core test-manifest manifest-dumper test-cycle2-1 test-cycle2-2 test-cycle2-3 test-cycle2-4 test-cycle2-5 test-build-orchestrator test-dep-resolver test-manifest-v2 device-test-orchestrator perf-profiler perf-analyzer simd-benchmark multicore-benchmark advanced-simd-benchmark advanced-simd-test orchestrator-production-benchmark unified-benchmark test-sprint3 test-sprint4 test-sprint5 test-sprint6 test-sprint10 test-sprint11 test-sprint12 orchestrator-build-main test-bitraf64-integration test-bitraf64-simd-ops test-bitraf64-lut-cache test-bitraf64-coherence-monitor test-ascii-grafo test-e2e-build test-production-hardening test-orchestrator-v2 test-performance-opt test-distributed test-security-hardening test-integration-e2e pkg-real metrics-producer pkg-count-freestanding contract-validate arch-detect receipt-validate receipt-ledger arch-probe
 SOURCES := termux-build-core.c sysexec.c package_writer.c elf_writer.c friction_analyzer.c checkpoint.c parallel_jobs.c build_exec.c manifest_loader.c source_download.c patch_apply.c build_orchestrator.c dep_resolver.c manifest_v2.c device_test_orchestrator.c perf_profiler.c build_orchestrator_optimized.c perf_analyzer.c build_orchestrator_simd.c phase_barrier_lockfree.c cpu_affinity.c job_scheduler_parallel.c hardware_tuning.c build_orchestrator_advanced_simd.c unified_orchestrator.c gpu_device.c cycle_budget.c workload_generator.c coherence_tuning.c profiler.c multicore_orchestrator.c advanced_vectorization.c work_stealing.c adaptive_dvfs.c gpu_integration.c orchestrator_build_main.c bitraf64_integration.c bitraf64_simd_ops.c bitraf64_lut_cache.c bitraf64_coherence_monitor.c ascii_grafo.c ascii_grafo_integration.c production_hardening.c build_orchestrator_v2.c dep_resolver_v2.c manifest_simd.c scheduler_adaptive.c alloc_pool.c dist_orchestrator.c rpc_coordinator.c dist_checkpoint.c load_balancer.c crypto_ed25519.c crypto_chacha20.c rate_limiter.c crypto_pqc.c
 TEST_SOURCES := test_manifest.c manifest_loader.c
 DUMPER_SOURCES := manifest_dumper.c
@@ -53,6 +53,9 @@ test-cycle2-3: tests/test_cycle2_3_source_patch.o patch_apply.o
 	$(CC) $(CFLAGS) $(LDFLAGS) -o $@ $^ -lssl -lcrypto
 
 test-cycle2-4: tests/test_cycle2_4_manifest_v2.o manifest_v2.o
+	$(CC) $(CFLAGS) $(LDFLAGS) -o $@ $^
+
+test-cycle2-5: tests/test_cycle2_5_dep_resolver.o manifest_v2.o
 	$(CC) $(CFLAGS) $(LDFLAGS) -o $@ $^
 
 test-build-orchestrator: tests/test_build_orchestrator.o build_orchestrator.o
@@ -503,11 +506,13 @@ cycle2-manifest-gate: test-cycle2-4
 	@echo "  Exit code: 0 (PASS)"
 	@echo ""
 
-cycle2-dep-gate:
+cycle2-dep-gate: test-cycle2-5
 	@echo "=== TV-05: DEP_GRAPH Gate ==="
-	@echo "Note: TV-05 (dependency resolution) is TOKEN_VAZIO - requires manifest reading"
-	@echo "Status: GATE_BLOCKED_ON_TV-05_IMPLEMENTATION"
-	@exit 1
+	@./test-cycle2-5
+	@echo "Receipt: TV-05 DEP_GRAPH gate PASS"
+	@echo "  Commit: $(shell git rev-parse HEAD)"
+	@echo "  Test: test-cycle2-5 (Manifest dependency resolution)"
+	@echo "  Exit code: 0 (PASS)"
 
 # Pattern rules for compiling C files to object files
 %.o: %.c

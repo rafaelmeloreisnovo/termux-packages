@@ -1,4 +1,5 @@
 #include "manifest_v2.h"
+#include <stdlib.h>
 
 #define GCD_COMPUTE(a, b) ({ \
   uint32_t _a = (a), _b = (b); \
@@ -213,4 +214,85 @@ int termux_manifest_v2_load_from_buffer(const uint8_t *buf, size_t buflen,
 
   *entry_count = header->entry_count;
   return 0;
+}
+
+/* DFS-based cycle detection */
+static int termux_manifest_dfs_visit(uint32_t node,
+                                      struct termux_manifest_entry_v2 *entries,
+                                      uint32_t entry_count,
+                                      uint8_t *state) {
+  state[node] = 1;  /* Mark as visiting */
+
+  struct termux_manifest_entry_v2 *entry = &entries[node];
+  for (uint16_t i = 0; i < entry->dep_count; i++) {
+    uint16_t dep = entry->deps[i];
+
+    if (dep >= entry_count) continue;  /* Skip invalid (should be caught by validation) */
+
+    if (state[dep] == 1) {  /* Back edge = cycle */
+      return -3;
+    }
+
+    if (state[dep] == 0) {  /* Unvisited */
+      int ret = termux_manifest_dfs_visit(dep, entries, entry_count, state);
+      if (ret != 0) return ret;
+    }
+  }
+
+  state[node] = 2;  /* Mark as visited */
+  return 0;
+}
+
+/*
+ * termux_resolve_manifest_dependencies — Validate dependency graph
+ *
+ * Returns:
+ *   0 on success
+ *  -1 if entries is NULL
+ *  -2 if dependency index out of bounds
+ */
+int termux_resolve_manifest_dependencies(struct termux_manifest_entry_v2 *entries,
+                                         uint32_t entry_count) {
+  if (!entries && entry_count > 0) return -1;
+  if (entry_count == 0) return 0;
+
+  /* Validate all dependencies are within bounds */
+  for (uint32_t i = 0; i < entry_count; i++) {
+    struct termux_manifest_entry_v2 *entry = &entries[i];
+    if (entry->dep_count > TERMUX_MANIFEST_MAX_DEPS) return -2;
+
+    for (uint16_t j = 0; j < entry->dep_count; j++) {
+      if (entry->deps[j] >= entry_count) return -2;
+    }
+  }
+
+  return 0;
+}
+
+/*
+ * termux_detect_manifest_circular_deps — Detect circular dependencies
+ *
+ * Returns:
+ *   0 if no cycles
+ *  -1 if entries is NULL
+ *  -3 if circular dependency detected
+ */
+int termux_detect_manifest_circular_deps(struct termux_manifest_entry_v2 *entries,
+                                         uint32_t entry_count) {
+  if (!entries && entry_count > 0) return -1;
+  if (entry_count == 0) return 0;
+
+  uint8_t *state = (uint8_t *)calloc(entry_count, sizeof(uint8_t));
+  if (!state) return -1;
+
+  int result = 0;
+
+  for (uint32_t i = 0; i < entry_count && result == 0; i++) {
+    if (state[i] == 0) {
+      result = termux_manifest_dfs_visit(i, entries, entry_count, state);
+    }
+  }
+
+  free(state);
+  return result;
 }
