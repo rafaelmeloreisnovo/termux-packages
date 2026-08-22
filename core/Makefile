@@ -30,7 +30,7 @@ OBJECTS := $(SOURCES:.c=.o)
 TEST_OBJECTS := $(TEST_SOURCES:.c=.o)
 DUMPER_OBJECTS := $(DUMPER_SOURCES:.c=.o)
 
-.PHONY: all clean test manifest real-all real-tour real-test real-hygiene
+.PHONY: all clean test manifest real-all real-tour real-test real-hygiene cycle2-source-gate cycle2-extract-gate cycle2-patch-gate cycle2-manifest-gate cycle2-dep-gate
 
 all: $(TARGETS)
 
@@ -443,3 +443,40 @@ real-tour: real-all
 # Same as real-tour but non-zero exit on any failure (CI use).
 real-tour-check: real-all
 	@bash ../docs/REAL_TOUR.sh --check
+
+# ============================================================================
+# Cycle 2 Gates — Source Acquisition (TV-01 to TV-05)
+# ============================================================================
+
+cycle2-source-gate: test-cycle2-2
+	@echo "=== TV-01: SOURCE_FETCH Gate ==="
+	@echo "Repository: $(shell git rev-parse HEAD | cut -c1-12)"
+	@echo "Build timestamp: $(shell date -u +%Y-%m-%dT%H:%M:%SZ)"
+	@echo ""
+	./test-cycle2-2
+	@echo ""
+	@echo "✓ TV-01 (SOURCE_FETCH) gate PASS"
+
+cycle2-extract-gate: test-cycle2-2
+	@echo "=== TV-02: SOURCE_EXTRACT Gate ==="
+	@echo "Note: TV-02 extraction validated as part of TV-01 (source download includes extraction)"
+	./test-cycle2-2
+	@echo "✓ TV-02 (SOURCE_EXTRACT) gate PASS"
+
+cycle2-patch-gate:
+	@echo "=== TV-03: PATCH_APPLY Gate ==="
+	@echo "Note: TV-03 (patch application) is TOKEN_VAZIO - requires test fixture"
+	@echo "Status: GATE_BLOCKED_ON_TV-03_IMPLEMENTATION"
+	@exit 1
+
+cycle2-manifest-gate:
+	@echo "=== TV-04: MANIFEST_BINDING Gate ==="
+	@echo "Note: TV-04 (Manifesto V2) is TOKEN_VAZIO - requires bounds checking implementation"
+	@echo "Status: GATE_BLOCKED_ON_TV-04_IMPLEMENTATION"
+	@exit 1
+
+cycle2-dep-gate:
+	@echo "=== TV-05: DEP_GRAPH Gate ==="
+	@echo "Note: TV-05 (dependency resolution) is TOKEN_VAZIO - requires manifest reading"
+	@echo "Status: GATE_BLOCKED_ON_TV-05_IMPLEMENTATION"
+	@exit 1
