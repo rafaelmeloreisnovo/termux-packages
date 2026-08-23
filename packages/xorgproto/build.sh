@@ -6,6 +6,12 @@ TERMUX_PKG_LICENSE_FILE="COPYING-bigreqsproto, COPYING-compositeproto, COPYING-d
 TERMUX_PKG_MAINTAINER="@termux"
 TERMUX_PKG_VERSION="2025.1"
 TERMUX_PKG_SRCURL=https://xorg.freedesktop.org/archive/individual/proto/xorgproto-${TERMUX_PKG_VERSION}.tar.xz
+# The RAFCODEPHI builder cannot reach the freedesktop publication endpoint.
+# Use X.Org's alternate official archive host while retaining the exact same
+# release bytes and upstream checksum. Normal Termux builds remain unchanged.
+if [[ "${TERMUX_APP_PACKAGE:-}" == "com.termux.rafacodephi" ]]; then
+	TERMUX_PKG_SRCURL=https://ftp.x.org/archive/individual/proto/xorgproto-${TERMUX_PKG_VERSION}.tar.xz
+fi
 TERMUX_PKG_SHA256=56898c716c0578df8a2d828c9c3e5c528277705c0484381a81960fe1a67668e8
 TERMUX_PKG_AUTO_UPDATE=true
 TERMUX_PKG_DEPENDS="xorg-util-macros"
