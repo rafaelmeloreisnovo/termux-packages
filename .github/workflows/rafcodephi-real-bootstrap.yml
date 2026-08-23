@@ -16,6 +16,8 @@ on:
     branches: [main]
     paths:
       - 'scripts/build-rafcodephi-real-bootstrap.sh'
+      - 'scripts/build-rafcodephi-freestanding-probes.sh'
+      - 'scripts/rafcodephi-freestanding/**'
       - 'scripts/apply-rafcodephi-build-properties.py'
       - 'scripts/validate-rafcodephi-build-properties.sh'
       - 'scripts/generate-bootstraps.sh'
@@ -41,6 +43,7 @@ jobs:
       CI: 'true'
       TERMUX_DOCKER_USE_SUDO: '1'
       RAFCODEPHI_PACKAGE_NAME: com.termux.rafacodephi
+      RAFCODEPHI_FRICTION_LANES: '16'
 
     steps:
       - name: Checkout
@@ -60,6 +63,16 @@ jobs:
           fi
           echo "architectures=$ARCHITECTURES" >> "$GITHUB_OUTPUT"
           echo "Selected: $ARCHITECTURES"
+
+      - name: Build freestanding 16-lane probes
+        shell: bash
+        run: |
+          set -euo pipefail
+          chmod +x scripts/build-rafcodephi-freestanding-probes.sh
+          scripts/build-rafcodephi-freestanding-probes.sh
+          cat artifacts/rafcodephi-freestanding/RAFCODEPHI_FREESTANDING16.manifest
+          file artifacts/rafcodephi-freestanding/rafcodephi-presence16-arm
+          file artifacts/rafcodephi-freestanding/rafcodephi-presence16-aarch64
 
       - name: Validate no bridge-only success path
         shell: bash
@@ -140,6 +153,7 @@ jobs:
           grep -Fx 'apt_update_guard=RAFCODEPHI_PACKAGE_REPOSITORY_NOT_PUBLISHED' "$manifest"
           grep -Fx 'claim_allowed_device_runtime=false' "$manifest"
           grep -Fx 'device_runtime_proof=TOKEN_VAZIO' "$manifest"
+          ! grep -q '^sha256_' "$manifest"
           cat "$manifest"
 
       - name: Upload real bootstrap artifacts
@@ -149,6 +163,7 @@ jobs:
           name: rafcodephi-real-bootstrap-${{ steps.arch.outputs.architectures }}-${{ github.sha }}
           path: |
             artifacts/rafcodephi-bootstrap/
+            artifacts/rafcodephi-freestanding/
             build/reports/rafcodephi-real-bootstrap-properties.json
             build/reports/rafcodephi-real-bootstrap.log
             build/reports/rafcodephi-real-bootstrap-status.json
