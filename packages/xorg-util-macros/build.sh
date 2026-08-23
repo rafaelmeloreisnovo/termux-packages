@@ -6,12 +6,11 @@ TERMUX_PKG_MAINTAINER="@termux"
 TERMUX_PKG_VERSION="1.20.2"
 TERMUX_PKG_AUTO_UPDATE=true
 TERMUX_PKG_SRCURL=https://xorg.freedesktop.org/releases/individual/util/util-macros-${TERMUX_PKG_VERSION}.tar.xz
+# RAFCODEPHI uses the same canonical release bytes through an alternate mirror.
+# TERMUX_PKG_SHA256 remains only as source-transport integrity; it is not a
+# runtime/result/evidence gate for the RAFCODEPHI freestanding path.
+if [[ "${TERMUX_APP_PACKAGE:-}" == "com.termux.rafacodephi" ]]; then
+	TERMUX_PKG_SRCURL=https://repo-default.voidlinux.org/distfiles/util-macros-${TERMUX_PKG_VERSION}.tar.xz
+fi
 TERMUX_PKG_SHA256=9ac269eba24f672d7d7b3574e4be5f333d13f04a7712303b1821b2a51ac82e8e
 TERMUX_PKG_PLATFORM_INDEPENDENT=true
-
-# RAFCODEPHI: keep the canonical release bytes and checksum, change only the
-# transport endpoint. The release tarball already carries generated autotools
-# output, so this route needs no autoreconf pass and adds no target runtime code.
-if [[ "${TERMUX_APP_PACKAGE:-}" == "com.termux.rafacodephi" ]]; then
-	TERMUX_PKG_SRCURL=https://sources.voidlinux.org/xorg-util-macros-${TERMUX_PKG_VERSION}/util-macros-${TERMUX_PKG_VERSION}.tar.xz
-fi
