@@ -34,6 +34,14 @@ TERMUX_PKG_CONFFILES="etc/bash.bashrc etc/profile"
 TERMUX_PKG_RM_AFTER_INSTALL="share/man/man1/bashbug.1 bin/bashbug"
 
 termux_step_pre_configure() {
+	# Bash reuses the target config.h while compiling host-side generators.
+	# New GCC releases default to C23, where `bool` is a keyword, but the
+	# target probe can still leave Bash's fallback bool typedef enabled.
+	# Keep RAFCODEPHI host generators on the C17 dialect used by that config.
+	if [[ "${TERMUX_APP_PACKAGE:-}" == "com.termux.rafacodephi" ]]; then
+		export CFLAGS_FOR_BUILD="${CFLAGS_FOR_BUILD:--g} -std=gnu17"
+	fi
+
 	local _MAIN_VERSION="${TERMUX_PKG_VERSION%.*}" _PATCH_VERSION="${TERMUX_PKG_VERSION##*.}"
 	(( _PATCH_VERSION == 0 )) && return
 	local PATCH_NUM PATCHFILE
