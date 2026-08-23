@@ -54,7 +54,7 @@ if [[ "$ARCHITECTURES" == *x86* ]]; then
     exit 2
 fi
 
-for cmd in python3 unzip zip file strings sha256sum grep sed; do
+for cmd in python3 unzip zip file strings grep sed; do
     command -v "$cmd" >/dev/null || { echo "missing required command: $cmd" >&2; exit 127; }
 done
 [[ -f "$PROPERTIES" ]] || { echo "missing $PROPERTIES" >&2; exit 2; }
@@ -138,8 +138,8 @@ for arch in "${arch_list[@]}"; do
     [[ -s "$zip_path" ]] || { echo "missing generated $zip_path" >&2; exit 1; }
 
     # Seal the upstream-generated bootstrap with app-side evidence metadata before
-    # hashing/publication. Standard Termux symlinks in SYMLINKS.txt count as
-    # installed entries; they are not materialized inside the archive.
+    # publication. Standard Termux symlinks in SYMLINKS.txt count as installed
+    # entries; they are not materialized inside the archive.
     python3 - "$zip_path" "$PACKAGE_NAME" "$TARGET_PREFIX" "$arch" "$API_RECEIVER_COMPONENT" <<'PY'
 import json
 import os
@@ -205,7 +205,6 @@ for number, line in enumerate(symlink_text.splitlines(), 1):
     if link.startswith("/") or ".." in link or "\\" in link:
         raise SystemExit(f"unsafe symlink destination line {number}: {link!r}")
     symlink_destinations.add(link)
-# Generated evidence and fail-closed repository files are included below.
 available = names | symlink_destinations | {
     "BOOTSTRAP_INFO",
     "BOOTSTRAP_PROFILE.json",
@@ -228,8 +227,6 @@ profile = {
     "required_entries": required,
     "legacy_prefix_forbidden": True,
     "bridge_markers_forbidden": True,
-    # This describes the archive itself. TermuxInstaller atomically rewrites
-    # this field to true only after extraction at the Android-assigned prefix.
     "runtime_materialized": False,
     "claim_allowed": False,
     "release_allowed": False,
@@ -421,10 +418,9 @@ PY
 
     out="$OUT_DIR/rafcodephi-bootstrap-${arch}.zip"
     cp "$zip_path" "$out"
-    digest="$(sha256sum "$out" | awk '{print $1}')"
     bytes="$(wc -c < "$out" | tr -d ' ')"
-    printf 'artifact_%s=%s\nsha256_%s=%s\nbytes_%s=%s\n' "$arch" "$out" "$arch" "$digest" "$arch" "$bytes" >> "$manifest"
-    echo "PASS real bootstrap arch=$arch sha256=$digest bytes=$bytes"
+    printf 'artifact_%s=%s\nbytes_%s=%s\n' "$arch" "$out" "$arch" "$bytes" >> "$manifest"
+    echo "PASS real bootstrap arch=$arch bytes=$bytes"
 done
 
 printf 'claim_allowed_device_runtime=false\ndevice_runtime_proof=TOKEN_VAZIO\n' >> "$manifest"
