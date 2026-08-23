@@ -23,6 +23,11 @@ mkdir -p "$OUT"
 ! readelf -S "$OUT/rafcodephi-presence16-aarch64" | grep -Eq '\.(dynsym|symtab)'
 ! grep -Eq '^[[:space:]]*(bl|blx|ret)[[:space:]]' "$ROOT/scripts/rafcodephi-freestanding/rafcodephi_presence16_arm32.S"
 ! grep -Eq '^[[:space:]]*(bl|blr|ret)[[:space:]]' "$ROOT/scripts/rafcodephi-freestanding/rafcodephi_presence16_aarch64.S"
+! grep -Eq '^[[:space:]]*b[[:space:]]+_start([[:space:]]|$)' "$ROOT/scripts/rafcodephi-freestanding/rafcodephi_presence16_arm32.S"
+! grep -Eq '^[[:space:]]*b([.][a-z]+)?[[:space:]]+_start([[:space:]]|$)' "$ROOT/scripts/rafcodephi-freestanding/rafcodephi_presence16_aarch64.S"
+
+test "$(grep -c '^    movw r0, #0x0711$' "$ROOT/scripts/rafcodephi-freestanding/rafcodephi_presence16_arm32.S")" -eq 16
+test "$(grep -c '^    mov x0, #0x0711$' "$ROOT/scripts/rafcodephi-freestanding/rafcodephi_presence16_aarch64.S")" -eq 16
 
 printf 'freestanding=1\nlibc=0\nheap=0\ngc=0\ndynamic=0\nsymbol_table=0\nloop=0\ntail_call=0\nparallel_lanes=16\nhashing_gate=0\narm_bytes=%s\naarch64_bytes=%s\n' \
   "$(wc -c < "$OUT/rafcodephi-presence16-arm" | tr -d ' ')" \
