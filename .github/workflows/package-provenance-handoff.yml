@@ -1,0 +1,44 @@
+name: Package Provenance Handoff
+
+on:
+  push:
+    paths:
+      - 'docs/assurance/package-provenance-handoff.v1.json'
+      - 'scripts/validate_package_provenance_handoff.py'
+      - '.github/workflows/package-provenance-handoff.yml'
+  pull_request:
+    paths:
+      - 'docs/assurance/package-provenance-handoff.v1.json'
+      - 'scripts/validate_package_provenance_handoff.py'
+      - '.github/workflows/package-provenance-handoff.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  assurance:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Validate package provenance/handoff contract
+        run: python3 scripts/validate_package_provenance_handoff.py
+      - name: Negative gate — flattening licenses and promoting build to runtime must fail
+        run: |
+          cp docs/assurance/package-provenance-handoff.v1.json /tmp/package-assurance.json
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+          p = Path('docs/assurance/package-provenance-handoff.v1.json')
+          d = json.loads(p.read_text())
+          d['license']['single_license_flattening_allowed'] = True
+          d['handoff']['build_success_is_install_success'] = True
+          d['handoff']['install_success_is_runtime_success'] = True
+          d['claim_allowed'] = True
+          p.write_text(json.dumps(d))
+          PY
+          if python3 scripts/validate_package_provenance_handoff.py; then
+            echo 'FAIL: package license/runtime over-promotion accepted' >&2
+            exit 1
+          fi
+          mv /tmp/package-assurance.json docs/assurance/package-provenance-handoff.v1.json
+          python3 scripts/validate_package_provenance_handoff.py
