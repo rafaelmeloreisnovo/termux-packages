@@ -1,0 +1,118 @@
+{
+  "schema": "rafaelia.package-provenance-handoff.v1",
+  "repository": "rafaelmeloreisnovo/termux-packages",
+  "observed_commit": "b58746c5903ff160edf7f59d91c0c9689b462488",
+  "role": "package_source_factory",
+  "authority": {
+    "local": "source_recipe_package_handoff",
+    "federated_router": "rafaelmeloreisnovo/Mapa",
+    "executor": "rafaelmeloreisnovo/RafGitTools",
+    "consumer_runtime_authority": "external_consumer_repository"
+  },
+  "license": {
+    "anchor": "LICENSE.md@a901a9b5b014d9e50316d300066ed0069f1f4bd8",
+    "package_recipe_rule": "scripts_and_patches_follow_actual_package_license",
+    "infrastructure_rule": "outside_packages_x11_root_disabled_trees_is_Apache-2.0",
+    "single_license_flattening_allowed": false,
+    "package_level_license_evidence_state": "TOKEN_VAZIO_PER_PACKAGE_UNTIL_RECONCILED"
+  },
+  "handoff": {
+    "required_chain": [
+      "source_repository_or_url",
+      "source_ref_or_version",
+      "source_digest",
+      "recipe_path_and_commit",
+      "package_name_and_version",
+      "abi_or_architecture",
+      "artifact_digest",
+      "producer_schema_version",
+      "consumer_expected_identity",
+      "validator_result"
+    ],
+    "build_success_is_install_success": false,
+    "install_success_is_runtime_success": false,
+    "documentation_is_executable_handoff": false,
+    "physical_android_runtime_state": "TOKEN_VAZIO_UNLESS_DEVICE_RECEIPT"
+  },
+  "provenance": {
+    "state": "PARTIAL_PATH_AWARE_REQUIRED",
+    "source_pin_required": true,
+    "download_checksum_required_when_recipe_supports_it": true,
+    "generated_manifest_must_match_consumed_bytes": true,
+    "unknown_origin": "TOKEN_VAZIO"
+  },
+  "security_privacy": {
+    "state": "FAIL_CLOSED",
+    "critical_surfaces": [
+      "source_urls",
+      "checksums",
+      "archive_extraction",
+      "build_scripts",
+      "signing_boundaries",
+      "secrets",
+      "public_build_logs",
+      "producer_consumer_schema"
+    ],
+    "forbidden_public_receipt_payloads": [
+      "credentials",
+      "tokens",
+      "private_home_paths",
+      "user_data",
+      "unrelated_environment_values"
+    ]
+  },
+  "gaps": [
+    {
+      "id": "TV-PACKAGE-LICENSE-INVENTORY",
+      "state": "TOKEN_VAZIO",
+      "urgency": "P0",
+      "owner": "package_provenance_auditor",
+      "closure": "bind governing upstream/package license for every modified or distributed recipe path"
+    },
+    {
+      "id": "TV-SOURCE-RECIPE-ARTIFACT-CHAIN",
+      "state": "TOKEN_VAZIO",
+      "urgency": "P0",
+      "owner": "package_build_producer",
+      "closure": "emit exact source/recipe/artifact digests and schema in package handoff receipt"
+    },
+    {
+      "id": "TV-CONSUMER-HANDOFF",
+      "state": "TOKEN_VAZIO",
+      "urgency": "P0",
+      "owner": "producer_and_consumer",
+      "closure": "consumer verifies exact package/artifact/schema identity before promotion"
+    },
+    {
+      "id": "TV-PHYSICAL-PKG-RUNTIME",
+      "state": "TOKEN_VAZIO",
+      "urgency": "P1",
+      "owner": "physical_runtime_evidence_producer",
+      "closure": "install/execute representative package on physical Android/Termux and preserve exact receipt"
+    },
+    {
+      "id": "TV-STAGED-REAL-BITRAF-PHASE",
+      "state": "TOKEN_VAZIO",
+      "urgency": "P1",
+      "owner": "staged_handoff_maintainer",
+      "closure": "bind executable schemas/error decisions for operational REAL-BITRAF64-PHASE9 boundaries"
+    }
+  ],
+  "risk": {
+    "severity": "CRITICAL",
+    "summary": "per-package licensing and source integrity can be lost if the tree is treated as one license or build success is promoted into consumer/runtime truth",
+    "mitigations": [
+      "path-aware package licensing",
+      "source digest and recipe commit binding",
+      "artifact digest and schema handoff",
+      "consumer-side verification",
+      "no secret-bearing public receipts",
+      "physical runtime remains separate evidence"
+    ]
+  },
+  "rollback": {
+    "available": true,
+    "procedure": "revert assurance-only branch; no package recipe, source pin or produced artifact is changed by this contract"
+  },
+  "claim_allowed": false
+}
