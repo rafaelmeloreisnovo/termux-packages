@@ -1,0 +1,83 @@
+{
+  "schema": "rafcodephi.work.packages.v1",
+  "decision_id": "DEC-RAFCODEPHI-WORK-V1-20260905",
+  "state": "PACKAGE_PROFILE_CANDIDATE",
+  "release_allowed": false,
+  "producer": {
+    "repository": "rafaelmeloreisnovo/termux-packages",
+    "base_commit": "cdd3d68d89e1f6051a0798561a586e110d4004b4"
+  },
+  "consumer": {
+    "repository": "rafaelmeloreisnovo/termux-app-rafacodephi",
+    "base_commit": "daf6a45f6251630b444cfd9c3b8d343c16709322",
+    "application_id": "com.termux.rafacodephi"
+  },
+  "required_packages": [
+    "bash",
+    "coreutils",
+    "termux-tools",
+    "apt",
+    "dpkg",
+    "git",
+    "openssh",
+    "clang",
+    "lld",
+    "make",
+    "cmake",
+    "python",
+    "perl",
+    "lua",
+    "rsync",
+    "curl",
+    "wget",
+    "tar",
+    "gzip",
+    "xz-utils",
+    "zip",
+    "unzip"
+  ],
+  "required_handoff_fields": [
+    "packages_commit_sha",
+    "bootstrap_manifest_hash",
+    "repository_metadata_hash",
+    "package_index_hash",
+    "package_artifact_hashes",
+    "abi",
+    "built_at",
+    "build_receipt"
+  ],
+  "runtime_acceptance": [
+    "dpkg --version exits successfully",
+    "apt --version exits successfully",
+    "pkg update reaches the declared repository",
+    "pkg install installs a designated test package",
+    "git --version exits successfully",
+    "clang compiles and runs a minimal program",
+    "python executes a minimal probe"
+  ],
+  "gaps": [
+    {
+      "gap_id": "TV-WORK-PKG-PROFILE-AVAILABILITY",
+      "state": "TOKEN_VAZIO",
+      "missing_field": "all required package recipes/build outputs verified at pinned producer commit",
+      "next_probe": "resolve each required package to a producer path and build status",
+      "claim_allowed": false
+    },
+    {
+      "gap_id": "TV-WORK-BOOTSTRAP-BUILD",
+      "state": "TOKEN_VAZIO",
+      "missing_field": "bootstrap built from pinned package source with manifest/hash receipt",
+      "next_probe": "produce deterministic bootstrap candidate for required ABI",
+      "claim_allowed": false
+    },
+    {
+      "gap_id": "TV-WORK-REPOSITORY-PUBLISH",
+      "state": "TOKEN_VAZIO",
+      "missing_field": "indexed runtime-accessible repository snapshot for WORK-v1",
+      "next_probe": "generate repository metadata and verify device fetch",
+      "claim_allowed": false
+    }
+  ],
+  "identity_rule": "filename/title != identity; producer commit + path + artifact hash + ABI define package occurrence identity",
+  "promotion_rule": "package is WORK-approved only after build provenance and device runtime evidence"
+}
