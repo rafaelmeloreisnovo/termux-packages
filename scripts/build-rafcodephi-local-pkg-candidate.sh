@@ -23,6 +23,15 @@ while (($#)); do
   esac
 done
 
+# GitHub hosted runners may bind-mount a checkout whose numeric owner differs
+# from the package-builder image's `builder` user. Repair only that CI mismatch;
+# the actual package build continues as the unprivileged builder user.
+if [[ "${CI:-false}" == "true" && ! -w "$ROOT" ]]; then
+  command -v sudo >/dev/null || { echo "CI bind mount is not writable and sudo is unavailable" >&2; exit 73; }
+  sudo chown -R "$(id -u):$(id -g)" "$ROOT"
+fi
+[[ -w "$ROOT" ]] || { echo "package source checkout is not writable: $ROOT" >&2; exit 73; }
+
 mkdir -p "$LKG_STAGE" "$CANDIDATE_STAGE" "$RECEIPTS"
 
 # 1) Produce the already-audited source-built real-pkg bootstrap. This remains
@@ -38,7 +47,6 @@ for arch in "${ARCHES[@]}"; do
   [[ "$arch" == "arm" || "$arch" == "aarch64" ]] || { echo "unsupported arch=$arch" >&2; exit 2; }
   ./build-package-rafcodephi.sh -a "$arch" nano python git
   test -s "$LKG_STAGE/rafcodephi-bootstrap-${arch}.zip"
-
 done
 
 # 3) Promote copies only. The persistent external apt source remains disabled;
