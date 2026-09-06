@@ -1,0 +1,63 @@
+name: RAFCODEPHI Local Pkg Contract
+
+on:
+  pull_request:
+    paths:
+      - 'scripts/rafcodephi-core-packages.txt'
+      - 'scripts/build-rafcodephi-core-matrix.sh'
+      - 'scripts/build-rafcodephi-local-pkg-candidate.sh'
+      - 'scripts/emit-rafcodephi-local-repo.py'
+      - 'scripts/emit-rafcodephi-matrix-receipt.py'
+      - 'scripts/promote-rafcodephi-local-pkg-candidate.py'
+      - '.github/workflows/rafcodephi-local-pkg-contract.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  contract:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: Shell syntax
+        run: |
+          set -euo pipefail
+          bash -n scripts/build-rafcodephi-core-matrix.sh
+          bash -n scripts/build-rafcodephi-local-pkg-candidate.sh
+          bash -n build-package-rafcodephi.sh
+
+      - name: Python syntax
+        run: |
+          set -euo pipefail
+          python3 -m py_compile \
+            scripts/emit-rafcodephi-local-repo.py \
+            scripts/emit-rafcodephi-matrix-receipt.py \
+            scripts/promote-rafcodephi-local-pkg-candidate.py
+
+      - name: Contract invariants
+        run: |
+          set -euo pipefail
+          grep -Fx 'apt' scripts/rafcodephi-core-packages.txt
+          grep -Fx 'dpkg' scripts/rafcodephi-core-packages.txt
+          grep -Fx 'proot' scripts/rafcodephi-core-packages.txt
+          grep -Fx 'termux-tools' scripts/rafcodephi-core-packages.txt
+          grep -Fx 'termux-api' scripts/rafcodephi-core-packages.txt
+          grep -Fx 'nano' scripts/rafcodephi-core-packages.txt
+          grep -Fx 'python' scripts/rafcodephi-core-packages.txt
+          grep -Fx 'git' scripts/rafcodephi-core-packages.txt
+          grep -F 'LOCAL_HASH_BOUND_TEST_CHANNEL' scripts/promote-rafcodephi-local-pkg-candidate.py
+          grep -F 'persistent_external_repo_state' scripts/promote-rafcodephi-local-pkg-candidate.py
+          grep -F 'claim_allowed_pkg_runtime": False' scripts/promote-rafcodephi-local-pkg-candidate.py
+          grep -F 'device_validation": "TOKEN_VAZIO"' scripts/promote-rafcodephi-local-pkg-candidate.py
+
+      - name: No binary prefix rewriting
+        run: |
+          set -euo pipefail
+          ! grep -REn 'replace\(.*/data/data/com\.termux/files/usr' \
+            scripts/promote-rafcodephi-local-pkg-candidate.py \
+            scripts/emit-rafcodephi-local-repo.py
+          echo 'RAFCODEPHI_NO_BINARY_PREFIX_REWRITE=PASS'
