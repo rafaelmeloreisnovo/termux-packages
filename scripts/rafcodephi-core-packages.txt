@@ -15,6 +15,7 @@ ncurses-utils
 proot
 sed
 tar
+termux-api
 termux-tools
 
 # Real-pkg device smoke payloads.
