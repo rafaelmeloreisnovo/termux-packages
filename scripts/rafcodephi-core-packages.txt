@@ -1,0 +1,23 @@
+# RAFCODEPHI source-built bootstrap/package-manager roots.
+# Dependencies are resolved by the termux-packages build system and are part of
+# the emitted local repository handoff.
+apt
+bash
+busybox
+ca-certificates
+coreutils
+dpkg
+findutils
+gawk
+grep
+gzip
+ncurses-utils
+proot
+sed
+tar
+termux-tools
+
+# Real-pkg device smoke payloads.
+nano
+python
+git
