@@ -21,13 +21,20 @@ on:
         options:
           - arm
           - aarch64
+  push:
+    branches:
+      - run/rafcodephi-runtime-arm-20260909
 
 permissions:
   contents: read
 
 concurrency:
-  group: rafcodephi-runtime-${{ inputs.target_arch }}-${{ inputs.profile }}
+  group: rafcodephi-runtime-${{ github.ref }}
   cancel-in-progress: false
+
+env:
+  RAFCODEPHI_PROFILE: ${{ github.event_name == 'workflow_dispatch' && inputs.profile || 'runtime' }}
+  RAFCODEPHI_ARCH: ${{ github.event_name == 'workflow_dispatch' && inputs.target_arch || 'arm' }}
 
 jobs:
   build:
@@ -43,56 +50,75 @@ jobs:
       - name: Resolve minimal profile
         id: profile
         env:
-          PROFILE: ${{ inputs.profile }}
+          PROFILE: ${{ env.RAFCODEPHI_PROFILE }}
         run: |
           set -euo pipefail
-          bootstrap=(apt bash busybox dpkg ca-certificates coreutils termux-tools)
-          runtime=(openssl curl git python procps)
-          vectras=(proot)
-          api=(termux-api)
+          bootstrap_outputs=(apt bash busybox dpkg ca-certificates coreutils termux-tools)
+          bootstrap_recipes=(apt bash busybox dpkg ca-certificates coreutils termux-tools)
+          runtime_outputs=(openssl curl git python procps)
+          runtime_recipes=(openssl libcurl git python procps)
+          vectras_outputs=(proot)
+          vectras_recipes=(proot)
+          api_outputs=(termux-api)
+          api_recipes=(termux-api)
 
-          packages=("${bootstrap[@]}")
+          required=("${bootstrap_outputs[@]}")
+          recipes=("${bootstrap_recipes[@]}")
           case "$PROFILE" in
             bootstrap) ;;
-            runtime) packages+=("${runtime[@]}") ;;
-            vectras) packages+=("${runtime[@]}" "${vectras[@]}") ;;
-            full) packages+=("${runtime[@]}" "${vectras[@]}" "${api[@]}") ;;
+            runtime)
+              required+=("${runtime_outputs[@]}")
+              recipes+=("${runtime_recipes[@]}")
+              ;;
+            vectras)
+              required+=("${runtime_outputs[@]}" "${vectras_outputs[@]}")
+              recipes+=("${runtime_recipes[@]}" "${vectras_recipes[@]}")
+              ;;
+            full)
+              required+=("${runtime_outputs[@]}" "${vectras_outputs[@]}" "${api_outputs[@]}")
+              recipes+=("${runtime_recipes[@]}" "${vectras_recipes[@]}" "${api_recipes[@]}")
+              ;;
             *) echo "unknown profile: $PROFILE" >&2; exit 64 ;;
           esac
 
-          printf '%s\n' "${packages[@]}" | tee rafcodephi-required-packages.txt
-          printf 'packages=%s\n' "${packages[*]}" >> "$GITHUB_OUTPUT"
+          printf '%s\n' "${required[@]}" | tee rafcodephi-required-packages.txt
+          printf '%s\n' "${recipes[@]}" | tee rafcodephi-source-recipes.txt
+          paste rafcodephi-required-packages.txt rafcodephi-source-recipes.txt > rafcodephi-package-source-map.tsv
+          printf 'recipes=%s\n' "${recipes[*]}" >> "$GITHUB_OUTPUT"
 
       - name: Capture recipe provenance and license metadata
         run: |
           set -euo pipefail
           : > rafcodephi-recipe-sha256.txt
           : > rafcodephi-license-metadata.tsv
-          while read -r pkg; do
-            recipe="packages/${pkg}/build.sh"
-            test -f "$recipe"
+          while IFS=$'\t' read -r output_pkg recipe_pkg; do
+            recipe="packages/${recipe_pkg}/build.sh"
+            if [[ ! -f "$recipe" ]]; then
+              printf 'missing recipe: output=%s source=%s path=%s\n' "$output_pkg" "$recipe_pkg" "$recipe" >&2
+              exit 65
+            fi
             sha256sum "$recipe" >> rafcodephi-recipe-sha256.txt
             license="$(grep -m1 '^TERMUX_PKG_LICENSE=' "$recipe" || true)"
             homepage="$(grep -m1 '^TERMUX_PKG_HOMEPAGE=' "$recipe" || true)"
-            printf '%s\t%s\t%s\n' "$pkg" "$license" "$homepage" >> rafcodephi-license-metadata.tsv
-          done < rafcodephi-required-packages.txt
+            printf '%s\t%s\t%s\t%s\n' "$output_pkg" "$recipe_pkg" "$license" "$homepage" >> rafcodephi-license-metadata.tsv
+          done < rafcodephi-package-source-map.tsv
 
       - name: Build only selected RAFCODEPHI packages and dependency closure
         env:
-          ARCH: ${{ inputs.target_arch }}
-          PACKAGES: ${{ steps.profile.outputs.packages }}
+          ARCH: ${{ env.RAFCODEPHI_ARCH }}
+          RECIPES: ${{ steps.profile.outputs.recipes }}
         run: |
           set -euo pipefail
           # Do not use -I: official Termux binary dependencies target com.termux
           # and must not be mixed with com.termux.rafacodephi packages.
-          read -r -a package_array <<< "$PACKAGES"
-          ./scripts/run-docker.sh ./build-package.sh -C -a "$ARCH" "${package_array[@]}"
+          read -r -a recipe_array <<< "$RECIPES"
+          ./scripts/run-docker.sh ./build-package.sh -C -a "$ARCH" "${recipe_array[@]}"
 
       - name: Produce content-addressed receipt
         if: always()
         env:
-          ARCH: ${{ inputs.target_arch }}
-          PROFILE: ${{ inputs.profile }}
+          ARCH: ${{ env.RAFCODEPHI_ARCH }}
+          PROFILE: ${{ env.RAFCODEPHI_PROFILE }}
         run: |
           set -euo pipefail
           mkdir -p rafcodephi-artifacts
@@ -110,8 +136,10 @@ jobs:
             echo "profile=${PROFILE}"
             echo "claim_allowed=false"
             echo "packages=$(tr '\n' ' ' < rafcodephi-required-packages.txt)"
+            echo "source_recipes=$(tr '\n' ' ' < rafcodephi-source-recipes.txt)"
           } > rafcodephi-package-build.receipt
-          cp rafcodephi-required-packages.txt rafcodephi-recipe-sha256.txt \
+          cp rafcodephi-required-packages.txt rafcodephi-source-recipes.txt \
+             rafcodephi-package-source-map.tsv rafcodephi-recipe-sha256.txt \
              rafcodephi-license-metadata.tsv rafcodephi-debs.sha256 \
              rafcodephi-package-build.receipt rafcodephi-artifacts/
 
@@ -119,6 +147,6 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v6
         with:
-          name: rafcodephi-${{ inputs.profile }}-${{ inputs.target_arch }}-${{ github.sha }}
+          name: rafcodephi-${{ env.RAFCODEPHI_PROFILE }}-${{ env.RAFCODEPHI_ARCH }}-${{ github.sha }}
           path: rafcodephi-artifacts/
           if-no-files-found: error
