@@ -21,13 +21,20 @@ on:
         options:
           - arm
           - aarch64
+  push:
+    branches:
+      - run/rafcodephi-runtime-arm-20260909
 
 permissions:
   contents: read
 
 concurrency:
-  group: rafcodephi-runtime-${{ inputs.target_arch }}-${{ inputs.profile }}
+  group: rafcodephi-runtime-${{ github.ref }}
   cancel-in-progress: false
+
+env:
+  RAFCODEPHI_PROFILE: ${{ github.event_name == 'workflow_dispatch' && inputs.profile || 'runtime' }}
+  RAFCODEPHI_ARCH: ${{ github.event_name == 'workflow_dispatch' && inputs.target_arch || 'arm' }}
 
 jobs:
   build:
@@ -43,7 +50,7 @@ jobs:
       - name: Resolve minimal profile
         id: profile
         env:
-          PROFILE: ${{ inputs.profile }}
+          PROFILE: ${{ env.RAFCODEPHI_PROFILE }}
         run: |
           set -euo pipefail
           bootstrap=(apt bash busybox dpkg ca-certificates coreutils termux-tools)
@@ -79,7 +86,7 @@ jobs:
 
       - name: Build only selected RAFCODEPHI packages and dependency closure
         env:
-          ARCH: ${{ inputs.target_arch }}
+          ARCH: ${{ env.RAFCODEPHI_ARCH }}
           PACKAGES: ${{ steps.profile.outputs.packages }}
         run: |
           set -euo pipefail
@@ -91,8 +98,8 @@ jobs:
       - name: Produce content-addressed receipt
         if: always()
         env:
-          ARCH: ${{ inputs.target_arch }}
-          PROFILE: ${{ inputs.profile }}
+          ARCH: ${{ env.RAFCODEPHI_ARCH }}
+          PROFILE: ${{ env.RAFCODEPHI_PROFILE }}
         run: |
           set -euo pipefail
           mkdir -p rafcodephi-artifacts
@@ -119,6 +126,6 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v6
         with:
-          name: rafcodephi-${{ inputs.profile }}-${{ inputs.target_arch }}-${{ github.sha }}
+          name: rafcodephi-${{ env.RAFCODEPHI_PROFILE }}-${{ env.RAFCODEPHI_ARCH }}-${{ github.sha }}
           path: rafcodephi-artifacts/
           if-no-files-found: error
