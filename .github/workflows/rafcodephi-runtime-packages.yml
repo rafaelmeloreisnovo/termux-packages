@@ -1,0 +1,124 @@
+name: RAFCODEPHI Runtime Packages
+
+on:
+  workflow_dispatch:
+    inputs:
+      profile:
+        description: "Minimal package profile"
+        required: true
+        type: choice
+        default: runtime
+        options:
+          - bootstrap
+          - runtime
+          - vectras
+          - full
+      target_arch:
+        description: "Target ABI lane"
+        required: true
+        type: choice
+        default: arm
+        options:
+          - arm
+          - aarch64
+
+permissions:
+  contents: read
+
+concurrency:
+  group: rafcodephi-runtime-${{ inputs.target_arch }}-${{ inputs.profile }}
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 180
+    steps:
+      - name: Checkout pinned source tree
+        uses: actions/checkout@v6
+
+      - name: Configure custom Termux package identity
+        run: bash scripts/rafcodephi-configure-package-name.sh
+
+      - name: Resolve minimal profile
+        id: profile
+        env:
+          PROFILE: ${{ inputs.profile }}
+        run: |
+          set -euo pipefail
+          bootstrap=(apt bash busybox dpkg ca-certificates coreutils termux-tools)
+          runtime=(openssl curl git python procps)
+          vectras=(proot)
+          api=(termux-api)
+
+          packages=("${bootstrap[@]}")
+          case "$PROFILE" in
+            bootstrap) ;;
+            runtime) packages+=("${runtime[@]}") ;;
+            vectras) packages+=("${runtime[@]}" "${vectras[@]}") ;;
+            full) packages+=("${runtime[@]}" "${vectras[@]}" "${api[@]}") ;;
+            *) echo "unknown profile: $PROFILE" >&2; exit 64 ;;
+          esac
+
+          printf '%s\n' "${packages[@]}" | tee rafcodephi-required-packages.txt
+          printf 'packages=%s\n' "${packages[*]}" >> "$GITHUB_OUTPUT"
+
+      - name: Capture recipe provenance and license metadata
+        run: |
+          set -euo pipefail
+          : > rafcodephi-recipe-sha256.txt
+          : > rafcodephi-license-metadata.tsv
+          while read -r pkg; do
+            recipe="packages/${pkg}/build.sh"
+            test -f "$recipe"
+            sha256sum "$recipe" >> rafcodephi-recipe-sha256.txt
+            license="$(grep -m1 '^TERMUX_PKG_LICENSE=' "$recipe" || true)"
+            homepage="$(grep -m1 '^TERMUX_PKG_HOMEPAGE=' "$recipe" || true)"
+            printf '%s\t%s\t%s\n' "$pkg" "$license" "$homepage" >> rafcodephi-license-metadata.tsv
+          done < rafcodephi-required-packages.txt
+
+      - name: Build only selected RAFCODEPHI packages and dependency closure
+        env:
+          ARCH: ${{ inputs.target_arch }}
+          PACKAGES: ${{ steps.profile.outputs.packages }}
+        run: |
+          set -euo pipefail
+          # Do not use -I: official Termux binary dependencies target com.termux
+          # and must not be mixed with com.termux.rafacodephi packages.
+          read -r -a package_array <<< "$PACKAGES"
+          ./scripts/run-docker.sh ./build-package.sh -C -a "$ARCH" "${package_array[@]}"
+
+      - name: Produce content-addressed receipt
+        if: always()
+        env:
+          ARCH: ${{ inputs.target_arch }}
+          PROFILE: ${{ inputs.profile }}
+        run: |
+          set -euo pipefail
+          mkdir -p rafcodephi-artifacts
+          if compgen -G 'output/*.deb' > /dev/null; then
+            cp output/*.deb rafcodephi-artifacts/
+          fi
+          find rafcodephi-artifacts -type f -name '*.deb' -print0 \
+            | sort -z \
+            | xargs -0r sha256sum > rafcodephi-debs.sha256
+          {
+            echo "schema=rafcodephi.package-build-receipt/v1"
+            echo "source_commit=${GITHUB_SHA}"
+            echo "app_package=com.termux.rafacodephi"
+            echo "target_arch=${ARCH}"
+            echo "profile=${PROFILE}"
+            echo "claim_allowed=false"
+            echo "packages=$(tr '\n' ' ' < rafcodephi-required-packages.txt)"
+          } > rafcodephi-package-build.receipt
+          cp rafcodephi-required-packages.txt rafcodephi-recipe-sha256.txt \
+             rafcodephi-license-metadata.tsv rafcodephi-debs.sha256 \
+             rafcodephi-package-build.receipt rafcodephi-artifacts/
+
+      - name: Upload immutable build evidence
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: rafcodephi-${{ inputs.profile }}-${{ inputs.target_arch }}-${{ github.sha }}
+          path: rafcodephi-artifacts/
+          if-no-files-found: error
