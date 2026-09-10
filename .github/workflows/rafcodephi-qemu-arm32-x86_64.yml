@@ -1,0 +1,93 @@
+name: RAFCODEPHI QEMU ARM32 x86_64 Gate
+
+on:
+  pull_request:
+    paths:
+      - 'packages/qemu-system-x86-64-headless/**'
+      - 'packages/rafcodephi-vectras-profile/**'
+      - '.github/workflows/rafcodephi-qemu-arm32-x86_64.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: rafcodephi-qemu-arm32-x86_64-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  arm32-qemu-system-x86_64:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 240
+
+    steps:
+      - name: Checkout exact candidate
+        uses: actions/checkout@v6
+
+      - name: Configure RAFCODEPHI package prefix
+        run: bash scripts/rafcodephi-configure-package-name.sh
+
+      - name: Assert recipe requests x86_64-softmmu on ARM32
+        run: |
+          set -euo pipefail
+          recipe=packages/qemu-system-x86-64-headless/build.sh
+          grep -Fq '"$TERMUX_ARCH" == "arm"' "$recipe"
+          grep -Fq 'QEMU_TARGETS+="x86_64-softmmu,"' "$recipe"
+          grep -Fq 'ARM32 QEMU build did not produce bin/qemu-system-x86_64' "$recipe"
+
+      - name: Build QEMU producing recipe for ARM32
+        run: |
+          set -euo pipefail
+          ./scripts/run-docker.sh ./build-package.sh -C -a arm qemu-system-x86-64-headless
+
+      - name: Verify ARM package contains qemu-system-x86_64
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p rafcodephi-qemu-arm32-evidence/extracted
+
+          mapfile -t debs < <(find output -maxdepth 1 -type f \
+            -name 'qemu-system-x86-64-headless*.deb' -print | sort)
+          if (( ${#debs[@]} != 1 )); then
+            printf 'expected exactly one qemu-system-x86-64-headless deb, found %d\n' "${#debs[@]}" >&2
+            printf '%s\n' "${debs[@]}" >&2
+            exit 71
+          fi
+          deb="${debs[0]}"
+
+          dpkg-deb -c "$deb" | tee rafcodephi-qemu-arm32-evidence/deb-contents.txt
+          if ! grep -Eq '/files/usr/bin/qemu-system-x86_64$' rafcodephi-qemu-arm32-evidence/deb-contents.txt; then
+            echo 'ARM deb is missing files/usr/bin/qemu-system-x86_64' >&2
+            exit 72
+          fi
+
+          dpkg-deb -x "$deb" rafcodephi-qemu-arm32-evidence/extracted
+          bin="$(find rafcodephi-qemu-arm32-evidence/extracted -type f -path '*/files/usr/bin/qemu-system-x86_64' -print -quit)"
+          test -n "$bin"
+          test -x "$bin"
+
+          file "$bin" | tee rafcodephi-qemu-arm32-evidence/file.txt
+          readelf -h "$bin" | tee rafcodephi-qemu-arm32-evidence/readelf-header.txt
+          grep -Eq 'ELF 32-bit.*ARM' rafcodephi-qemu-arm32-evidence/file.txt
+          grep -Eq 'Class:[[:space:]]+ELF32' rafcodephi-qemu-arm32-evidence/readelf-header.txt
+          grep -Eq 'Machine:[[:space:]]+ARM' rafcodephi-qemu-arm32-evidence/readelf-header.txt
+
+          sha256sum "$deb" "$bin" | tee rafcodephi-qemu-arm32-evidence/SHA256SUMS.txt
+          {
+            echo 'schema=rafcodephi.qemu-arm32-x86_64-build-receipt/v1'
+            echo "source_commit=${GITHUB_SHA}"
+            echo 'target_package_arch=arm'
+            echo 'guest_system_target=x86_64-softmmu'
+            echo 'required_binary=qemu-system-x86_64'
+            echo 'artifact_state=PROVEN_STRUCTURAL'
+            echo 'physical_device_runtime=TOKEN_VAZIO'
+            echo 'claim_allowed=false'
+          } > rafcodephi-qemu-arm32-evidence/receipt.txt
+
+      - name: Upload immutable ARM32 package evidence
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: rafcodephi-qemu-arm32-x86_64-${{ github.sha }}
+          path: rafcodephi-qemu-arm32-evidence/
+          if-no-files-found: error
