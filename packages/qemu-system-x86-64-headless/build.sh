@@ -3,6 +3,7 @@ TERMUX_PKG_DESCRIPTION="A generic and open source machine emulator and virtualiz
 TERMUX_PKG_LICENSE="GPL-2.0"
 TERMUX_PKG_MAINTAINER="@termux"
 TERMUX_PKG_VERSION="1:10.2.1"
+TERMUX_PKG_REVISION=1
 TERMUX_PKG_SRCURL="https://download.qemu.org/qemu-${TERMUX_PKG_VERSION:2}.tar.xz"
 TERMUX_PKG_SHA256=a3717477d8e2c84d630bfffbc20f6cd3293eb45aa1e6dac6d0cc27689991c9e1
 TERMUX_PKG_DEPENDS="alsa-lib, dtc, glib, jack2, libbz2, libcurl, libdw, libgmp, libgnutls, libiconv, libjpeg-turbo, liblzo, libnettle, libnfs, libpixman, libpng, libslirp, libspice-server, libssh, libusb, libusbredir, ncurses, pulseaudio, qemu-common, resolv-conf, zlib, zstd"
@@ -61,6 +62,14 @@ termux_step_configure() {
 	QEMU_TARGETS+="riscv32-softmmu,"
 	if [[ "$TERMUX_ARCH_BITS" == "64" ]]; then
 		QEMU_TARGETS+="riscv64-softmmu,"
+	fi
+
+	# The qemu-system-x86-64-headless parent package is published for ARM32,
+	# but upstream Termux currently omits x86_64-softmmu when the host package
+	# ABI is 32-bit. That leaves the ARM package without qemu-system-x86_64.
+	# RAFCODEPHI enables only the missing system target on arm; other 32-bit
+	# hosts remain unchanged until independently evidenced.
+	if [[ "$TERMUX_ARCH_BITS" == "64" || "$TERMUX_ARCH" == "arm" ]]; then
 		QEMU_TARGETS+="x86_64-softmmu,"
 	fi
 
@@ -151,4 +160,11 @@ termux_step_post_make_install() {
 			"${TERMUX_PREFIX}"/share/man/man1/qemu.1 \
 			"${TERMUX_PREFIX}"/share/man/man1/qemu-system-${i}.1
 	done
+
+	# Fail closed on the exact ARM32 packaging regression this recipe fixes.
+	# Package-installability is not runtime proof, but an empty x86_64 parent
+	# package must never be emitted as a successful ARM build.
+	if [[ "$TERMUX_ARCH" == "arm" && ! -x "$TERMUX_PREFIX/bin/qemu-system-x86_64" ]]; then
+		termux_error_exit "ARM32 QEMU build did not produce bin/qemu-system-x86_64"
+	fi
 }

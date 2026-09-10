@@ -1,9 +1,9 @@
 {
   "schema": "rafcodephi.federated-components/v1",
-  "generated_at": "2026-09-09T22:35:00-03:00",
+  "generated_at": "2026-09-10T01:08:00-03:00",
   "producer": {
     "repository": "rafaelmeloreisnovo/termux-packages",
-    "base_commit": "acf907506d9f375cd4bdfaa4609619956f679b65",
+    "base_commit": "93284c7df537a0f14a148b1839377f06aac2929f",
     "role": "package_source_factory"
   },
   "consumer": {
@@ -31,9 +31,13 @@
       "metapackage": "rafcodephi-runtime-profile",
       "depends": ["rafcodephi-bootstrap-profile", "openssl", "curl", "git", "python", "procps", "b3sum"]
     },
+    "build": {
+      "metapackage": "rafcodephi-build-profile",
+      "depends": ["rafcodephi-runtime-profile", "clang", "lld", "cmake", "make", "ninja", "binutils", "file", "patchelf", "rafcodephi-rmr-vector-field", "rafcodephi-rmr-vector-field-static"]
+    },
     "vectras": {
       "metapackage": "rafcodephi-vectras-profile",
-      "depends": ["rafcodephi-runtime-profile", "proot"]
+      "depends": ["rafcodephi-build-profile", "aria2", "tar", "pulseaudio", "proot", "proot-distro"]
     },
     "full": {
       "metapackage": "rafcodephi-full-profile",
@@ -152,7 +156,8 @@
     "TV-VECTRAS-ARM32-QEMU-X86_64": {
       "state": "TOKEN_VAZIO",
       "scope": "physical ARM32 host providing qemu-system-x86_64 for Vectras",
-      "reason": "current upstream Termux QEMU recipe omits x86_64-softmmu on 32-bit hosts; qemu_rafaelia ARMv7 full system binary is not yet proven by an exact build/runtime receipt"
+      "reason": "PR #110 requests x86_64-softmmu for the ARM32 package and has a structural build/package gate, but exact successful ARM32 artifact and physical-device runtime receipts are not yet available",
+      "candidate_gate": ".github/workflows/rafcodephi-qemu-arm32-x86_64.yml"
     },
     "TV-PACKAGE-LICENSE-INVENTORY-GLOBAL": {
       "state": "TOKEN_VAZIO",
