@@ -1,0 +1,97 @@
+name: RAFCODEPHI QEMU ARM32 Target Proof
+
+on:
+  pull_request:
+    paths:
+      - 'packages/qemu-system-x86-64-headless/**'
+      - '.github/workflows/rafcodephi-qemu-arm32-target-proof.yml'
+  push:
+    branches:
+      - rafcodephi/qemu-arm32-x86_64-v1-20260910
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: rafcodephi-qemu-arm32-target-proof-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  canonical-prefix-target-proof:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
+
+    steps:
+      - name: Checkout exact candidate
+        uses: actions/checkout@v6
+
+      - name: Preserve canonical Termux package identity
+        shell: bash
+        run: |
+          set -euo pipefail
+          grep -Fqx 'TERMUX_APP__PACKAGE_NAME="com.termux"' scripts/properties.sh
+          recipe=packages/qemu-system-x86-64-headless/build.sh
+          grep -Fq '"$TERMUX_ARCH" == "arm"' "$recipe"
+          grep -Fq 'QEMU_TARGETS+="x86_64-softmmu,"' "$recipe"
+
+      - name: Build exact QEMU recipe for ARM32 with canonical compatible dependencies
+        shell: bash
+        run: |
+          set -euo pipefail
+          # This lane intentionally keeps the canonical com.termux package name
+          # so -i may use canonical Termux ARM dependencies. It answers only
+          # whether this exact recipe can produce the x86_64-softmmu binary on
+          # an ARM32/Bionic target. It is NOT RAFCODEPHI custom-prefix evidence.
+          ./scripts/run-docker.sh ./build-package.sh -i -C -a arm qemu-system-x86-64-headless
+
+      - name: Verify canonical-prefix ARM32 target artifact
+        shell: bash
+        run: |
+          set -euo pipefail
+          D=rafcodephi-qemu-arm32-target-proof
+          mkdir -p "$D/extracted"
+
+          mapfile -t debs < <(find output -maxdepth 1 -type f \
+            -name 'qemu-system-x86-64-headless*.deb' -print | sort)
+          if (( ${#debs[@]} != 1 )); then
+            printf 'expected exactly one qemu-system-x86-64-headless deb, found %d\n' "${#debs[@]}" >&2
+            printf '%s\n' "${debs[@]}" >&2
+            exit 71
+          fi
+          deb="${debs[0]}"
+          dpkg-deb -c "$deb" | tee "$D/deb-contents.txt"
+          dpkg-deb -x "$deb" "$D/extracted"
+
+          bin="$(find "$D/extracted" -type f -path '*/files/usr/bin/qemu-system-x86_64' -print -quit)"
+          test -n "$bin"
+          test -x "$bin"
+          file "$bin" | tee "$D/file.txt"
+          readelf -h "$bin" | tee "$D/readelf-header.txt"
+          grep -Eq 'ELF 32-bit.*ARM' "$D/file.txt"
+          grep -Eq 'Class:[[:space:]]+ELF32' "$D/readelf-header.txt"
+          grep -Eq 'Machine:[[:space:]]+ARM' "$D/readelf-header.txt"
+          sha256sum "$deb" "$bin" | tee "$D/SHA256SUMS.txt"
+
+          recipe_sha="$(sha256sum packages/qemu-system-x86-64-headless/build.sh | awk '{print $1}')"
+          cat > "$D/receipt.txt" <<EOF
+          schema=rafcodephi.qemu-arm32-target-proof/v1
+          source_commit=${GITHUB_SHA}
+          qemu_recipe_sha256=${recipe_sha}
+          target_package_arch=arm
+          guest_system_target=x86_64-softmmu
+          package_identity=com.termux
+          target_state=PROVEN_STRUCTURAL
+          rafcodephi_custom_prefix_package=TOKEN_VAZIO
+          physical_android_runtime=TOKEN_VAZIO
+          claim_allowed=false
+          EOF
+
+      - name: Upload target proof
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: rafcodephi-qemu-arm32-target-proof-${{ github.sha }}
+          path: rafcodephi-qemu-arm32-target-proof/
+          if-no-files-found: error
+          retention-days: 30
