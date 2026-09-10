@@ -114,38 +114,39 @@ qemu_recipe = read("packages/qemu-system-x86-64-headless/build.sh")
 if "https://download.qemu.org/" not in qemu_recipe or 'TERMUX_PKG_LICENSE="GPL-2.0"' not in qemu_recipe:
     fail("QEMU upstream/license drift")
 
-expected_profiles = {
-    "bootstrap": (
-        "rafcodephi-bootstrap-profile",
-        "apt, bash, busybox, dpkg, ca-certificates, coreutils, termux-tools, rafcodephi-federation-metadata",
-    ),
-    "runtime": (
-        "rafcodephi-runtime-profile",
-        "rafcodephi-bootstrap-profile, openssl, curl, git, python, procps, b3sum",
-    ),
-    "vectras": (
-        "rafcodephi-vectras-profile",
-        "rafcodephi-runtime-profile, proot",
-    ),
-    "full": (
-        "rafcodephi-full-profile",
-        "rafcodephi-vectras-profile, termux-api",
-    ),
+# The manifest is the single declarative source for profile dependencies.
+# Recipes must match it byte-for-byte at the dependency-string boundary;
+# this avoids maintaining a second hidden copy of the same graph in CI.
+expected_profile_metapackages = {
+    "bootstrap": "rafcodephi-bootstrap-profile",
+    "runtime": "rafcodephi-runtime-profile",
+    "build": "rafcodephi-build-profile",
+    "vectras": "rafcodephi-vectras-profile",
+    "full": "rafcodephi-full-profile",
 }
 
-for profile, (pkg, depends) in expected_profiles.items():
-    declared = m["package_profiles"].get(profile, {})
+package_profiles = m.get("package_profiles", {})
+if set(package_profiles) != set(expected_profile_metapackages):
+    fail(
+        "profile set mismatch: "
+        f"{sorted(set(package_profiles) ^ set(expected_profile_metapackages))}"
+    )
+
+for profile, pkg in expected_profile_metapackages.items():
+    declared = package_profiles.get(profile, {})
     if declared.get("metapackage") != pkg:
         fail(f"{profile}: metapackage manifest drift")
-    if declared.get("depends") != [x.strip() for x in depends.split(",")]:
-        fail(f"{profile}: dependency manifest drift")
+    depends = declared.get("depends")
+    if not isinstance(depends, list) or not depends or not all(isinstance(x, str) and x for x in depends):
+        fail(f"{profile}: invalid dependency manifest")
     recipe_path = f"packages/{pkg}/build.sh"
     recipe = read(recipe_path)
     if 'TERMUX_PKG_LICENSE="Apache-2.0"' not in recipe:
         fail(f"{pkg}: local glue license")
     if "TERMUX_PKG_SKIP_SRC_EXTRACT=true" not in recipe or "TERMUX_PKG_PLATFORM_INDEPENDENT=true" not in recipe:
         fail(f"{pkg}: metapackage flags")
-    if f'TERMUX_PKG_DEPENDS="{depends}"' not in recipe:
+    expected_depends = ", ".join(depends)
+    if f'TERMUX_PKG_DEPENDS="{expected_depends}"' not in recipe:
         fail(f"{pkg}: dependency recipe drift")
 
 metadata = read("packages/rafcodephi-federation-metadata/build.sh")
