@@ -86,14 +86,18 @@ for token in (
 if "TERMUX_PKG_SRCURL" in build:
     fail("byte-identical local transcription must not silently fetch a different source")
 
-# Termux packaging convention: keep headers/provenance in the base package and
-# split the static archive explicitly into a -static subpackage. This prevents
-# CI from mistaking a valid package split for a missing build artifact.
-static_subpkg = read("packages/rafcodephi-rmr-vector-field/rafcodephi-rmr-vector-field-static.subpackage.sh")
-if 'TERMUX_SUBPKG_INCLUDE="lib/librafcodephi-rmr-vector-field.a"' not in static_subpkg:
-    fail("static archive subpackage boundary")
-if "static library" not in static_subpkg:
-    fail("static subpackage description")
+# Current Termux buildorder creates a virtual <parent>-static subpackage for
+# every main package. An explicit file with the same name is a duplicate package
+# definition and must not exist. The archive remains installed under lib/*.a and
+# is split by the native static-package mechanism.
+explicit_static = Path("packages/rafcodephi-rmr-vector-field/rafcodephi-rmr-vector-field-static.subpackage.sh")
+if explicit_static.exists():
+    fail("explicit -static subpackage duplicates Termux virtual static split")
+buildorder = read("scripts/buildorder.py")
+if "self.name + '-static'" not in buildorder or "virtual=True" not in buildorder:
+    fail("Termux virtual static split contract not found")
+if "lib/librafcodephi-rmr-vector-field.a" not in build:
+    fail("static archive install path missing")
 
 origin = read("packages/rafcodephi-rmr-vector-field/ORIGIN.md")
 for token in (
@@ -124,4 +128,4 @@ elif promotion == "PROMOTED_RUNTIME_PROVEN_STRUCTURAL":
 else:
     fail("unknown promotion state")
 
-print("PASS: RMR vector-field package preserves byte-identical GPLv2 custody, explicit static split and freestanding gates")
+print("PASS: RMR vector-field preserves byte-identical GPLv2 custody, native virtual static split and freestanding gates")
