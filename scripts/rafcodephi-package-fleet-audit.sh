@@ -1,245 +1,150 @@
 #!/usr/bin/env bash
-# RAFCODEPHI package-fleet audit: scan the whole recipe fleet, classify failures by cause,
-# and emit machine-readable evidence without pretending that a partial package build is fleet PASS.
-
+# Whole-fleet static audit for Termux package recipes.
+# Intentionally continues after individual findings and groups them by cause code.
 set -Eeuo pipefail
 
-MODE="report"
-OUTPUT_DIR=""
-
-usage() {
-  cat <<'USAGE'
-Usage: scripts/rafcodephi-package-fleet-audit.sh [--mode report|gate] [--output DIR]
-
-Scans every build.sh under packages/, root-packages/, and x11-packages/.
-
-Modes:
-  report  Emit findings and always exit 0 after a successful scan.
-  gate    Exit non-zero when ERROR findings exist.
-
-Outputs:
-  packages.tsv   every discovered recipe
-  findings.tsv   normalized findings grouped by stable code
-  summary.txt    counts, hashes, and claim state
-USAGE
-}
-
+MODE=report
+OUTPUT_DIR=
 while (($#)); do
   case "$1" in
-    --mode)
-      [[ $# -ge 2 ]] || { echo "ERROR: --mode requires a value" >&2; exit 2; }
-      MODE="$2"; shift 2 ;;
-    --output)
-      [[ $# -ge 2 ]] || { echo "ERROR: --output requires a value" >&2; exit 2; }
-      OUTPUT_DIR="$2"; shift 2 ;;
+    --mode) MODE="${2:?missing mode}"; shift 2 ;;
+    --output) OUTPUT_DIR="${2:?missing output dir}"; shift 2 ;;
     -h|--help)
-      usage; exit 0 ;;
-    *)
-      echo "ERROR: unknown argument '$1'" >&2
-      usage >&2
-      exit 2 ;;
+      echo "usage: $0 [--mode report|gate] [--output DIR]"
+      exit 0 ;;
+    *) echo "ERROR: unknown argument: $1" >&2; exit 2 ;;
   esac
 done
+[[ "$MODE" == report || "$MODE" == gate ]] || { echo "ERROR: mode must be report|gate" >&2; exit 2; }
 
-case "$MODE" in
-  report|gate) ;;
-  *) echo "ERROR: invalid mode '$MODE' (expected report|gate)" >&2; exit 2 ;;
-esac
-
-ROOT="$(git rev-parse --show-toplevel 2>/dev/null || true)"
-[[ -n "$ROOT" && -d "$ROOT/.git" ]] || {
-  echo "ERROR: run this inside a git checkout" >&2
-  exit 2
-}
+ROOT="$(git rev-parse --show-toplevel)"
 cd "$ROOT"
-
-: "${OUTPUT_DIR:="$ROOT/artifacts/package-fleet-audit"}"
+: "${OUTPUT_DIR:=$ROOT/artifacts/package-fleet-audit}"
 mkdir -p "$OUTPUT_DIR"
-PACKAGES_TSV="$OUTPUT_DIR/packages.tsv"
-FINDINGS_TSV="$OUTPUT_DIR/findings.tsv"
-SUMMARY_TXT="$OUTPUT_DIR/summary.txt"
+PACKAGES="$OUTPUT_DIR/packages.tsv"
+FINDINGS="$OUTPUT_DIR/findings.tsv"
+SUMMARY="$OUTPUT_DIR/summary.txt"
+printf 'channel\tpackage\trecipe\n' > "$PACKAGES"
+printf 'severity\tcode\trecipe\tdetail\n' > "$FINDINGS"
 
-printf 'channel\tpackage\trecipe\n' > "$PACKAGES_TSV"
-printf 'severity\tcode\trecipe\tdetail\n' > "$FINDINGS_TSV"
+errors=0 warnings=0 infos=0 recipes=0 channels=0
+declare -A seen=()
 
-errors=0
-warnings=0
-infos=0
-recipes=0
-channels=0
-
-declare -A seen_package_name=()
-
-record_finding() {
-  local severity="$1" code="$2" recipe="$3" detail="$4"
-  detail="${detail//$'\t'/ }"
-  detail="${detail//$'\r'/ }"
-  detail="${detail//$'\n'/ | }"
-  printf '%s\t%s\t%s\t%s\n' "$severity" "$code" "$recipe" "$detail" >> "$FINDINGS_TSV"
-  case "$severity" in
+finding() {
+  local sev="$1" code="$2" file="$3" detail="$4"
+  detail="${detail//$'\t'/ }"; detail="${detail//$'\r'/ }"; detail="${detail//$'\n'/ | }"
+  printf '%s\t%s\t%s\t%s\n' "$sev" "$code" "$file" "$detail" >> "$FINDINGS"
+  case "$sev" in
     ERROR) ((errors+=1)) ;;
-    WARN)  ((warnings+=1)) ;;
-    INFO)  ((infos+=1)) ;;
-    *) echo "INTERNAL ERROR: unknown severity '$severity'" >&2; exit 3 ;;
+    WARN) ((warnings+=1)) ;;
+    INFO) ((infos+=1)) ;;
+    *) exit 3 ;;
   esac
 }
 
-check_required_literal_field() {
-  local recipe="$1" field="$2"
-  if ! grep -Eq "^[[:space:]]*${field}=" "$recipe"; then
-    record_finding WARN "FIELD_NOT_LITERAL_${field}" "$recipe" \
-      "No literal ${field}= assignment found; dynamic assignment may be valid and needs semantic lint."
-  fi
+literal_field() {
+  local file="$1" field="$2"
+  grep -Eq "^[[:space:]]*${field}=" "$file" || \
+    finding WARN "FIELD_NOT_LITERAL_${field}" "$file" "No literal ${field}= assignment; dynamic assignment remains possible."
 }
 
 for channel in packages root-packages x11-packages; do
   [[ -d "$channel" ]] || continue
   ((channels+=1))
-
-  while IFS= read -r -d '' recipe; do
+  while IFS= read -r -d '' file; do
     ((recipes+=1))
-    rel="${recipe#./}"
-    package="$(basename "$(dirname "$recipe")")"
-    printf '%s\t%s\t%s\n' "$channel" "$package" "$rel" >> "$PACKAGES_TSV"
+    rel="${file#./}"
+    pkg="$(basename "$(dirname "$file")")"
+    printf '%s\t%s\t%s\n' "$channel" "$pkg" "$rel" >> "$PACKAGES"
 
-    if [[ -n "${seen_package_name[$package]:-}" && "${seen_package_name[$package]}" != "$channel" ]]; then
-      record_finding WARN DUPLICATE_PACKAGE_NAME "$rel" \
-        "Package name also exists in channel ${seen_package_name[$package]}; verify repository/channel ownership."
+    if [[ -n "${seen[$pkg]:-}" && "${seen[$pkg]}" != "$channel" ]]; then
+      finding WARN DUPLICATE_PACKAGE_NAME "$rel" "Also present in ${seen[$pkg]}."
     else
-      seen_package_name[$package]="$channel"
+      seen[$pkg]="$channel"
     fi
 
-    syntax_error=""
-    if ! syntax_error="$(bash -n "$recipe" 2>&1)"; then
-      record_finding ERROR BASH_SYNTAX "$rel" "$syntax_error"
+    syntax=""
+    syntax="$(bash -n "$file" 2>&1)" || finding ERROR BASH_SYNTAX "$rel" "$syntax"
+
+    conflict="$(grep -nE '^[[:space:]]*(<<<<<<< .+|=======[[:space:]]*|>>>>>>> .+)$' "$file" || true)"
+    [[ -z "$conflict" ]] || finding ERROR MERGE_CONFLICT_MARKER "$rel" "$conflict"
+
+    [[ ! -x "$file" ]] || finding ERROR EXECUTABLE_RECIPE "$rel" "build.sh has executable bit set."
+    LC_ALL=C grep -q $'\r$' "$file" && finding ERROR CRLF "$rel" "CRLF line ending detected."
+
+    if [[ ! -s "$file" ]]; then
+      finding ERROR EMPTY_RECIPE "$rel" "build.sh is empty."
+    elif [[ "$(tail -c1 "$file" | od -An -tx1 | tr -d '[:space:]')" != 0a ]]; then
+      finding ERROR NO_FINAL_NEWLINE "$rel" "Recipe is not newline terminated."
     fi
 
-    # Bash syntax alone misses conflict markers when they are embedded inside a quoted command.
-    conflict_lines="$(grep -nE '^[[:space:]]*(<<<<<<< .+|=======[[:space:]]*|>>>>>>> .+)$' "$recipe" || true)"
-    if [[ -n "$conflict_lines" ]]; then
-      record_finding ERROR MERGE_CONFLICT_MARKER "$rel" "$conflict_lines"
-    fi
+    while IFS= read -r rev; do
+      [[ -z "$rev" ]] && continue
+      ((10#$rev >= 1 && 10#$rev <= 999999999)) || \
+        finding ERROR REVISION_RANGE "$rel" "TERMUX_PKG_REVISION=$rev outside 1..999999999."
+    done < <(sed -nE 's/^[[:space:]]*TERMUX_PKG_REVISION=([0-9]+)[[:space:]]*$/\1/p' "$file")
 
-    if [[ -x "$recipe" ]]; then
-      record_finding ERROR EXECUTABLE_RECIPE "$rel" "build.sh has executable bit set; package recipes are data sourced by build tooling."
-    fi
-
-    if LC_ALL=C grep -q $'\r$' "$recipe"; then
-      record_finding ERROR CRLF "$rel" "CRLF line endings detected."
-    fi
-
-    if [[ -s "$recipe" ]]; then
-      last_hex="$(tail -c 1 "$recipe" | od -An -tx1 | tr -d '[:space:]')"
-      if [[ "$last_hex" != "0a" ]]; then
-        record_finding ERROR NO_FINAL_NEWLINE "$rel" "Recipe is not newline-terminated."
-      fi
-    else
-      record_finding ERROR EMPTY_RECIPE "$rel" "build.sh is empty."
-    fi
-
-    while IFS= read -r revision; do
-      [[ -n "$revision" ]] || continue
-      if ((10#$revision < 1 || 10#$revision > 999999999)); then
-        record_finding ERROR REVISION_RANGE "$rel" \
-          "TERMUX_PKG_REVISION=$revision is outside 1..999999999."
-      fi
-    done < <(sed -nE 's/^[[:space:]]*TERMUX_PKG_REVISION=([0-9]+)[[:space:]]*$/\1/p' "$recipe")
-
-    while IFS= read -r version; do
-      [[ -n "$version" ]] || continue
-      if command -v dpkg >/dev/null 2>&1 && ! dpkg --validate-version "$version" >/dev/null 2>&1; then
-        record_finding ERROR VERSION_SYNTAX "$rel" "Invalid literal TERMUX_PKG_VERSION=$version."
+    while IFS= read -r ver; do
+      [[ -z "$ver" ]] && continue
+      if command -v dpkg >/dev/null 2>&1 && ! dpkg --validate-version "$ver" >/dev/null 2>&1; then
+        finding ERROR VERSION_SYNTAX "$rel" "Invalid literal TERMUX_PKG_VERSION=$ver."
       fi
     done < <(sed -nE \
       -e "s/^[[:space:]]*TERMUX_PKG_VERSION='([^']+)'[[:space:]]*$/\\1/p" \
       -e 's/^[[:space:]]*TERMUX_PKG_VERSION="([^"$]+)"[[:space:]]*$/\1/p' \
-      -e 's/^[[:space:]]*TERMUX_PKG_VERSION=([A-Za-z0-9.+:~_-]+)[[:space:]]*$/\1/p' \
-      "$recipe")
+      -e 's/^[[:space:]]*TERMUX_PKG_VERSION=([A-Za-z0-9.+:~_-]+)[[:space:]]*$/\1/p' "$file")
 
     while IFS= read -r sha; do
-      [[ -n "$sha" ]] || continue
-      if [[ "$sha" != "SKIP_CHECKSUM" && ! "$sha" =~ ^[0-9a-f]{64}$ ]]; then
-        record_finding ERROR SHA256_LITERAL "$rel" \
-          "Literal TERMUX_PKG_SHA256 must be exactly 64 lowercase hex characters or SKIP_CHECKSUM."
-      fi
+      [[ -z "$sha" ]] && continue
+      [[ "$sha" == SKIP_CHECKSUM || "$sha" =~ ^[0-9a-f]{64}$ ]] || \
+        finding ERROR SHA256_LITERAL "$rel" "TERMUX_PKG_SHA256 must be exactly 64 lowercase hex characters or SKIP_CHECKSUM."
     done < <(sed -nE \
       -e "s/^[[:space:]]*TERMUX_PKG_SHA256='([^']+)'[[:space:]]*$/\\1/p" \
       -e 's/^[[:space:]]*TERMUX_PKG_SHA256="([^"$]+)"[[:space:]]*$/\1/p' \
-      -e 's/^[[:space:]]*TERMUX_PKG_SHA256=([A-Za-z0-9_]+)[[:space:]]*$/\1/p' \
-      "$recipe")
+      -e 's/^[[:space:]]*TERMUX_PKG_SHA256=([A-Za-z0-9_]+)[[:space:]]*$/\1/p' "$file")
 
-    if grep -Eq '^[[:space:]]*TERMUX_PKG_SRCURL=.*(example\.com|example\.org|example\.net)(/|[[:space:]"'"']|$)' "$recipe"; then
-      record_finding ERROR PLACEHOLDER_SOURCE_URL "$rel" \
-        "TERMUX_PKG_SRCURL points at an RFC-reserved example domain, not a buildable source endpoint."
-    fi
+    grep -Eq '^[[:space:]]*TERMUX_PKG_SRCURL=.*example\.(com|org|net)' "$file" && \
+      finding ERROR PLACEHOLDER_SOURCE_URL "$rel" "Source URL uses an RFC-reserved example domain."
 
-    check_required_literal_field "$recipe" TERMUX_PKG_HOMEPAGE
-    check_required_literal_field "$recipe" TERMUX_PKG_DESCRIPTION
-    check_required_literal_field "$recipe" TERMUX_PKG_LICENSE
-    check_required_literal_field "$recipe" TERMUX_PKG_MAINTAINER
-    check_required_literal_field "$recipe" TERMUX_PKG_VERSION
+    for field in TERMUX_PKG_HOMEPAGE TERMUX_PKG_DESCRIPTION TERMUX_PKG_LICENSE TERMUX_PKG_MAINTAINER TERMUX_PKG_VERSION; do
+      literal_field "$rel" "$field"
+    done
 
-    while IFS= read -r description; do
-      if ((${#description} > 100)); then
-        # The legacy linter reports this condition but currently does not mark pkg_lint_error=true.
-        # Keep it visible without falsely converting historical policy drift into a build failure.
-        record_finding WARN DESCRIPTION_POLICY_DRIFT "$rel" \
-          "Literal TERMUX_PKG_DESCRIPTION has ${#description} characters; legacy linter reports >100 but does not fail the package."
-      fi
+    while IFS= read -r desc; do
+      ((${#desc} <= 100)) || finding WARN DESCRIPTION_POLICY_DRIFT "$rel" \
+        "Description has ${#desc} characters; legacy linter reports >100 but does not fail the recipe."
     done < <(sed -nE \
       -e "s/^[[:space:]]*TERMUX_PKG_DESCRIPTION='([^']*)'[[:space:]]*$/\\1/p" \
-      -e 's/^[[:space:]]*TERMUX_PKG_DESCRIPTION="([^"$]*)"[[:space:]]*$/\1/p' \
-      "$recipe")
+      -e 's/^[[:space:]]*TERMUX_PKG_DESCRIPTION="([^"$]*)"[[:space:]]*$/\1/p' "$file")
   done < <(find "$channel" -mindepth 2 -maxdepth 2 -type f -name build.sh -print0 | sort -z)
 done
 
-if ((recipes == 0)); then
-  record_finding ERROR NO_RECIPES TOKEN_VAZIO "No package recipes discovered in known channels."
-fi
+((recipes > 0)) || finding ERROR NO_RECIPES TOKEN_VAZIO "No package recipes discovered."
 
-LINTER="scripts/lint-packages.sh"
+LINTER=scripts/lint-packages.sh
 if [[ -f "$LINTER" ]]; then
-  if grep -A3 -F 'check_version() {' "$LINTER" | grep -qE '^[[:space:]]*return[[:space:]]*$'; then
-    record_finding WARN TOOLING_VERSION_GATE_DISABLED "$LINTER" \
-      "check_version() returns before validation; version-bump semantics are not enforced by the legacy linter."
-  fi
-  if grep -qF 'origin/master..' "$LINTER"; then
-    record_finding WARN TOOLING_BASE_BRANCH_HARDCODED "$LINTER" \
-      "Legacy linter assumes origin/master while this fork uses main as its canonical branch."
-  fi
-  if grep -qF 'TERMUX_PKG_REVISION > 1 || TERMUX_PKG_REVISION < 999999999' "$LINTER"; then
-    record_finding WARN TOOLING_REVISION_RANGE_LOGIC "$LINTER" \
-      "Legacy revision range condition uses OR and therefore accepts nearly every integer. Fleet audit compensates with a strict literal range check."
-  fi
-  if grep -qF '[[ ! "$sha256" =~ [0-9a-f]{64} ]]' "$LINTER"; then
-    record_finding WARN TOOLING_SHA256_UNANCHORED "$LINTER" \
-      "Legacy SHA-256 regex is not anchored. Fleet audit compensates with ^[0-9a-f]{64}$."
-  fi
-  if grep -qF 'before the first error was detected' "$LINTER"; then
-    record_finding WARN TOOLING_STOP_AFTER_FIRST_ERROR "$LINTER" \
-      "Legacy linter intentionally stops package traversal after the first failing recipe; fleet audit continues across the full corpus."
-  fi
+  grep -A3 -F 'check_version() {' "$LINTER" | grep -qE '^[[:space:]]*return[[:space:]]*$' && \
+    finding WARN TOOLING_VERSION_GATE_DISABLED "$LINTER" "check_version() returns before validation."
+  grep -qF 'origin/master..' "$LINTER" && \
+    finding WARN TOOLING_BASE_BRANCH_HARDCODED "$LINTER" "Legacy linter assumes origin/master while this fork uses main."
+  grep -qF 'TERMUX_PKG_REVISION > 1 || TERMUX_PKG_REVISION < 999999999' "$LINTER" && \
+    finding WARN TOOLING_REVISION_RANGE_LOGIC "$LINTER" "Revision range uses OR; fleet audit applies a strict range."
+  grep -qF '[[ ! "$sha256" =~ [0-9a-f]{64} ]]' "$LINTER" && \
+    finding WARN TOOLING_SHA256_UNANCHORED "$LINTER" "SHA-256 regex is unanchored; fleet audit anchors it."
+  grep -qF 'before the first error was detected' "$LINTER" && \
+    finding WARN TOOLING_STOP_AFTER_FIRST_ERROR "$LINTER" "Legacy traversal stops after first failing recipe; fleet audit does not."
 else
-  record_finding ERROR MISSING_LEGACY_LINTER "$LINTER" "Expected repository linter is missing."
+  finding ERROR MISSING_LEGACY_LINTER "$LINTER" "Expected linter missing."
 fi
 
-{
-  head -n1 "$PACKAGES_TSV"
-  tail -n +2 "$PACKAGES_TSV" | LC_ALL=C sort -t $'\t' -k1,1 -k2,2 -k3,3
-} > "$PACKAGES_TSV.tmp"
-mv "$PACKAGES_TSV.tmp" "$PACKAGES_TSV"
-{
-  head -n1 "$FINDINGS_TSV"
-  tail -n +2 "$FINDINGS_TSV" | LC_ALL=C sort -t $'\t' -k1,1 -k2,2 -k3,3
-} > "$FINDINGS_TSV.tmp"
-mv "$FINDINGS_TSV.tmp" "$FINDINGS_TSV"
+{ head -n1 "$PACKAGES"; tail -n+2 "$PACKAGES" | LC_ALL=C sort; } > "$PACKAGES.tmp" && mv "$PACKAGES.tmp" "$PACKAGES"
+{ head -n1 "$FINDINGS"; tail -n+2 "$FINDINGS" | LC_ALL=C sort -t $'\t' -k1,1 -k2,2 -k3,3; } > "$FINDINGS.tmp" && mv "$FINDINGS.tmp" "$FINDINGS"
 
-packages_sha256="$(sha256sum "$PACKAGES_TSV" | awk '{print $1}')"
-findings_sha256="$(sha256sum "$FINDINGS_TSV" | awk '{print $1}')"
+p_hash="$(sha256sum "$PACKAGES" | awk '{print $1}')"
+f_hash="$(sha256sum "$FINDINGS" | awk '{print $1}')"
 head_sha="$(git rev-parse HEAD)"
-
 {
-  echo "RAFCODEPHI PACKAGE FLEET AUDIT"
+  echo 'RAFCODEPHI PACKAGE FLEET AUDIT'
   echo "head=$head_sha"
   echo "mode=$MODE"
   echo "channels=$channels"
@@ -247,20 +152,16 @@ head_sha="$(git rev-parse HEAD)"
   echo "errors=$errors"
   echo "warnings=$warnings"
   echo "infos=$infos"
-  echo "packages_sha256=$packages_sha256"
-  echo "findings_sha256=$findings_sha256"
+  echo "packages_sha256=$p_hash"
+  echo "findings_sha256=$f_hash"
   echo "claim_state=$([[ $errors -eq 0 ]] && echo EVIDENCED_STATIC || echo REFUTED_STATIC)"
-  echo "claim_scope=STATIC_RECIPE_FLEET_ONLY"
-  echo "runtime_device=TOKEN_VAZIO"
-  echo "full_build_matrix=TOKEN_VAZIO"
+  echo 'claim_scope=STATIC_RECIPE_FLEET_ONLY'
+  echo 'runtime_device=TOKEN_VAZIO'
+  echo 'full_build_matrix=TOKEN_VAZIO'
   echo
-  echo "findings_by_code:"
-  awk -F '\t' 'NR > 1 {count[$2]++} END {for (code in count) printf "%s\t%d\n", code, count[code]}' "$FINDINGS_TSV" | LC_ALL=C sort
-} > "$SUMMARY_TXT"
+  echo 'findings_by_code:'
+  awk -F '\t' 'NR>1 {n[$2]++} END {for (k in n) printf "%s\t%d\n", k, n[k]}' "$FINDINGS" | LC_ALL=C sort
+} > "$SUMMARY"
+cat "$SUMMARY"
 
-cat "$SUMMARY_TXT"
-
-if [[ "$MODE" == "gate" && $errors -gt 0 ]]; then
-  exit 1
-fi
-exit 0
+[[ "$MODE" != gate || $errors -eq 0 ]] || exit 1
