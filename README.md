@@ -8,6 +8,36 @@ Otherwise, please work on [https://github.com/termux/termux-packages](https://gi
 
 See https://github.com/termux-play-store for more information, status and updates regarding Termux on Google Play.
 
+## RAFCODEPHI provenance and third-party attribution
+
+This fork also carries a RAFCODEPHI package/source lane for
+`com.termux.rafacodephi`. That lane does not change the authorship of Termux or
+of any package built by this repository.
+
+- Package recipes and patches follow the license of the actual package, as
+  defined by [`LICENSE.md`](./LICENSE.md); the tree must not be flattened into a
+  single RAFCODEPHI license.
+- Human-readable fork and third-party credits are maintained in
+  [`docs/assurance/THIRD_PARTY_AND_FORK_ATTRIBUTION.md`](./docs/assurance/THIRD_PARTY_AND_FORK_ATTRIBUTION.md).
+- Machine-readable source pins, upstream projects, licenses and integration
+  modes are maintained in
+  [`docs/assurance/rafcodephi-federated-components.v1.json`](./docs/assurance/rafcodephi-federated-components.v1.json).
+- `rafcodephi-*-profile` packages are local metapackages: they declare dependency
+  graphs and contain no vendored Termux, BLAKE3, Vectras, QEMU, AndroidX or
+  Termux:API source.
+- Any future external source transplant must preserve required upstream notices
+  and record exact origin repository, commit, path and file-specific license.
+  QEMU is explicitly path-aware because its source tree contains multiple
+  compatible licenses.
+
+The structural gate is:
+
+```sh
+python3 scripts/validate_rafcodephi_federated_provenance.py
+```
+
+Build success remains distinct from install/runtime/device evidence.
+
 ## Quick guide to how to build a package
 Most developers should use a prebuilt docker image to get a correctly configured and isolated build environment. Start with:
 
