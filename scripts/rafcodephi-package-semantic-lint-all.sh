@@ -26,6 +26,11 @@ RESULTS="$OUTPUT_DIR/results.tsv"
 SUMMARY="$OUTPUT_DIR/summary.txt"
 printf 'status\tchannel\tpackage\trecipe\tlog_sha256\n' > "$RESULTS"
 
+# The inherited linter assumes origin/master during its setup. This fork's canonical
+# branch is main. Create a CI-local compatibility ref only; no repository branch is changed.
+git fetch --no-tags origin main:refs/remotes/origin/main >/dev/null 2>&1
+git update-ref refs/remotes/origin/master refs/remotes/origin/main
+
 # Load only definitions/setup from the legacy linter. Do not execute its linter_main(),
 # because that path deliberately breaks at the first failing package.
 defs="$(mktemp)"
@@ -53,7 +58,7 @@ for channel in packages root-packages x11-packages; do
 			log_hash="$(sha256sum "$failure_log" | awk '{print $1}')"
 			printf 'FAIL\t%s\t%s\t%s\t%s\n' "$channel" "$pkg" "$rel" "$log_hash" >> "$RESULTS"
 		fi
-		done < <(find "$channel" -mindepth 2 -maxdepth 2 -type f -name build.sh -print0 | sort -z)
+	done < <(find "$channel" -mindepth 2 -maxdepth 2 -type f -name build.sh -print0 | sort -z)
 done
 
 results_hash="$(sha256sum "$RESULTS" | awk '{print $1}')"
