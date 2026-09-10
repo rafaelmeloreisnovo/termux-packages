@@ -1,0 +1,48 @@
+{
+  "schema": "rafcodephi.freestanding-modules/v1",
+  "generated_at": "2026-09-09T22:52:00-03:00",
+  "producer_repository": "rafaelmeloreisnovo/termux-packages",
+  "module": {
+    "id": "rmr-vector-field",
+    "package": "rafcodephi-rmr-vector-field",
+    "origin_repository": "rafaelmeloreisnovo/Vectras-VM-Android",
+    "origin_commit": "34aa3db434627c40cdc6fdb595591634e74d090d",
+    "parent_project_original_author": "xoureldeen",
+    "source_file_copyright": "Rafael M. R. — rafaelmeloreisnovo",
+    "license_expression": "GPL-2.0-only",
+    "copy_mode": "BYTE_IDENTICAL_SOURCE_TRANSCRIPTION",
+    "source_files": [
+      {
+        "origin_path": "engine/rmr/src/rmr_vector_field.c",
+        "package_path": "packages/rafcodephi-rmr-vector-field/files/rmr_vector_field.c",
+        "git_blob": "8dfb230410b20e36236dbc3863d301e16a4c595d"
+      },
+      {
+        "origin_path": "engine/rmr/include/rmr_vector_field.h",
+        "package_path": "packages/rafcodephi-rmr-vector-field/files/rmr_vector_field.h",
+        "git_blob": "10cb0ab97fcb59ca691f8b216ca9165231e6de74"
+      },
+      {
+        "origin_path": "engine/rmr/include/rmr_types.h",
+        "package_path": "packages/rafcodephi-rmr-vector-field/files/rmr_types.h",
+        "git_blob": "433843be4b8a1c1a722bc814b63c366db3314cd6"
+      }
+    ],
+    "compile_contract": {
+      "language": "C11",
+      "flags": ["-ffreestanding", "-fno-builtin", "-fno-stack-protector"],
+      "heap": false,
+      "libc": false,
+      "libm": false,
+      "unresolved_external_symbols_allowed": false,
+      "targets": ["armv7a-linux-androideabi21", "aarch64-linux-android21"]
+    },
+    "profile_promotion": {
+      "current": "CANDIDATE_PACKAGE_NOT_IN_DEFAULT_PROFILE",
+      "target": "runtime",
+      "gate": "cross-target object compile + zero undefined symbols + package lint/build evidence"
+    },
+    "evidence_state": "IMPLEMENTED_PENDING_CI"
+  },
+  "claim_allowed": false
+}

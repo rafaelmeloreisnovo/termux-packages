@@ -1,0 +1,87 @@
+name: RAFCODEPHI Freestanding Module Gate
+
+on:
+  pull_request:
+    paths:
+      - 'packages/rafcodephi-rmr-vector-field/**'
+      - 'docs/assurance/rafcodephi-freestanding-modules.v1.json'
+      - 'scripts/validate_rafcodephi_freestanding_module.py'
+      - '.github/workflows/rafcodephi-freestanding-module.yml'
+      - 'packages/rafcodephi-runtime-profile/build.sh'
+  push:
+    branches:
+      - main
+    paths:
+      - 'packages/rafcodephi-rmr-vector-field/**'
+      - 'docs/assurance/rafcodephi-freestanding-modules.v1.json'
+      - 'scripts/validate_rafcodephi_freestanding_module.py'
+      - '.github/workflows/rafcodephi-freestanding-module.yml'
+      - 'packages/rafcodephi-runtime-profile/build.sh'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  cross-object:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - name: Checkout exact candidate
+        uses: actions/checkout@v6
+
+      - name: Validate source custody before compiling
+        run: python3 scripts/validate_rafcodephi_freestanding_module.py
+
+      - name: Verify package recipe shell syntax
+        run: bash -n packages/rafcodephi-rmr-vector-field/build.sh
+
+      - name: Cross-compile freestanding objects with zero undefined symbols
+        shell: bash
+        run: |
+          set -euo pipefail
+          command -v clang
+          NM_TOOL="$(command -v llvm-nm || command -v nm)"
+          AR_TOOL="$(command -v llvm-ar || command -v ar)"
+          src=packages/rafcodephi-rmr-vector-field/files
+          mkdir -p out/rmr-vector-field
+
+          for target in armv7a-linux-androideabi21 aarch64-linux-android21; do
+            obj="out/rmr-vector-field/${target}.o"
+            lib="out/rmr-vector-field/librafcodephi-rmr-vector-field-${target}.a"
+            clang --target="$target" \
+              -std=c11 -O2 -ffreestanding -fno-builtin -fno-stack-protector \
+              -I"$src" -c "$src/rmr_vector_field.c" -o "$obj"
+
+            unresolved="$($NM_TOOL -u "$obj" || true)"
+            if [[ -n "$unresolved" ]]; then
+              printf 'FAIL: %s produced undefined symbols:\n%s\n' "$target" "$unresolved" >&2
+              exit 67
+            fi
+
+            "$AR_TOOL" rcs "$lib" "$obj"
+            file "$obj" "$lib"
+            printf 'PASS target=%s undefined_symbols=0\n' "$target"
+          done
+
+      - name: Emit structural receipt
+        shell: bash
+        run: |
+          set -euo pipefail
+          {
+            echo 'schema=rafcodephi.freestanding-module-receipt/v1'
+            echo "source_commit=${GITHUB_SHA}"
+            echo 'package=rafcodephi-rmr-vector-field'
+            echo 'source_origin=rafaelmeloreisnovo/Vectras-VM-Android@34aa3db434627c40cdc6fdb595591634e74d090d'
+            echo 'armv7a_undefined_symbols=0'
+            echo 'aarch64_undefined_symbols=0'
+            echo 'physical_runtime=TOKEN_VAZIO'
+            echo 'claim_allowed=false'
+          } > out/rmr-vector-field/receipt.txt
+
+      - name: Upload cross-object evidence
+        uses: actions/upload-artifact@v6
+        with:
+          name: rafcodephi-rmr-vector-field-${{ github.sha }}
+          path: out/rmr-vector-field/
+          if-no-files-found: error

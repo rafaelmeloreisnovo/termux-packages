@@ -1,0 +1,47 @@
+{
+  "schema": "rafaelia.muwrite/v1",
+  "mu_id": "MUW-TERMUX-PACKAGES-FEDERATED-PROVENANCE-POSTFLIGHT-20260909",
+  "timestamp": "2026-09-09T22:49:00-03:00",
+  "repository": "rafaelmeloreisnovo/termux-packages",
+  "source_commit": "11f0e8afd76fd669cd97640ad90b6a252b777ace",
+  "parent_receipt": "docs/receipts/RAFCODEPHI_FEDERATED_PROVENANCE_20260909.v1.json",
+  "kind": "postflight_evidence_append",
+  "delta_summary": "Promote only the scoped federated provenance/profile implementation from IMPLEMENTED_UNTESTED to PROVEN_STRUCTURAL after exact-SHA GitHub gates succeeded.",
+  "evidence": {
+    "federated_provenance_workflow": {
+      "run_id": 34426774958,
+      "job_id": 102713579320,
+      "conclusion": "success",
+      "validated": [
+        "federated provenance manifest",
+        "existing package provenance handoff boundary",
+        "metapackage shell syntax",
+        "no third-party source vendored into RAFCODEPHI profile packages"
+      ]
+    },
+    "workflow_syntax_gate": {
+      "run_id": 34426774909,
+      "job_id": 102713578866,
+      "conclusion": "success",
+      "validated": "all workflows and embedded Bash parsed successfully"
+    },
+    "packages_lint": {
+      "run_id": 34426774908,
+      "aarch64": "success",
+      "x86_64": "success",
+      "buildorder_random": "IN_PROGRESS_AT_OBSERVATION"
+    }
+  },
+  "state": "PROVEN_STRUCTURAL",
+  "gap": {
+    "deb_artifact_build_for_new_profiles": "TOKEN_VAZIO",
+    "physical_android_install_and_runtime": "TOKEN_VAZIO",
+    "vectras_arm32_qemu_system_x86_64": "TOKEN_VAZIO",
+    "androidx_exact_upstream_repository": "TOKEN_VAZIO",
+    "global_termux_packages_license_inventory": "TOKEN_VAZIO"
+  },
+  "f_ok": "Scoped RAFCODEPHI attribution, fork/source boundaries, profile dependency recipes and fail-closed validator passed exact-candidate structural gates.",
+  "f_gap": "No .deb/runtime/device promotion is made; ARM32 Vectras QEMU x86_64 and global package-license inventory remain open by evidence boundary.",
+  "f_next": "Keep PR #108 unmerged until the receipt-only successor SHA is re-gated; then merge only if required source/CI checks remain green.",
+  "claim_allowed": false
+}

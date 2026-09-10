@@ -1,0 +1,164 @@
+{
+  "schema": "rafcodephi.federated-components/v1",
+  "generated_at": "2026-09-09T22:35:00-03:00",
+  "producer": {
+    "repository": "rafaelmeloreisnovo/termux-packages",
+    "base_commit": "acf907506d9f375cd4bdfaa4609619956f679b65",
+    "role": "package_source_factory"
+  },
+  "consumer": {
+    "repository": "rafaelmeloreisnovo/termux-app-rafacodephi",
+    "commit": "f1ac04488e9567297e891e1c4dc394ebf3e5fcc7",
+    "package_name": "com.termux.rafacodephi"
+  },
+  "policy": {
+    "single_license_flattening_allowed": false,
+    "relicense_upstream_work_allowed": false,
+    "copy_without_origin_path_commit_and_license_allowed": false,
+    "fork_maintainer_is_original_author": false,
+    "source_is_artifact": false,
+    "artifact_is_execution": false,
+    "execution_is_evidence": false,
+    "evidence_is_claim": false,
+    "unknown_evidence_token": "TOKEN_VAZIO"
+  },
+  "package_profiles": {
+    "bootstrap": {
+      "metapackage": "rafcodephi-bootstrap-profile",
+      "depends": ["apt", "bash", "busybox", "dpkg", "ca-certificates", "coreutils", "termux-tools", "rafcodephi-federation-metadata"]
+    },
+    "runtime": {
+      "metapackage": "rafcodephi-runtime-profile",
+      "depends": ["rafcodephi-bootstrap-profile", "openssl", "curl", "git", "python", "procps", "b3sum"]
+    },
+    "vectras": {
+      "metapackage": "rafcodephi-vectras-profile",
+      "depends": ["rafcodephi-runtime-profile", "proot"]
+    },
+    "full": {
+      "metapackage": "rafcodephi-full-profile",
+      "depends": ["rafcodephi-vectras-profile", "termux-api"]
+    }
+  },
+  "components": [
+    {
+      "id": "termux-app-rafcodephi",
+      "local_repository": "rafaelmeloreisnovo/termux-app-rafacodephi",
+      "source_commit": "f1ac04488e9567297e891e1c4dc394ebf3e5fcc7",
+      "upstream_project": "Termux",
+      "upstream_repository": "termux/termux-app",
+      "original_authors_or_org": "Termux team and contributors",
+      "license_expression": "GPL-3.0-only",
+      "license_evidence": "rafaelmeloreisnovo/termux-app-rafacodephi@f1ac04488e9567297e891e1c4dc394ebf3e5fcc7:README.md",
+      "integration_mode": "consumer_app",
+      "distribution_candidate": false,
+      "copy_policy": "preserve_upstream_notices_and_file_specific_exceptions",
+      "attribution_required": true
+    },
+    {
+      "id": "blake3-reference-fork",
+      "local_repository": "rafaelmeloreisnovo/BLAKE3",
+      "source_commit": "e8d3b7bf89b0a6fcb49c752a9cd6b31a860e7147",
+      "upstream_project": "BLAKE3",
+      "upstream_repository": "BLAKE3-team/BLAKE3",
+      "original_authors_or_org": "Jack O'Connor; Samuel Neves; BLAKE3 contributors",
+      "license_expression": "CC0-1.0 OR Apache-2.0 OR Apache-2.0 WITH LLVM-exception",
+      "license_evidence": "rafaelmeloreisnovo/BLAKE3@e8d3b7bf89b0a6fcb49c752a9cd6b31a860e7147:Cargo.toml",
+      "integration_mode": "reference_fork",
+      "distribution_candidate": false,
+      "copy_policy": "no_copy_use_existing_official_b3sum_recipe",
+      "attribution_required": true,
+      "package_binding": {
+        "package": "b3sum",
+        "recipe": "packages/b3sum/build.sh",
+        "source_policy": "official_upstream_not_local_fork"
+      }
+    },
+    {
+      "id": "vectras-vm-android",
+      "local_repository": "rafaelmeloreisnovo/Vectras-VM-Android",
+      "source_commit": "34aa3db434627c40cdc6fdb595591634e74d090d",
+      "upstream_project": "Vectras VM Android",
+      "upstream_repository": "xoureldeen/Vectras-VM-Android",
+      "original_authors_or_org": "xoureldeen; Vectras contributors",
+      "license_expression": "GPL-2.0-only",
+      "license_evidence": "rafaelmeloreisnovo/Vectras-VM-Android@34aa3db434627c40cdc6fdb595591634e74d090d:LICENSE",
+      "integration_mode": "android_backend_contract",
+      "distribution_candidate": false,
+      "copy_policy": "no_copy_integrate_by_versioned_contract_and_artifacts",
+      "attribution_required": true
+    },
+    {
+      "id": "qemu-rafaelia",
+      "local_repository": "rafaelmeloreisnovo/qemu_rafaelia",
+      "source_commit": "db1fa8080479125f14e46606477e3b82b912b63d",
+      "upstream_project": "QEMU",
+      "upstream_repository": "qemu/qemu",
+      "original_authors_or_org": "Fabrice Bellard; QEMU team and contributors",
+      "license_expression": "GPL-2.0-only",
+      "license_evidence": "rafaelmeloreisnovo/qemu_rafaelia@db1fa8080479125f14e46606477e3b82b912b63d:LICENSE",
+      "file_license_policy": "PATH_AWARE_REQUIRED",
+      "integration_mode": "process_artifact_contract",
+      "distribution_candidate": false,
+      "copy_policy": "no_source_transplant_without_per_file_license_and_origin",
+      "attribution_required": true,
+      "package_binding": {
+        "package": "qemu-system-x86-64-headless",
+        "recipe": "packages/qemu-system-x86-64-headless/build.sh",
+        "source_policy": "official_qemu_release_not_local_fork",
+        "arm32_x86_64_guest_runtime": "TOKEN_VAZIO"
+      }
+    },
+    {
+      "id": "androidx-rmr",
+      "local_repository": "rafaelmeloreisnovo/androidx_RmR",
+      "source_commit": "d4f500fce4ffb645a8372eb5a6683c3e0eb563e2",
+      "upstream_project": "Android Jetpack / AndroidX",
+      "upstream_repository": "TOKEN_VAZIO",
+      "original_authors_or_org": "AndroidX/Jetpack contributors; Google/Android Open Source project",
+      "license_expression": "Apache-2.0",
+      "license_evidence": "rafaelmeloreisnovo/androidx_RmR@d4f500fce4ffb645a8372eb5a6683c3e0eb563e2:LICENSE.txt",
+      "integration_mode": "android_build_dependency_contract",
+      "distribution_candidate": false,
+      "copy_policy": "no_copy_until_exact_consumed_module_and_upstream_origin_are_bound",
+      "attribution_required": true
+    },
+    {
+      "id": "termux-api-rafcodephi",
+      "local_repository": "rafaelmeloreisnovo/termux-api_rafcodephi",
+      "source_commit": "3aeb83da3bbb00527a76cd103695ea1c0e062c2d",
+      "upstream_project": "Termux:API",
+      "upstream_repository": "termux/termux-api",
+      "upstream_reference_commit": "a1cdc5207057a51261faf2fd8a2b23a4d15d08d8",
+      "original_authors_or_org": "Termux team and contributors",
+      "license_expression": "GPL-3.0-only",
+      "license_evidence": "rafaelmeloreisnovo/termux-api_rafcodephi@3aeb83da3bbb00527a76cd103695ea1c0e062c2d:LICENSE.md",
+      "integration_mode": "android_companion_contract",
+      "distribution_candidate": false,
+      "copy_policy": "no_android_app_source_copy_into_termux_package",
+      "attribution_required": true,
+      "package_binding": {
+        "package": "termux-api",
+        "source_policy": "termux_cli_client_package_is_distinct_from_android_companion_app"
+      }
+    }
+  ],
+  "scoped_gaps": {
+    "TV-RAFCODEPHI-FEDERATED-ATTRIBUTION": {
+      "state": "IMPLEMENTED_PENDING_CI",
+      "scope": "RAFCODEPHI federated components listed in this manifest",
+      "closure_gate": "scripts/validate_rafcodephi_federated_provenance.py"
+    },
+    "TV-VECTRAS-ARM32-QEMU-X86_64": {
+      "state": "TOKEN_VAZIO",
+      "scope": "physical ARM32 host providing qemu-system-x86_64 for Vectras",
+      "reason": "current upstream Termux QEMU recipe omits x86_64-softmmu on 32-bit hosts; qemu_rafaelia ARMv7 full system binary is not yet proven by an exact build/runtime receipt"
+    },
+    "TV-PACKAGE-LICENSE-INVENTORY-GLOBAL": {
+      "state": "TOKEN_VAZIO",
+      "scope": "entire termux-packages tree",
+      "reason": "this change closes only the scoped RAFCODEPHI federation inventory, not every third-party package in the repository"
+    }
+  },
+  "claim_allowed": false
+}

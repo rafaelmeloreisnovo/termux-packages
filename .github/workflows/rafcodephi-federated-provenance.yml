@@ -1,0 +1,67 @@
+name: RAFCODEPHI Federated Provenance
+
+on:
+  pull_request:
+    paths:
+      - 'docs/assurance/rafcodephi-federated-components.v1.json'
+      - 'docs/assurance/THIRD_PARTY_AND_FORK_ATTRIBUTION.md'
+      - 'docs/receipts/RAFCODEPHI_FEDERATED_PROVENANCE_*.json'
+      - 'packages/rafcodephi-*/**'
+      - 'packages/b3sum/**'
+      - 'packages/qemu-system-x86-64-headless/**'
+      - 'scripts/validate_rafcodephi_federated_provenance.py'
+      - 'scripts/validate_package_provenance_handoff.py'
+      - '.github/workflows/rafcodephi-federated-provenance.yml'
+      - '.github/workflows/rafcodephi-runtime-packages.yml'
+      - 'README.md'
+  push:
+    branches:
+      - main
+    paths:
+      - 'docs/assurance/rafcodephi-federated-components.v1.json'
+      - 'docs/assurance/THIRD_PARTY_AND_FORK_ATTRIBUTION.md'
+      - 'packages/rafcodephi-*/**'
+      - 'scripts/validate_rafcodephi_federated_provenance.py'
+      - '.github/workflows/rafcodephi-federated-provenance.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  provenance:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - name: Checkout exact candidate
+        uses: actions/checkout@v6
+
+      - name: Validate RAFCODEPHI federated provenance
+        run: python3 scripts/validate_rafcodephi_federated_provenance.py
+
+      - name: Preserve package provenance handoff boundary
+        run: python3 scripts/validate_package_provenance_handoff.py
+
+      - name: Validate metapackage shell syntax
+        shell: bash
+        run: |
+          set -euo pipefail
+          for f in \
+            packages/rafcodephi-federation-metadata/build.sh \
+            packages/rafcodephi-bootstrap-profile/build.sh \
+            packages/rafcodephi-runtime-profile/build.sh \
+            packages/rafcodephi-vectras-profile/build.sh \
+            packages/rafcodephi-full-profile/build.sh; do
+            bash -n "$f"
+          done
+
+      - name: Fail if third-party source was vendored into profile packages
+        shell: bash
+        run: |
+          set -euo pipefail
+          if find packages/rafcodephi-*-profile packages/rafcodephi-federation-metadata \
+            -type f ! -name build.sh -print -quit | grep -q .; then
+            echo 'unexpected vendored file in RAFCODEPHI metadata/profile package' >&2
+            exit 66
+          fi
+          echo 'PASS: profile packages contain dependency metadata/glue only'

@@ -53,14 +53,17 @@ jobs:
           PROFILE: ${{ env.RAFCODEPHI_PROFILE }}
         run: |
           set -euo pipefail
-          bootstrap_outputs=(apt bash busybox dpkg ca-certificates coreutils termux-tools)
-          bootstrap_recipes=(apt bash busybox dpkg ca-certificates coreutils termux-tools)
-          runtime_outputs=(openssl curl git python procps)
-          runtime_recipes=(openssl libcurl git python procps)
-          vectras_outputs=(proot)
-          vectras_recipes=(proot)
-          api_outputs=(termux-api)
-          api_recipes=(termux-api)
+          # Output package names and source recipe names are kept separate.
+          # RAFCODEPHI metapackages make the profile dependency graph installable
+          # while third-party source remains in its original package recipes.
+          bootstrap_outputs=(apt bash busybox dpkg ca-certificates coreutils termux-tools rafcodephi-federation-metadata rafcodephi-bootstrap-profile)
+          bootstrap_recipes=(apt bash busybox dpkg ca-certificates coreutils termux-tools rafcodephi-federation-metadata rafcodephi-bootstrap-profile)
+          runtime_outputs=(openssl curl git python procps b3sum rafcodephi-runtime-profile)
+          runtime_recipes=(openssl libcurl git python procps b3sum rafcodephi-runtime-profile)
+          vectras_outputs=(proot rafcodephi-vectras-profile)
+          vectras_recipes=(proot rafcodephi-vectras-profile)
+          api_outputs=(termux-api rafcodephi-full-profile)
+          api_recipes=(termux-api rafcodephi-full-profile)
 
           required=("${bootstrap_outputs[@]}")
           recipes=("${bootstrap_recipes[@]}")
@@ -102,6 +105,9 @@ jobs:
             homepage="$(grep -m1 '^TERMUX_PKG_HOMEPAGE=' "$recipe" || true)"
             printf '%s\t%s\t%s\t%s\n' "$output_pkg" "$recipe_pkg" "$license" "$homepage" >> rafcodephi-license-metadata.tsv
           done < rafcodephi-package-source-map.tsv
+
+      - name: Validate federated attribution before package build
+        run: python3 scripts/validate_rafcodephi_federated_provenance.py
 
       - name: Build only selected RAFCODEPHI packages and dependency closure
         env:
