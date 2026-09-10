@@ -1,0 +1,85 @@
+name: RAFCODEPHI Package Fleet Audit
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - 'packages/**'
+      - 'root-packages/**'
+      - 'x11-packages/**'
+      - 'scripts/lint-packages.sh'
+      - 'scripts/rafcodephi-package-fleet-audit.sh'
+      - '.github/workflows/rafcodephi-package-fleet-audit.yml'
+  pull_request:
+    paths:
+      - 'packages/**'
+      - 'root-packages/**'
+      - 'x11-packages/**'
+      - 'scripts/lint-packages.sh'
+      - 'scripts/rafcodephi-package-fleet-audit.sh'
+      - '.github/workflows/rafcodephi-package-fleet-audit.yml'
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: 'Audit mode: report records the whole fleet; gate fails on ERROR findings'
+        required: true
+        default: report
+        type: choice
+        options:
+          - report
+          - gate
+
+permissions:
+  contents: read
+
+concurrency:
+  group: package-fleet-audit-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  fleet-audit:
+    name: Whole recipe fleet
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 2
+
+      - name: Scan every package recipe
+        id: audit
+        shell: bash
+        env:
+          AUDIT_MODE: ${{ github.event_name == 'workflow_dispatch' && inputs.mode || 'report' }}
+        run: |
+          set -euo pipefail
+          mkdir -p artifacts/package-fleet-audit
+          bash scripts/rafcodephi-package-fleet-audit.sh \
+            --mode "$AUDIT_MODE" \
+            --output artifacts/package-fleet-audit
+
+      - name: Publish audit summary
+        if: always()
+        shell: bash
+        run: |
+          if [[ -f artifacts/package-fleet-audit/summary.txt ]]; then
+            {
+              echo '## RAFCODEPHI package fleet audit'
+              echo
+              echo '```text'
+              cat artifacts/package-fleet-audit/summary.txt
+              echo '```'
+            } >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo 'Audit summary was not produced.' >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+      - name: Upload fleet evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: rafcodephi-package-fleet-audit-${{ github.run_id }}
+          path: artifacts/package-fleet-audit/
+          if-no-files-found: error
+          retention-days: 14
