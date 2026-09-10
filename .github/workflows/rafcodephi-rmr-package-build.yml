@@ -45,33 +45,45 @@ jobs:
           set -euo pipefail
           ./scripts/run-docker.sh ./build-package.sh -C -a "$ARCH" rafcodephi-rmr-vector-field
 
-      - name: Verify produced deb and installed payload manifest
+      - name: Verify base and static deb payloads
         shell: bash
         env:
           ARCH: ${{ matrix.arch }}
         run: |
           set -euo pipefail
           mkdir -p out/rmr-package
-          mapfile -t debs < <(find output -maxdepth 1 -type f -name 'rafcodephi-rmr-vector-field_*.deb' -print | sort)
-          if [[ ${#debs[@]} -ne 1 ]]; then
-            printf 'expected exactly one RMR deb, found %d\n' "${#debs[@]}" >&2
-            printf '%s\n' "${debs[@]}" >&2
+
+          mapfile -t mains < <(find output -maxdepth 1 -type f -name 'rafcodephi-rmr-vector-field_*.deb' -print | sort)
+          mapfile -t statics < <(find output -maxdepth 1 -type f -name 'rafcodephi-rmr-vector-field-static_*.deb' -print | sort)
+          if [[ ${#mains[@]} -ne 1 || ${#statics[@]} -ne 1 ]]; then
+            printf 'expected one base and one static RMR deb; base=%d static=%d\n' "${#mains[@]}" "${#statics[@]}" >&2
+            find output -maxdepth 1 -type f -name 'rafcodephi-rmr-vector-field*.deb' -print >&2 || true
             exit 68
           fi
-          deb="${debs[0]}"
-          sha256sum "$deb" | tee out/rmr-package/SHA256SUMS.txt
-          dpkg-deb -c "$deb" | tee out/rmr-package/payload.txt
-          grep -q 'librafcodephi-rmr-vector-field.a' out/rmr-package/payload.txt
-          grep -q 'include/rafcodephi/rmr/rmr_vector_field.h' out/rmr-package/payload.txt
-          grep -q 'include/rafcodephi/rmr/rmr_types.h' out/rmr-package/payload.txt
-          grep -q 'share/doc/rafcodephi-rmr-vector-field/ORIGIN.md' out/rmr-package/payload.txt
-          cp "$deb" out/rmr-package/
+
+          main_deb="${mains[0]}"
+          static_deb="${statics[0]}"
+          [[ "$(dpkg-deb -f "$main_deb" Package)" == 'rafcodephi-rmr-vector-field' ]]
+          [[ "$(dpkg-deb -f "$static_deb" Package)" == 'rafcodephi-rmr-vector-field-static' ]]
+
+          sha256sum "$main_deb" "$static_deb" | tee out/rmr-package/SHA256SUMS.txt
+          dpkg-deb -c "$main_deb" | tee out/rmr-package/base-payload.txt
+          dpkg-deb -c "$static_deb" | tee out/rmr-package/static-payload.txt
+
+          grep -q 'include/rafcodephi/rmr/rmr_vector_field.h' out/rmr-package/base-payload.txt
+          grep -q 'include/rafcodephi/rmr/rmr_types.h' out/rmr-package/base-payload.txt
+          grep -q 'share/doc/rafcodephi-rmr-vector-field/ORIGIN.md' out/rmr-package/base-payload.txt
+          grep -q 'lib/librafcodephi-rmr-vector-field.a' out/rmr-package/static-payload.txt
+
+          cp "$main_deb" "$static_deb" out/rmr-package/
           {
             echo 'schema=rafcodephi.rmr-package-build-receipt/v1'
             echo "source_commit=${GITHUB_SHA}"
             echo "arch=${ARCH}"
             echo 'package=rafcodephi-rmr-vector-field'
+            echo 'static_subpackage=rafcodephi-rmr-vector-field-static'
             echo 'source_origin=rafaelmeloreisnovo/Vectras-VM-Android@34aa3db434627c40cdc6fdb595591634e74d090d'
+            echo 'payload_split=BASE_HEADERS_PROVENANCE_PLUS_STATIC_ARCHIVE'
             echo 'claim_allowed=false'
             echo 'physical_runtime=TOKEN_VAZIO'
           } > out/rmr-package/receipt.txt

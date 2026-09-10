@@ -86,15 +86,23 @@ for token in (
 if "TERMUX_PKG_SRCURL" in build:
     fail("byte-identical local transcription must not silently fetch a different source")
 
+# Termux packaging convention: keep headers/provenance in the base package and
+# split the static archive explicitly into a -static subpackage. This prevents
+# CI from mistaking a valid package split for a missing build artifact.
+static_subpkg = read("packages/rafcodephi-rmr-vector-field/rafcodephi-rmr-vector-field-static.subpackage.sh")
+if 'TERMUX_SUBPKG_INCLUDE="lib/librafcodephi-rmr-vector-field.a"' not in static_subpkg:
+    fail("static archive subpackage boundary")
+if "static library" not in static_subpkg:
+    fail("static subpackage description")
+
 origin = read("packages/rafcodephi-rmr-vector-field/ORIGIN.md")
 for token in (
     "rafaelmeloreisnovo/Vectras-VM-Android",
     "34aa3db434627c40cdc6fdb595591634e74d090d",
     "xoureldeen",
     "GPL-2.0-only",
-    "BYTE",
 ):
-    if token not in origin and token != "BYTE":
+    if token not in origin:
         fail(f"ORIGIN missing: {token}")
 
 contract = mod.get("compile_contract", {})
@@ -116,4 +124,4 @@ elif promotion == "PROMOTED_RUNTIME_PROVEN_STRUCTURAL":
 else:
     fail("unknown promotion state")
 
-print("PASS: RMR vector-field package preserves byte-identical GPLv2 source custody and freestanding gates")
+print("PASS: RMR vector-field package preserves byte-identical GPLv2 custody, explicit static split and freestanding gates")
