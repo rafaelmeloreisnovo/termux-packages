@@ -114,6 +114,12 @@ for channel in packages root-packages x11-packages; do
       record_finding ERROR BASH_SYNTAX "$rel" "$syntax_error"
     fi
 
+    # Bash syntax alone misses conflict markers when they are embedded inside a quoted command.
+    conflict_lines="$(grep -nE '^[[:space:]]*(<<<<<<< .+|=======[[:space:]]*|>>>>>>> .+)$' "$recipe" || true)"
+    if [[ -n "$conflict_lines" ]]; then
+      record_finding ERROR MERGE_CONFLICT_MARKER "$rel" "$conflict_lines"
+    fi
+
     if [[ -x "$recipe" ]]; then
       record_finding ERROR EXECUTABLE_RECIPE "$rel" "build.sh has executable bit set; package recipes are data sourced by build tooling."
     fi
@@ -162,6 +168,11 @@ for channel in packages root-packages x11-packages; do
       -e 's/^[[:space:]]*TERMUX_PKG_SHA256=([A-Za-z0-9_]+)[[:space:]]*$/\1/p' \
       "$recipe")
 
+    if grep -Eq '^[[:space:]]*TERMUX_PKG_SRCURL=.*(example\.com|example\.org|example\.net)(/|[[:space:]"'"']|$)' "$recipe"; then
+      record_finding ERROR PLACEHOLDER_SOURCE_URL "$rel" \
+        "TERMUX_PKG_SRCURL points at an RFC-reserved example domain, not a buildable source endpoint."
+    fi
+
     check_required_literal_field "$recipe" TERMUX_PKG_HOMEPAGE
     check_required_literal_field "$recipe" TERMUX_PKG_DESCRIPTION
     check_required_literal_field "$recipe" TERMUX_PKG_LICENSE
@@ -170,8 +181,10 @@ for channel in packages root-packages x11-packages; do
 
     while IFS= read -r description; do
       if ((${#description} > 100)); then
-        record_finding ERROR DESCRIPTION_TOO_LONG "$rel" \
-          "Literal TERMUX_PKG_DESCRIPTION has ${#description} characters; repository limit is 100."
+        # The legacy linter reports this condition but currently does not mark pkg_lint_error=true.
+        # Keep it visible without falsely converting historical policy drift into a build failure.
+        record_finding WARN DESCRIPTION_POLICY_DRIFT "$rel" \
+          "Literal TERMUX_PKG_DESCRIPTION has ${#description} characters; legacy linter reports >100 but does not fail the package."
       fi
     done < <(sed -nE \
       -e "s/^[[:space:]]*TERMUX_PKG_DESCRIPTION='([^']*)'[[:space:]]*$/\\1/p" \
@@ -201,6 +214,10 @@ if [[ -f "$LINTER" ]]; then
   if grep -qF '[[ ! "$sha256" =~ [0-9a-f]{64} ]]' "$LINTER"; then
     record_finding WARN TOOLING_SHA256_UNANCHORED "$LINTER" \
       "Legacy SHA-256 regex is not anchored. Fleet audit compensates with ^[0-9a-f]{64}$."
+  fi
+  if grep -qF 'before the first error was detected' "$LINTER"; then
+    record_finding WARN TOOLING_STOP_AFTER_FIRST_ERROR "$LINTER" \
+      "Legacy linter intentionally stops package traversal after the first failing recipe; fleet audit continues across the full corpus."
   fi
 else
   record_finding ERROR MISSING_LEGACY_LINTER "$LINTER" "Expected repository linter is missing."
