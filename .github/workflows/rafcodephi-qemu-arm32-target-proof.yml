@@ -5,16 +5,13 @@ on:
     paths:
       - 'packages/qemu-system-x86-64-headless/**'
       - '.github/workflows/rafcodephi-qemu-arm32-target-proof.yml'
-  push:
-    branches:
-      - rafcodephi/qemu-arm32-x86_64-v1-20260910
   workflow_dispatch:
 
 permissions:
   contents: read
 
 concurrency:
-  group: rafcodephi-qemu-arm32-target-proof-${{ github.ref }}
+  group: rafcodephi-qemu-arm32-target-proof-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: false
 
 jobs:
