@@ -19,3 +19,24 @@ GitHub reports repository-level `NOASSERTION`; package recipes can refer to many
 Before distribution, resolve each affected package through: `package -> source URL/ref -> recipe/patch -> destination -> upstream license -> local delta -> attribution/NOTICE/source obligations -> evidence`.
 
 This file does not replace any original LICENSE, NOTICE, copyright header, package metadata or source-offer obligation.
+
+## Local provenance receipts
+
+### 2026-09-10 — `packages/hello-world/build.sh`
+- component/material: GNU Hello package recipe metadata
+- source: `termux/termux-packages`, `packages/hello/build.sh` (observed current upstream recipe: GNU Hello 2.12.3)
+- destination: `packages/hello-world/build.sh`
+- adapted: homepage, license/maintainer fields, version, source URL, SHA-256, dependency/build flags and pre-configure linker flag
+- upstream software license recorded by recipe: GPL-3.0
+- local change: replaced an RFC-reserved `mirror.example.com` placeholder recipe with a pinned buildable GNU source recipe
+- evidence: local commit `feedda1058fcc4db1570b8971f99a0c6e46f893a`; fleet rerun required for PASS
+- gap: source fetch/build/install/runtime remain `TOKEN_VAZIO` until corresponding CI/device evidence exists
+
+### 2026-09-10 — `packages/aosp-libs/build.sh`
+- component/material: AOSP/Termux `aosp-libs` package recipe with RAFCODEPHI Android 16 delta
+- lineage source: local clean ancestor `a4e909409a6ff715853fe492a4a76f86d60f37a1`; inherited upstream Termux/AOSP notices remain authoritative for third-party code
+- destination: `packages/aosp-libs/build.sh`
+- local recovery: removed unresolved `<<<<<<< / ======= / >>>>>>>` merge residue, removed duplicated mixed source-flow logic, retained the clean Android 16 `aosp_current` branch of the fork, and separated package version `16.0.0.r4` from manifest ref `android-16.0.0_r4`
+- preserved current delta: `resolv-conf` dependency remains present; compatibility of the associated patch with Android 16 is not claimed
+- evidence: recovery commit `c7450e0461318be5fda01a3f206dae6df396928d`; clean ancestor evidence `a4e909409a6ff715853fe492a4a76f86d60f37a1`
+- gap: AOSP source sync, patch application, full build, produced payload and Android runtime remain `TOKEN_VAZIO` pending CI/device receipts

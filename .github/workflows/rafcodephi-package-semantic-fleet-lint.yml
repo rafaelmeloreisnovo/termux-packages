@@ -1,0 +1,83 @@
+name: RAFCODEPHI Package Semantic Fleet Lint
+
+on:
+  pull_request:
+    paths:
+      - 'packages/**'
+      - 'root-packages/**'
+      - 'x11-packages/**'
+      - 'scripts/lint-packages.sh'
+      - 'scripts/rafcodephi-package-semantic-lint-all.sh'
+      - '.github/workflows/rafcodephi-package-semantic-fleet-lint.yml'
+  push:
+    branches:
+      - main
+    paths:
+      - 'packages/**'
+      - 'root-packages/**'
+      - 'x11-packages/**'
+      - 'scripts/lint-packages.sh'
+      - 'scripts/rafcodephi-package-semantic-lint-all.sh'
+      - '.github/workflows/rafcodephi-package-semantic-fleet-lint.yml'
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: 'report records all failures; gate exits non-zero when any package fails legacy lint'
+        required: true
+        default: report
+        type: choice
+        options:
+          - report
+          - gate
+
+permissions:
+  contents: read
+
+concurrency:
+  group: semantic-fleet-lint-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  semantic-fleet-lint:
+    name: Legacy lint without first-error stop
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 1000
+
+      - name: Lint complete package fleet
+        shell: bash
+        env:
+          AUDIT_MODE: ${{ github.event_name == 'workflow_dispatch' && inputs.mode || 'report' }}
+        run: |
+          set -euo pipefail
+          bash scripts/rafcodephi-package-semantic-lint-all.sh \
+            --mode "$AUDIT_MODE" \
+            --output artifacts/package-semantic-fleet-lint
+
+      - name: Publish semantic fleet summary
+        if: always()
+        shell: bash
+        run: |
+          if [[ -f artifacts/package-semantic-fleet-lint/summary.txt ]]; then
+            {
+              echo '## RAFCODEPHI semantic fleet lint'
+              echo
+              echo '```text'
+              cat artifacts/package-semantic-fleet-lint/summary.txt
+              echo '```'
+            } >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo 'Semantic fleet summary was not produced.' >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+      - name: Upload semantic lint evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: rafcodephi-package-semantic-fleet-lint-${{ github.run_id }}
+          path: artifacts/package-semantic-fleet-lint/
+          if-no-files-found: error
+          retention-days: 14
