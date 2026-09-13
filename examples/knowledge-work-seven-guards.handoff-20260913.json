@@ -1,0 +1,100 @@
+{
+  "id": "TERMUX-HANDOFF-KW7-PACKAGE-20260913-001",
+  "handoff_id": "TERMUX-PACKAGES-TO-APP-20260913-001",
+  "repository": "rafaelmeloreisnovo/termux-packages",
+  "intent": "Bind the merged seven-guard adapter to the producer side of one package-to-app handoff without promoting build, install, or runtime claims.",
+  "provenance": {
+    "source_provider": "GitHub",
+    "repository": "rafaelmeloreisnovo/termux-packages",
+    "ref": "f577b591e561b74cc7d6c62cb05ceb97e71969d1",
+    "path": "configs/knowledge-work-seven-guards.v1.json",
+    "object_hash": "git-blob-sha1:a9de3643ed5d147b38c2faeab7f0e73e65b97a62",
+    "observed_at": "2026-09-13T04:03:54Z",
+    "authority": "PACKAGE_SOURCE_FACTORY"
+  },
+  "context": {
+    "intent": "Record the current producer-side assurance state for the package-to-app boundary.",
+    "scope": "Seven-guard structure, package provenance contract, and exact remote CI observations at termux-packages PR 112.",
+    "boundary": "Structural/assurance CI does not prove a real source fetch, package artifact, consumer acceptance, install, pkg execution, or physical Android behavior.",
+    "observed_at": "2026-09-13T04:03:54Z",
+    "dependencies": [
+      "github:rafaelmeloreisnovo/Mapa#619@3a2821d44d555c28cd041ba029cfa940fe3d4c0a",
+      "github:rafaelmeloreisnovo/RafGitTools#452@da8c129329c5106686dff3897f662c9701af6f9a",
+      "github:rafaelmeloreisnovo/termux-app-rafacodephi#439@14c1d4b4af2f3f31e675d8a57506812e8547f4ed"
+    ]
+  },
+  "evidence": [
+    {
+      "ref": "github:rafaelmeloreisnovo/termux-packages#112@f577b591e561b74cc7d6c62cb05ceb97e71969d1",
+      "type": "SOURCE_CHANGE",
+      "scope": "Repository-local contract, validator, adversarial tests, fixture, documentation, and existing-workflow integration."
+    },
+    {
+      "ref": "github-actions:rafaelmeloreisnovo/termux-packages/runs/34736876954#job-103669762546:steps-3-6",
+      "type": "REMOTE_CI",
+      "scope": "Seven-guard tests, structural fixture, provenance/handoff contract, and negative over-promotion gate passed on PR head d6b48d311ee98e86f326b71ca4a27bc79fb0508a."
+    },
+    {
+      "ref": "git-blob-sha1:644a9b8e625a297e7a1fd1338556f0e50d8fb762",
+      "type": "DOCUMENTED_GAP_SET",
+      "scope": "Package provenance handoff contract preserves per-package license, source/recipe/artifact, consumer handoff, physical runtime, and staged-schema gaps."
+    }
+  ],
+  "contradictions": [
+    {
+      "id": "C-PKG-HANDOFF-COMMIT-001",
+      "state": "OPEN",
+      "comparison_scope": "Current package-factory main commit versus observed_commit recorded by the active package-provenance handoff contract.",
+      "ref": "github:rafaelmeloreisnovo/termux-packages@f577b591e561b74cc7d6c62cb05ceb97e71969d1:docs/assurance/package-provenance-handoff.v1.json#observed_commit=b58746c5903ff160edf7f59d91c0c9689b462488"
+    },
+    {
+      "id": "C-PKG-CI-SCOPE-001",
+      "state": "RESOLVED",
+      "comparison_scope": "Seven-guard assurance CI PASS versus package/install/runtime TOKEN_VAZIO states.",
+      "ref": "github-actions:rafaelmeloreisnovo/termux-packages/runs/34736876954",
+      "resolution": "There is no scope conflict: structural assurance passed, while producer artifact and consumer runtime evidence remain absent."
+    }
+  ],
+  "uncertainty": [
+    {
+      "id": "U-PKG-SOURCE-RECIPE-ARTIFACT-001",
+      "state": "TOKEN_VAZIO",
+      "evidence_needed": "One exact source URL/repository/ref/digest, recipe path/commit, ABI, artifact digest, schema, and validator receipt.",
+      "falsifier": "Source, recipe, produced artifact, or receipt digest fails to match the declared chain.",
+      "next_probe": "Build one representative package from a pinned, licensed source and emit the complete producer handoff receipt."
+    },
+    {
+      "id": "U-PKG-LICENSE-INVENTORY-001",
+      "state": "TOKEN_VAZIO",
+      "evidence_needed": "Path/component-level governing license and obligations for the selected recipe, patches, source, and distributed artifact.",
+      "falsifier": "Any selected component lacks a compatible license or required attribution/NOTICE in the handoff.",
+      "next_probe": "Audit licensing only for the representative package chosen for the first handoff."
+    },
+    {
+      "id": "U-PKG-CONSUMER-RUNTIME-001",
+      "state": "TOKEN_VAZIO",
+      "evidence_needed": "Consumer verification of the exact artifact/schema followed by install and runtime receipts on an identified Android/Termux environment.",
+      "falsifier": "Consumer identity verification, installation, or runtime execution fails or consumes different bytes.",
+      "next_probe": "After producer receipt PASS, hand the exact digest to termux-app and preserve its independent consumer receipt."
+    }
+  ],
+  "reproduction": {
+    "status": "PASS",
+    "procedure": "GitHub Actions Package Provenance Handoff run 34736876954, job 103669762546, steps 3 through 6.",
+    "environment_ref": "github-actions:ubuntu-latest:run-34736876954",
+    "input_ref": "git:rafaelmeloreisnovo/termux-packages@d6b48d311ee98e86f326b71ca4a27bc79fb0508a",
+    "output_ref": "github-actions:run-34736876954:steps-3-6:PASS"
+  },
+  "rollback": {
+    "state": "READY",
+    "predecessor": "41414158c802aea8f8aac87253601d89fefd7fbc",
+    "procedure": "On a dedicated rollback branch, revert merge commit f577b591e561b74cc7d6c62cb05ceb97e71969d1; never rewrite main history.",
+    "verification": "Not executed: require focused seven-guard tests, package handoff tests, workflow syntax, and a diff proving only the adapter delta is removed."
+  },
+  "reconstruction_pointer": "Mapa#619 -> RafGitTools#452 -> termux-packages#112 -> Package Provenance Handoff run 34736876954 -> termux-app#439",
+  "mutation_performed": true,
+  "expected_decision": "BLOCKED",
+  "state": "VERIFIED_LIMITED_REMOTE_CI_WITH_OPEN_GAPS",
+  "claim_allowed": false,
+  "next": "Produce one exact source-to-artifact receipt, then require an independent consumer receipt from termux-app."
+}
