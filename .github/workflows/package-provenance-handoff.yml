@@ -9,6 +9,7 @@ on:
       - 'scripts/validate_knowledge_work_seven_guards.py'
       - 'tests/test_knowledge_work_seven_guards.py'
       - 'examples/knowledge-work-seven-guards.example.json'
+      - 'examples/knowledge-work-seven-guards.handoff-20260913.json'
       - 'docs/assurance/RAFAELIA_KNOWLEDGE_WORK_SEVEN_GUARDS_V1.md'
       - '.github/workflows/package-provenance-handoff.yml'
   pull_request:
@@ -19,6 +20,7 @@ on:
       - 'scripts/validate_knowledge_work_seven_guards.py'
       - 'tests/test_knowledge_work_seven_guards.py'
       - 'examples/knowledge-work-seven-guards.example.json'
+      - 'examples/knowledge-work-seven-guards.handoff-20260913.json'
       - 'docs/assurance/RAFAELIA_KNOWLEDGE_WORK_SEVEN_GUARDS_V1.md'
       - '.github/workflows/package-provenance-handoff.yml'
 
@@ -36,6 +38,9 @@ jobs:
 
       - name: Seven knowledge/work guards — structural fixture
         run: python3 scripts/validate_knowledge_work_seven_guards.py examples/knowledge-work-seven-guards.example.json
+
+      - name: Seven knowledge/work guards — honest blocked handoff
+        run: python3 scripts/validate_knowledge_work_seven_guards.py examples/knowledge-work-seven-guards.handoff-20260913.json --expect BLOCKED
 
       - name: Validate package provenance/handoff contract
         run: python3 scripts/validate_package_provenance_handoff.py
