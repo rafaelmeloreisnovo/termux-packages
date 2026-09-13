@@ -1,0 +1,46 @@
+{
+  "id": "TERMUX-PACKAGES-SEVEN-GUARDS-FIXTURE-001",
+  "repository": "rafaelmeloreisnovo/termux-packages",
+  "intent": "exercise package-factory seven-guard semantics without asserting install/runtime",
+  "provenance": {
+    "source_provider": "GitHub",
+    "repository": "rafaelmeloreisnovo/termux-packages",
+    "ref": "41414158c802aea8f8aac87253601d89fefd7fbc",
+    "path": "AGENTS.md",
+    "object_hash": "322e2dcb7f0e06db0458942dfe485fcbf97be78a",
+    "observed_at": "2026-09-13",
+    "authority": "PACKAGE_SOURCE_FACTORY"
+  },
+  "context": {
+    "intent": "synthetic structural fixture",
+    "scope": "validator semantics only",
+    "boundary": "does not prove source fetch, package build, install, pkg runtime, repository signing, or physical Android execution",
+    "observed_at": "2026-09-13",
+    "dependencies": []
+  },
+  "evidence": [
+    {
+      "ref": "fixture:synthetic-positive",
+      "type": "TEST_FIXTURE",
+      "scope": "seven-guard validator semantics only"
+    }
+  ],
+  "contradictions": [],
+  "uncertainty": [],
+  "reproduction": {
+    "status": "PASS",
+    "procedure": "python3 tests/test_knowledge_work_seven_guards.py",
+    "environment_ref": "python3-standard-library",
+    "input_ref": "configs/knowledge-work-seven-guards.v1.json",
+    "output_ref": "unittest-result"
+  },
+  "rollback": {
+    "state": "NOT_APPLICABLE",
+    "predecessor": "41414158c802aea8f8aac87253601d89fefd7fbc",
+    "procedure": "close PR or revert adapter commits",
+    "verification": "main remains at predecessor until merge"
+  },
+  "reconstruction_pointer": "rafaelmeloreisnovo/Mapa@3a2821d44d555c28cd041ba029cfa940fe3d4c0a:docs/canonical/2026-09-13/CASA_CONHECIMENTO_TRABALHO_V1.md",
+  "mutation_performed": false,
+  "claim_allowed": false
+}
