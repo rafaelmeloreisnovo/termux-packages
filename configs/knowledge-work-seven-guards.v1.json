@@ -1,5 +1,6 @@
 {
   "schema": "rafaelia.knowledge-work-seven-guards.v1",
+  "semantic_version": "1.1.0",
   "repository": "rafaelmeloreisnovo/termux-packages",
   "role": "PACKAGE_SOURCE_FACTORY",
   "federated_authority": "rafaelmeloreisnovo/Mapa",
@@ -17,6 +18,16 @@
     "reproduction",
     "rollback"
   ],
+  "allowed_states": {
+    "contradiction": ["OPEN","RESOLVED","SUPERSEDED"],
+    "uncertainty": ["TOKEN_VAZIO","BLOCKED","PARTIAL","NOT_APPLICABLE","CLOSED"],
+    "reproduction": ["TOKEN_VAZIO","BLOCKED","PASS","FAIL","NOT_APPLICABLE"],
+    "rollback": ["TOKEN_VAZIO","BLOCKED","READY","EXECUTED","NOT_APPLICABLE"]
+  },
+  "allowed_evidence_types": [
+    "TEST","RUN","HASH","DATA","RECEIPT","REVIEW","NEGATIVE_RESULT","TEST_FIXTURE","CI","ARTIFACT"
+  ],
+  "reproduction_evidence_types": ["TEST","RUN","RECEIPT","TEST_FIXTURE","CI"],
   "reconstructibility_transverse": true,
   "reconstruction_pointer_required": true,
   "claim_allowed": false,
@@ -32,6 +43,6 @@
   ],
   "consumer_repository": "rafaelmeloreisnovo/termux-app-rafacodephi",
   "rollback_rule": "material_mutation_requires_READY_or_EXECUTED",
-  "unknown_rule": "TOKEN_VAZIO_BLOCKS_PROMOTION",
+  "unknown_rule": "UNKNOWN_OR_UNRECOGNIZED_STATE_BLOCKS_PROMOTION",
   "license_rule": "no_single_license_flattening"
 }

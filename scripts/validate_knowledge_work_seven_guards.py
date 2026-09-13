@@ -51,6 +51,9 @@ UNCERTAINTY_STATES = {
 REPRODUCTION_STATES = {"TOKEN_VAZIO", "BLOCKED", "PASS", "FAIL", "NOT_APPLICABLE"}
 ROLLBACK_STATES = {"TOKEN_VAZIO", "READY", "EXECUTED", "NOT_APPLICABLE"}
 UNRESOLVED = {"TOKEN_VAZIO", "BLOCKED", "PARTIAL"}
+HEX_DIGEST = re.compile(r"^(?:[0-9a-f]{40}|[0-9a-f]{64}|sha1:[0-9a-f]{40}|sha256:[0-9a-f]{64})$")
+GITHUB_COMMIT = re.compile(r"^[0-9a-f]{40}$")
+ISO_OBSERVED = re.compile(r"^\d{4}-\d{2}-\d{2}(?:T\d{2}:\d{2}(?::\d{2})?(?:Z|[+-]\d{2}:?\d{2})?)?$")
 
 
 def _nonempty(value: object) -> bool:
@@ -117,6 +120,15 @@ def validate_unit(unit: dict, cfg: dict) -> dict:
             value = provenance.get(key)
             if isinstance(value, str) and value.startswith("TOKEN_VAZIO"):
                 blockers.append(f"provenance:{key}:TOKEN_VAZIO")
+        if prov.get("object_hash") and not HEX_DIGEST.fullmatch(str(prov["object_hash"])):
+            errors.append("provenance:invalid_object_hash")
+        if prov.get("source_provider") == "GitHub":
+            if not GITHUB_COMMIT.fullmatch(str(prov.get("ref",""))):
+                errors.append("provenance:github_ref_not_exact_commit")
+            if "/" not in str(prov.get("repository","")):
+                errors.append("provenance:github_repository_invalid")
+        if prov.get("observed_at") and not ISO_OBSERVED.fullmatch(str(prov["observed_at"])):
+            errors.append("provenance:observed_at_invalid")
 
     context = unit.get("context")
     if not isinstance(context, dict):
@@ -130,8 +142,17 @@ def validate_unit(unit: dict, cfg: dict) -> dict:
         )
         if "dependencies" in context and not isinstance(context["dependencies"], list):
             errors.append("context:dependencies_not_list")
+        elif isinstance(ctx.get("dependencies"), list):
+            for i, dep in enumerate(ctx["dependencies"]):
+                if not isinstance(dep, str) or not dep:
+                    errors.append(f"context:dependency_{i}_invalid")
+                elif _token_vazio(dep):
+                    blockers.append(f"context:dependency_{i}:TOKEN_VAZIO")
+        if ctx.get("observed_at") and not ISO_OBSERVED.fullmatch(str(ctx["observed_at"])):
+            errors.append("context:observed_at_invalid")
 
     evidence = unit.get("evidence")
+    evidence_types = set()
     if not isinstance(evidence, list):
         errors.append("evidence:not_list")
     elif not evidence:
@@ -147,6 +168,7 @@ def validate_unit(unit: dict, cfg: dict) -> dict:
     if not isinstance(contradictions, list):
         errors.append("contradiction:not_list")
     else:
+        allowed = set(states.get("contradiction", []))
         for i, item in enumerate(contradictions):
             if not isinstance(item, dict):
                 errors.append(f"contradiction:{i}:not_object")
@@ -164,6 +186,7 @@ def validate_unit(unit: dict, cfg: dict) -> dict:
     if not isinstance(uncertainty, list):
         errors.append("uncertainty:not_list")
     else:
+        allowed = set(states.get("uncertainty", []))
         for i, item in enumerate(uncertainty):
             if not isinstance(item, dict):
                 errors.append(f"uncertainty:{i}:not_object")
@@ -209,6 +232,9 @@ def validate_unit(unit: dict, cfg: dict) -> dict:
 
     if not _nonempty(unit.get("reconstruction_pointer")):
         errors.append("reconstructibility:missing_pointer")
+    elif expected_pointer and pointer != expected_pointer:
+        errors.append("reconstructibility:pointer_not_canonical")
+
     if not isinstance(unit.get("mutation_performed"), bool):
         errors.append("unit:mutation_performed_not_bool")
 

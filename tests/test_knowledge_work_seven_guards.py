@@ -100,6 +100,10 @@ class SevenGuardTests(unittest.TestCase):
 
         self.assertIn("contradiction:0:invalid_state", self.run_unit(mutate)["errors"])
 
+    def test_invalid_contradiction_state_rejected(self):
+        def m(u): u["contradictions"]=[{"id":"C1","state":"IGNORED","comparison_scope":"same recipe/artifact","ref":"fixture:C1"}]
+        self.assertIn("contradiction:0:invalid_state", self.run_unit(m)["errors"])
+
     def test_uncertainty_blocks(self):
         def mutate(unit):
             unit["uncertainty"] = [
@@ -128,6 +132,10 @@ class SevenGuardTests(unittest.TestCase):
 
         self.assertIn("uncertainty:0:invalid_state", self.run_unit(mutate)["errors"])
 
+    def test_invalid_uncertainty_state_rejected(self):
+        def m(u): u["uncertainty"]=[{"id":"U1","state":"MAGIC","evidence_needed":"artifact digest","falsifier":"receipt","next_probe":"build bounded package"}]
+        self.assertIn("uncertainty:0:invalid_state", self.run_unit(m)["errors"])
+
     def test_reproduction_required(self):
         def mutate(unit):
             unit["reproduction"]["status"] = "TOKEN_VAZIO"
@@ -139,6 +147,14 @@ class SevenGuardTests(unittest.TestCase):
             unit["reproduction"]["status"] = "LIKELY"
 
         self.assertIn("reproduction:invalid_status", self.run_unit(mutate)["errors"])
+
+    def test_reproduction_pass_requires_reproduction_evidence(self):
+        def m(u): u["evidence"]=[{"ref":"data:1","type":"DATA","scope":"bounded"}]
+        self.assertIn("reproduction:pass_without_reproduction_evidence", self.run_unit(m)["blockers"])
+
+    def test_invalid_rollback_state_rejected(self):
+        def m(u): u["rollback"]["state"]="MAGIC"
+        self.assertIn("rollback:invalid_state", self.run_unit(m)["errors"])
 
     def test_mutation_requires_rollback(self):
         def mutate(unit):
@@ -153,6 +169,10 @@ class SevenGuardTests(unittest.TestCase):
     def test_invalid_rollback_state_fails_structure(self):
         result = self.run_unit(lambda unit: unit["rollback"].__setitem__("state", "POSSIBLE"))
         self.assertIn("rollback:invalid_state", result["errors"])
+
+    def test_reconstruction_pointer_must_be_canonical(self):
+        r = self.run_unit(lambda u: u.__setitem__("reconstruction_pointer","garbage"))
+        self.assertIn("reconstructibility:pointer_not_canonical", r["errors"])
 
     def test_claim_promotion_rejected(self):
         result = self.run_unit(lambda unit: unit.__setitem__("claim_allowed", True))
