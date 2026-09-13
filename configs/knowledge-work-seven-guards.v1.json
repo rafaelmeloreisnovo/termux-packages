@@ -1,0 +1,37 @@
+{
+  "schema": "rafaelia.knowledge-work-seven-guards.v1",
+  "repository": "rafaelmeloreisnovo/termux-packages",
+  "role": "PACKAGE_SOURCE_FACTORY",
+  "federated_authority": "rafaelmeloreisnovo/Mapa",
+  "source_contract": {
+    "repository": "rafaelmeloreisnovo/Mapa",
+    "commit": "3a2821d44d555c28cd041ba029cfa940fe3d4c0a",
+    "path": "docs/canonical/2026-09-13/CASA_CONHECIMENTO_TRABALHO_V1.md"
+  },
+  "required_guards": [
+    "provenance",
+    "context",
+    "evidence",
+    "contradiction",
+    "uncertainty",
+    "reproduction",
+    "rollback"
+  ],
+  "reconstructibility_transverse": true,
+  "reconstruction_pointer_required": true,
+  "claim_allowed": false,
+  "promotion_target": "READY_FOR_DOMAIN_REVIEW",
+  "repository_boundaries": [
+    "SOURCE!=RECIPE!=ARTIFACT!=INSTALL!=RUNTIME",
+    "SOURCE!=ARTIFACT!=EXECUTION!=EVIDENCE!=CLAIM",
+    "TOKEN_VAZIO!=0",
+    "BUILD_SUCCESS!=INSTALL_SUCCESS",
+    "INSTALL_SUCCESS!=RUNTIME_SUCCESS",
+    "PACKAGE_PRODUCER!=RUNTIME_CONSUMER",
+    "STRUCTURAL_READY!=DOMAIN_CLAIM"
+  ],
+  "consumer_repository": "rafaelmeloreisnovo/termux-app-rafacodephi",
+  "rollback_rule": "material_mutation_requires_READY_or_EXECUTED",
+  "unknown_rule": "TOKEN_VAZIO_BLOCKS_PROMOTION",
+  "license_rule": "no_single_license_flattening"
+}
