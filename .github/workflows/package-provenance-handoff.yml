@@ -5,11 +5,21 @@ on:
     paths:
       - 'docs/assurance/package-provenance-handoff.v1.json'
       - 'scripts/validate_package_provenance_handoff.py'
+      - 'configs/knowledge-work-seven-guards.v1.json'
+      - 'scripts/validate_knowledge_work_seven_guards.py'
+      - 'tests/test_knowledge_work_seven_guards.py'
+      - 'examples/knowledge-work-seven-guards.example.json'
+      - 'docs/assurance/RAFAELIA_KNOWLEDGE_WORK_SEVEN_GUARDS_V1.md'
       - '.github/workflows/package-provenance-handoff.yml'
   pull_request:
     paths:
       - 'docs/assurance/package-provenance-handoff.v1.json'
       - 'scripts/validate_package_provenance_handoff.py'
+      - 'configs/knowledge-work-seven-guards.v1.json'
+      - 'scripts/validate_knowledge_work_seven_guards.py'
+      - 'tests/test_knowledge_work_seven_guards.py'
+      - 'examples/knowledge-work-seven-guards.example.json'
+      - 'docs/assurance/RAFAELIA_KNOWLEDGE_WORK_SEVEN_GUARDS_V1.md'
       - '.github/workflows/package-provenance-handoff.yml'
 
 permissions:
@@ -20,8 +30,16 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+
+      - name: Seven knowledge/work guards — adversarial tests
+        run: python3 tests/test_knowledge_work_seven_guards.py
+
+      - name: Seven knowledge/work guards — structural fixture
+        run: python3 scripts/validate_knowledge_work_seven_guards.py examples/knowledge-work-seven-guards.example.json
+
       - name: Validate package provenance/handoff contract
         run: python3 scripts/validate_package_provenance_handoff.py
+
       - name: Negative gate — flattening licenses and promoting build to runtime must fail
         run: |
           cp docs/assurance/package-provenance-handoff.v1.json /tmp/package-assurance.json
