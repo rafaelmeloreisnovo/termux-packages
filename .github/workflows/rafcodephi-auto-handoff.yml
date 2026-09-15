@@ -163,7 +163,7 @@ jobs:
       - name: Dispatch exact producer evidence to app
         shell: bash
         env:
-          CROSS_REPO_TOKEN: ${{ secrets.PATGITHUB }}
+          CROSS_REPO_TOKEN: ${{ secrets.GITPAT || secrets.PATGITHUB || secrets.GIT }}
         run: |
           set -euo pipefail
           if [[ -z "${CROSS_REPO_TOKEN:-}" ]]; then
