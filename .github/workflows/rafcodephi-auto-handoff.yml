@@ -1,0 +1,191 @@
+name: RAFCODEPHI Producer — termux-packages to app
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+    paths:
+      - '.github/workflows/rafcodephi-auto-handoff.yml'
+      - 'scripts/build-rafcodephi-real-bootstrap.sh'
+      - 'scripts/apply-rafcodephi-build-properties.py'
+      - 'scripts/validate-rafcodephi-build-properties.sh'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: rafcodephi-producer-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  contract:
+    name: Handoff contract
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+
+      - name: Validate producer scripts
+        shell: bash
+        run: |
+          set -euo pipefail
+          bash -n scripts/build-rafcodephi-real-bootstrap.sh
+          bash -n scripts/validate-rafcodephi-build-properties.sh
+          python3 -m py_compile scripts/apply-rafcodephi-build-properties.py
+          test -x scripts/run-docker.sh
+          test -x scripts/generate-bootstraps.sh
+
+  produce-and-dispatch:
+    name: Build bootstrap pair and dispatch app
+    if: github.event_name != 'pull_request'
+    needs: contract
+    runs-on: ubuntu-24.04
+    timeout-minutes: 210
+    env:
+      APP_REPOSITORY: rafaelmeloreisnovo/termux-app-rafacodephi
+      ARTIFACT_NAME: rafcodephi-termux-packages-${{ github.sha }}
+
+    steps:
+      - name: Checkout exact producer revision
+        uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+          fetch-depth: 1
+
+      - name: Bind RAFCODEPHI package identity
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p build/reports
+          python3 scripts/apply-rafcodephi-build-properties.py             --properties scripts/properties.sh             --receipt build/reports/rafcodephi-auto-properties.json
+          bash scripts/validate-rafcodephi-build-properties.sh
+          git rev-parse HEAD > build/reports/rafcodephi-auto-termux-packages.commit
+
+      - name: Build real ARM and ARM64 bootstrap
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p build/reports
+          chmod +x scripts/run-docker.sh scripts/build-rafcodephi-real-bootstrap.sh
+          set +e
+          ./scripts/run-docker.sh             ./scripts/build-rafcodephi-real-bootstrap.sh             --architectures arm,aarch64             2>&1 | tee build/reports/rafcodephi-auto-bootstrap.log
+          status="${PIPESTATUS[0]}"
+          set -e
+          python3 - "$status" <<'PY' > build/reports/rafcodephi-auto-bootstrap-status.json
+          import json, sys
+          status = int(sys.argv[1])
+          print(json.dumps({
+              "schema": "rafcodephi.auto-producer-build/v1",
+              "state": "PASS" if status == 0 else "BLOCKED",
+              "exit_code": status,
+              "claim_allowed": False,
+              "device_runtime_proof": "TOKEN_VAZIO",
+          }, sort_keys=True))
+          PY
+          if [[ "$status" -ne 0 ]]; then
+            echo "RAFCODEPHI_PRODUCER=BLOCKED exit_code=$status" >&2
+            exit "$status"
+          fi
+
+      - name: Gate producer artifacts and emit receipt
+        shell: bash
+        run: |
+          set -euo pipefail
+          MANIFEST=artifacts/rafcodephi-bootstrap/RAFCODEPHI_REAL_BOOTSTRAP_MANIFEST.txt
+          ARM=artifacts/rafcodephi-bootstrap/rafcodephi-bootstrap-arm.zip
+          ARM64=artifacts/rafcodephi-bootstrap/rafcodephi-bootstrap-aarch64.zip
+
+          test -s "$MANIFEST"
+          test -s "$ARM"
+          test -s "$ARM64"
+          grep -Fx 'schema=rafcodephi.real-bootstrap-sourcebuild/v1' "$MANIFEST"
+          grep -Fx 'package_name=com.termux.rafacodephi' "$MANIFEST"
+          grep -Fx 'prefix=/data/data/com.termux.rafacodephi/files/usr' "$MANIFEST"
+          grep -Fx 'bridge_allowed=false' "$MANIFEST"
+          grep -Fx 'legacy_prefix_allowed=false' "$MANIFEST"
+          grep -Fx 'claim_allowed_device_runtime=false' "$MANIFEST"
+          grep -Fx 'device_runtime_proof=TOKEN_VAZIO' "$MANIFEST"
+
+          sha256sum "$MANIFEST" "$ARM" "$ARM64"             > build/reports/rafcodephi-auto-bootstrap.sha256
+
+          python3 - "$GITHUB_SHA" "$GITHUB_RUN_ID" "$ARTIFACT_NAME" "$MANIFEST" "$ARM" "$ARM64" <<'PY'
+          import hashlib
+          import json
+          import sys
+          from pathlib import Path
+
+          producer_sha, run_id, artifact_name = sys.argv[1:4]
+          paths = [Path(p) for p in sys.argv[4:]]
+
+          def sha256(path: Path) -> str:
+              h = hashlib.sha256()
+              with path.open("rb") as fh:
+                  for block in iter(lambda: fh.read(1 << 20), b""):
+                      h.update(block)
+              return h.hexdigest()
+
+          receipt = {
+              "schema": "rafcodephi.termux-packages-producer-handoff/v1",
+              "state": "BUILD_EVIDENCE_PASS",
+              "producer_repository": "rafaelmeloreisnovo/termux-packages",
+              "producer_commit": producer_sha,
+              "producer_run_id": int(run_id),
+              "artifact_name": artifact_name,
+              "package_name": "com.termux.rafacodephi",
+              "prefix": "/data/data/com.termux.rafacodephi/files/usr",
+              "architectures": ["arm", "aarch64"],
+              "claim_allowed": False,
+              "physical_android": "TOKEN_VAZIO",
+              "sha256": {str(p): sha256(p) for p in paths},
+          }
+          out = Path("build/reports/rafcodephi-auto-handoff.json")
+          out.write_text(json.dumps(receipt, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+          print(out)
+          PY
+
+          sha256sum build/reports/rafcodephi-auto-handoff.json             > build/reports/rafcodephi-auto-handoff.json.sha256
+
+      - name: Upload immutable producer artifact
+        uses: actions/upload-artifact@v7
+        with:
+          name: ${{ env.ARTIFACT_NAME }}
+          path: |
+            artifacts/rafcodephi-bootstrap/RAFCODEPHI_REAL_BOOTSTRAP_MANIFEST.txt
+            artifacts/rafcodephi-bootstrap/rafcodephi-bootstrap-arm.zip
+            artifacts/rafcodephi-bootstrap/rafcodephi-bootstrap-aarch64.zip
+            build/reports/rafcodephi-auto-*
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Dispatch exact producer evidence to app
+        shell: bash
+        env:
+          CROSS_REPO_TOKEN: ${{ secrets.GITPAT || secrets.PATGITHUB || secrets.GIT }}
+        run: |
+          set -euo pipefail
+          if [[ -z "${CROSS_REPO_TOKEN:-}" ]]; then
+            echo 'TOKEN_VAZIO: PATGITHUB is required for cross-repository repository_dispatch.' >&2
+            exit 1
+          fi
+
+          RECEIPT_SHA256="$(awk '{print $1}' build/reports/rafcodephi-auto-handoff.json.sha256)"
+          python3 - "$GITHUB_SHA" "$GITHUB_RUN_ID" "$ARTIFACT_NAME" "$RECEIPT_SHA256" <<'PY' > /tmp/dispatch.json
+          import json, sys
+          producer_sha, run_id, artifact_name, receipt_sha256 = sys.argv[1:]
+          print(json.dumps({
+              "event_type": "rafcodephi_packages_ready",
+              "client_payload": {
+                  "termux_packages_sha": producer_sha,
+                  "producer_run_id": int(run_id),
+                  "artifact_name": artifact_name,
+                  "receipt_sha256": receipt_sha256,
+              },
+          }))
+          PY
+
+          curl --fail-with-body --silent --show-error             -X POST             -H "Authorization: Bearer $CROSS_REPO_TOKEN"             -H "Accept: application/vnd.github+json"             -H "X-GitHub-Api-Version: 2022-11-28"             "https://api.github.com/repos/$APP_REPOSITORY/dispatches"             --data-binary @/tmp/dispatch.json
+
+          echo "RAFCODEPHI_HANDOFF=DISPATCHED producer_sha=$GITHUB_SHA producer_run_id=$GITHUB_RUN_ID artifact=$ARTIFACT_NAME"
