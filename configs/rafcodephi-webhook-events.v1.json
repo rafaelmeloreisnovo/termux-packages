@@ -1,0 +1,13 @@
+{
+  "schema": "rafcodephi.webhook-policy/v1",
+  "target_repository": "rafaelmeloreisnovo/termux-packages",
+  "trusted_branch": "main",
+  "event_type": "package_candidate",
+  "allowed_packages": ["rafcodephi-federation-metadata", "rafcodephi-bootstrap-profile"],
+  "allowed_architectures": ["arm", "aarch64"],
+  "max_body_bytes": 16384,
+  "max_age_seconds": 300,
+  "future_skew_seconds": 30,
+  "max_queue_age_seconds": 86400,
+  "claim_allowed": false
+}

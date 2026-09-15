@@ -1,0 +1,122 @@
+{
+  "schema": "rafcodephi.webhook-implementation-receipt/v1",
+  "id": "RAFCODEPHI-WEBHOOK-V1-20260915",
+  "timestamp": "2026-09-15T13:27:41.390642+00:00",
+  "parent": "RAFCODEPHI_WEBHOOK_PREFLIGHT_20260915.json",
+  "repository": "rafaelmeloreisnovo/termux-packages",
+  "base_commit": "10218c93dc72e5171da908ecc385155d2c8724c6",
+  "branch": "codex/rafcodephi-webhook-intake-20260915",
+  "epistemic_status": "MEASURED_LOCAL_SCOPED",
+  "source_binding": "base_commit plus per-file SHA-256; resulting commit is linked by PR",
+  "artifact_hashes": {
+    ".github/workflows/rafcodephi-webhook-intake.yml": "d4deb1917276cfc0e96e912608dea7b5cd2e7ada17dbc61b434d878084ada73e",
+    "configs/rafcodephi-webhook-events.v1.json": "580e0d3655213e2806841b763d82015777b84666b83452679745fd10c8d6665a",
+    "scripts/validate_rafcodephi_webhook_event.py": "cd85dfb4e43fab9477a60d7b0f55e3e20ea4a860a668d09f1cc9e1a42e3871a8",
+    "scripts/rafcodephi_webhook_receiver.py": "5217ebeaefb8cc42d70b884dab5e91517d61775a7ed4349e9a3dcf23d24a858e",
+    "scripts/build_rafcodephi_webhook_candidate.py": "9c7e7916a23e913bdd14a2163e71bc21f69a5d125637df87d9689cffb60f3a06",
+    "scripts/tests/test_rafcodephi_webhook.py": "2e1f5211c4b1ed6183c9574e9acd1c7bf3a550a3c634cd4793e2e0420ae32ba8",
+    "scripts/tests/test_rafcodephi_webhook_workflow.py": "ca5340dbafb7885c7472316624adc57791874c4b3564a198797e9b7217b69ceb",
+    "docs/assurance/RAFCODEPHI_WEBHOOK_V1.md": "c2b5f943377ae8cba6ecdc35e9056337d480da70fbecc301858da4e9ed04f951",
+    "docs/receipts/RAFCODEPHI_WEBHOOK_PREFLIGHT_20260915.json": "eccf05afe03ac3227627f7c01939a0d82f820367442fcdb550879681cf2ef5e8",
+    "docs/00-INDEX.md": "484febdde20dd32fca02c9b8e7fedad43471f5194804732cf7724b27abc4a5fb"
+  },
+  "executions": [
+    {
+      "command": "PYTHONDONTWRITEBYTECODE=1 python3 -m unittest discover -s scripts/tests -p 'test_rafcodephi_webhook*.py' -v",
+      "exit_code": 0,
+      "tests": 37,
+      "scope": "real loopback HTTP; real SQLite restart/concurrency; Git fixtures; synthetic .deb files; mocked outbound GitHub dispatcher; schema and workflow boundaries"
+    },
+    {
+      "command": "make -C core termux-build-core",
+      "exit_code": 0,
+      "scope": "local host compiler"
+    },
+    {
+      "command": "python3 core/tests/test_manifest_fail_closed.py",
+      "exit_code": 0,
+      "cases": 5
+    },
+    {
+      "command": "python3 scripts/validate_package_provenance_handoff.py",
+      "exit_code": 0
+    },
+    {
+      "command": "python3 scripts/validate_rafcodephi_federated_provenance.py",
+      "exit_code": 0
+    },
+    {
+      "command": "python3 scripts/tests/test_rafcodephi_publish_dev_apt_workflow_contract.py",
+      "exit_code": 0
+    },
+    {
+      "command": "python3 scripts/tests/test_rafcodephi_workflow_syntax.py",
+      "exit_code": 0,
+      "workflows": 38,
+      "run_steps": 199
+    },
+    {
+      "command": "git diff --check",
+      "exit_code": 0
+    }
+  ],
+  "environment": {
+    "python": "3.12.14",
+    "docker": "NOT_AVAILABLE_ON_LOCAL_HOST",
+    "android": "TOKEN_VAZIO"
+  },
+  "falsifiers_tested": [
+    "tampered HMAC/raw bytes",
+    "unsigned header rebinding",
+    "signed timestamp rewrite",
+    "expired/future/bool timestamps",
+    "ambiguous JSON",
+    "shell/ref/path injection",
+    "sender mismatch or unconfigured",
+    "unmerged SHA and recipe symlink",
+    "16 concurrent duplicate deliveries: exactly 1 outbound dispatch call",
+    "restart replay",
+    "uncertain delivery remains consumed",
+    "database failure",
+    "failed provenance stops before build",
+    "missing/wrong/tampered/symlink .deb artifact",
+    "unexpected write permission or publisher trigger"
+  ],
+  "F_ok": [
+    "signed receiver and durable replay implemented and tested",
+    "read-only sender/schema/main-ancestry intake",
+    "isolated candidate build path and content-addressed review receipts",
+    "publisher unchanged",
+    "reviewable runbook and rollback"
+  ],
+  "F_gap": [
+    "external relay host/HTTPS/credentials/sender-ID binding TOKEN_VAZIO",
+    "repository_dispatch requires reviewed workflow on default branch",
+    "remote CI for new commit NOT_YET_OBSERVED",
+    "ARM Docker package build NOT_EXECUTED_HERE",
+    "Android runtime and production signing TOKEN_VAZIO",
+    "pre-existing seven-guards NameError re and undefined prov/ctx",
+    "existing privileged APT publisher hardening remains separate"
+  ],
+  "F_next": [
+    "observe PR contract CI",
+    "review/merge then bind relay host and dedicated identity",
+    "one live signed metadata-package delivery and duplicate probe; record run and .deb hashes"
+  ],
+  "governance": "branch/PR only; main and publication untouched",
+  "privacy": "public source metadata and synthetic test data; no credentials or raw incoming payloads",
+  "routes": {
+    "L": "preflight -> measured local receipt",
+    "O": "NOT_NEEDED",
+    "T": "webhook -> GitHub -> approved package candidate",
+    "P": "base_commit and artifact_hashes",
+    "C": "fill external-intake gaps",
+    "R": "producer -> read-only build -> manual review",
+    "I": "docs/00-INDEX.md",
+    "E": "executions and falsifiers_tested",
+    "A": "signed delivery identity; ambiguous retries remain consumed"
+  },
+  "rollback": "close draft PR; after merge revert change, stop relay ingress and preserve persistent replay ledger",
+  "publish_allowed": false,
+  "claim_allowed": false
+}

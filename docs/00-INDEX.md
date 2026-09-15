@@ -243,3 +243,11 @@
 **This index was generated** to provide complete, navigable, precise documentation with clear paths for both human readers and AI systems. Each section is marked with its purpose, dependencies, and recommended entry points.
 
 For questions about navigation or structure, consult [`NAVIGATION.md`](./NAVIGATION.md).
+
+## Append 2026-09-15: authenticated webhook intake
+
+- [Webhook contract, operation and rollback](assurance/RAFCODEPHI_WEBHOOK_V1.md)
+- [Exact baseline and preflight](receipts/RAFCODEPHI_WEBHOOK_PREFLIGHT_20260915.json)
+- Workflow: `.github/workflows/rafcodephi-webhook-intake.yml`.
+- Boundary: signed external request -> read-only approved-source build -> manual
+  review receipt. Live relay/Android/runtime claims require separate evidence.

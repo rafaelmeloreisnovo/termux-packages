@@ -1,0 +1,120 @@
+name: RAFCODEPHI Webhook Intake
+
+on:
+  repository_dispatch:
+    types: [package_candidate]
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - '.github/workflows/rafcodephi-webhook-intake.yml'
+      - 'configs/rafcodephi-webhook-events.v1.json'
+      - 'scripts/*rafcodephi_webhook*.py'
+      - 'scripts/tests/test_rafcodephi_webhook*.py'
+      - 'docs/assurance/RAFCODEPHI_WEBHOOK_V1.md'
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/rafcodephi-webhook-intake.yml'
+      - 'configs/rafcodephi-webhook-events.v1.json'
+      - 'scripts/*rafcodephi_webhook*.py'
+      - 'scripts/tests/test_rafcodephi_webhook*.py'
+
+permissions:
+  contents: read
+
+concurrency:
+  # Scheduling control only. Durable replay exclusion belongs to the relay ledger.
+  group: rafcodephi-webhook-${{ github.run_id }}
+  cancel-in-progress: false
+
+jobs:
+  contract-tests:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+      - name: Adversarial webhook and artifact gates
+        run: python3 -m unittest discover -s scripts/tests -p 'test_rafcodephi_webhook*.py' -v
+      - name: Preserve existing provenance and publish boundaries
+        run: |
+          python3 scripts/validate_package_provenance_handoff.py
+          python3 scripts/validate_rafcodephi_federated_provenance.py
+          python3 scripts/tests/test_rafcodephi_publish_dev_apt_workflow_contract.py
+
+  intake:
+    if: github.event_name == 'repository_dispatch'
+    needs: contract-tests
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    outputs:
+      commit_sha: ${{ steps.validate.outputs.commit_sha }}
+      delivery_id: ${{ steps.validate.outputs.delivery_id }}
+      receipt_json: ${{ steps.validate.outputs.receipt_json }}
+    steps:
+      - name: Checkout trusted control revision
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+          submodules: false
+      - name: Validate sender, schema, time, allowlists and main ancestry
+        id: validate
+        env:
+          RAFCODEPHI_WEBHOOK_SENDER_ID: ${{ vars.RAFCODEPHI_WEBHOOK_SENDER_ID }}
+        run: |
+          python3 scripts/validate_rafcodephi_webhook_event.py \
+            --github-event "$GITHUB_EVENT_PATH" \
+            --receipt "$RUNNER_TEMP/webhook-intake/receipt.json"
+      - name: Store intake evidence
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: webhook-intake-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/webhook-intake/receipt.json
+          if-no-files-found: error
+          retention-days: 14
+
+  candidate:
+    needs: intake
+    runs-on: ubuntu-24.04
+    timeout-minutes: 150
+    steps:
+      - name: Checkout trusted control code
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: ${{ github.sha }}
+          path: control
+          fetch-depth: 0
+          persist-credentials: false
+          submodules: false
+      - name: Checkout validated candidate SHA
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: ${{ needs.intake.outputs.commit_sha }}
+          path: candidate
+          persist-credentials: false
+          submodules: false
+      - name: Build, test and hash approved package candidate
+        env:
+          INTAKE_RECEIPT_JSON: ${{ needs.intake.outputs.receipt_json }}
+          PYTHONDONTWRITEBYTECODE: '1'
+        run: |
+          python3 control/scripts/build_rafcodephi_webhook_candidate.py \
+            --candidate-root candidate --reports "$RUNNER_TEMP/webhook-build"
+      - name: Store build evidence and candidate packages
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: webhook-candidate-${{ needs.intake.outputs.delivery_id }}-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            ${{ runner.temp }}/webhook-build/
+            candidate/output/*.deb
+          if-no-files-found: error
+          retention-days: 14
+      - name: Preserve manual promotion boundary
+        run: |
+          echo 'BUILD_TEST_PASS: inspect receipt and artifact SHA-256 before separate manual promotion.'
+          echo 'PUBLISH_ALLOWED=false CLAIM_ALLOWED=false DEVICE_RUNTIME=TOKEN_VAZIO'
