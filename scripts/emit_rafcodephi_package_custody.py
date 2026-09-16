@@ -70,7 +70,9 @@ def recipe_source_contract(text: str) -> dict:
 
 def main() -> int:
     ap = argparse.ArgumentParser()
-    ap.add_argument("--map", required=True)
+    source_group = ap.add_mutually_exclusive_group(required=True)
+    source_group.add_argument("--map")
+    source_group.add_argument("--auto-map", action="store_true")
     ap.add_argument("--repo-root", default=".")
     ap.add_argument("--deb-dir", required=True)
     ap.add_argument("--out", required=True)
@@ -81,19 +83,35 @@ def main() -> int:
 
     root = Path(args.repo_root).resolve()
     deb_dir = Path(args.deb_dir).resolve()
-    rows = []
-    for raw in Path(args.map).read_text(encoding="utf-8").splitlines():
-        if not raw.strip():
-            continue
-        output_pkg, recipe_pkg = raw.split("\t", 1)
-        rows.append((output_pkg, recipe_pkg))
-
     deb_by_package = {}
     for deb in sorted(deb_dir.glob("*.deb")):
         pkg = deb_field(deb, "Package")
         if pkg in deb_by_package:
             raise SystemExit(f"duplicate .deb package identity: {pkg}")
         deb_by_package[pkg] = deb
+
+    rows = []
+    if args.map:
+        for raw in Path(args.map).read_text(encoding="utf-8").splitlines():
+            if not raw.strip():
+                continue
+            output_pkg, recipe_pkg = raw.split("\t", 1)
+            rows.append((output_pkg, recipe_pkg))
+    else:
+        packages_root = root / "packages"
+        for output_pkg in sorted(deb_by_package):
+            direct = packages_root / output_pkg / "build.sh"
+            candidates = []
+            if direct.is_file():
+                candidates.append(direct.parent.name)
+            for subpackage in packages_root.glob(f"*/{output_pkg}.subpackage.sh"):
+                candidates.append(subpackage.parent.name)
+            candidates = sorted(set(candidates))
+            if len(candidates) != 1:
+                raise SystemExit(
+                    f"cannot resolve unique producing recipe for {output_pkg}: {candidates}"
+                )
+            rows.append((output_pkg, candidates[0]))
 
     records = []
     missing = []
