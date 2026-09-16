@@ -48,17 +48,19 @@ public_key_payload = public_key_file.read_bytes()
 if not public_key_payload:
     raise SystemExit("APT public key payload is empty")
 source_payload = (
-    "# RAFCODEPHI_PACKAGE_REPOSITORY=DEVELOPMENT_REPOSITORY_CONFIGURED\n"
+    "# RAFCODEPHI_PACKAGE_REPOSITORY=SIGNED_REPOSITORY_CONFIGURED\n"
     "Enabled: yes\nTypes: deb\n"
     f"URIs: {repository_url}\n"
-    "Suites: ./\n"
+    "Suites: stable\n"
+    "Components: main\n"
+    "Architectures: arm aarch64\n"
     f"Signed-By: {target_prefix}/{key_path}\n"
     "# Trust boundary: Release/InRelease must verify against the embedded RAFCODEPHI archive key.\n"
 ).encode()
 block_payload = (
-    "// RAFCODEPHI development repository configured.\n"
+    "// RAFCODEPHI signed repository configured.\n"
     "// No APT::Update::Pre-Invoke blocker is active.\n"
-    "// claim_allowed_release=false; production signing trust=TOKEN_VAZIO.\n"
+    "// claim_allowed_release=false; repository trust is bound by Signed-By.\n"
 ).encode()
 
 artifacts = {}
@@ -82,8 +84,8 @@ for path in sorted(out_dir.glob("rafcodephi-bootstrap-*.zip")):
             elif info.filename == "BOOTSTRAP_PROFILE.json":
                 profile = json.loads(payload.decode())
                 profile.update({
-                    "package_repo_runtime_state": "DEVELOPMENT_REPOSITORY_CONFIGURED",
-                    "apt_update_guard": "DISABLED_DEV_REPOSITORY_CONFIGURED",
+                    "package_repo_runtime_state": "SIGNED_REPOSITORY_CONFIGURED",
+                    "apt_update_guard": "DISABLED_SIGNED_REPOSITORY_CONFIGURED",
                     "apt_repository_url": repository_url,
                     "apt_repository_trust": "SIGNED_BY_ARCHIVE_KEY",
                     "apt_repository_trust_mode": trust_mode,
@@ -99,10 +101,10 @@ for path in sorted(out_dir.glob("rafcodephi-bootstrap-*.zip")):
                         k, v = line.split("=", 1)
                         rows[k] = v
                 rows.update({
-                    "RAFCODEPHI_PACKAGE_REPO_STATE": "DEVELOPMENT_REPOSITORY_CONFIGURED",
+                    "RAFCODEPHI_PACKAGE_REPO_STATE": "SIGNED_REPOSITORY_CONFIGURED",
                     "RAFCODEPHI_APT_REPOSITORY_URL": repository_url,
                     "RAFCODEPHI_APT_REPOSITORY_TRUST": "SIGNED_BY_ARCHIVE_KEY",
-                    "RAFCODEPHI_APT_UPDATE_GUARD": "DISABLED_DEV_REPOSITORY_CONFIGURED",
+                    "RAFCODEPHI_APT_UPDATE_GUARD": "DISABLED_SIGNED_REPOSITORY_CONFIGURED",
                     "RAFCODEPHI_DEVICE_VALIDATION": "TOKEN_VAZIO",
                     "RAFCODEPHI_CLAIM_ALLOWED": "0",
                 })
@@ -120,6 +122,9 @@ for path in sorted(out_dir.glob("rafcodephi-bootstrap-*.zip")):
         block = zf.read(block_path).decode()
         if "Enabled: yes" not in source_text or f"URIs: {repository_url}" not in source_text:
             raise SystemExit(f"{path.name}: live apt source validation failed")
+        for required_line in ("Suites: stable", "Components: main", "Architectures: arm aarch64"):
+            if required_line not in source_text:
+                raise SystemExit(f"{path.name}: missing APT source line: {required_line}")
         expected_signed_by = f"Signed-By: {target_prefix}/{key_path}"
         if expected_signed_by not in source_text or "Trusted: yes" in source_text:
             raise SystemExit(f"{path.name}: signed-by trust contract missing")
@@ -129,7 +134,7 @@ for path in sorted(out_dir.glob("rafcodephi-bootstrap-*.zip")):
             raise SystemExit(f"{path.name}: old apt blocker still active")
         if profile.get("profile") != "real-pkg" or profile.get("package_layer") != "real-pkg":
             raise SystemExit(f"{path.name}: real-pkg contract regressed")
-        if profile.get("package_repo_runtime_state") != "DEVELOPMENT_REPOSITORY_CONFIGURED":
+        if profile.get("package_repo_runtime_state") != "SIGNED_REPOSITORY_CONFIGURED":
             raise SystemExit(f"{path.name}: repository state mismatch")
         if profile.get("runtime_materialized") is not False:
             raise SystemExit(f"{path.name}: archive must not claim installed runtime materialization")
@@ -152,8 +157,8 @@ for raw in manifest.read_text(encoding="utf-8").splitlines():
         raise SystemExit(f"duplicate manifest key before live reseal: {k}")
     rows[k] = v
 rows.update({
-    "package_repo_runtime_state": "DEVELOPMENT_REPOSITORY_CONFIGURED",
-    "apt_update_guard": "DISABLED_DEV_REPOSITORY_CONFIGURED",
+    "package_repo_runtime_state": "SIGNED_REPOSITORY_CONFIGURED",
+    "apt_update_guard": "DISABLED_SIGNED_REPOSITORY_CONFIGURED",
     "apt_repository_url": repository_url,
     "apt_repository_trust": "SIGNED_BY_ARCHIVE_KEY",
     "apt_repository_trust_mode": trust_mode,
