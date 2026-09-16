@@ -270,7 +270,9 @@ jobs:
             apt-get "${apt_options[@]}" update
             apt-cache "${apt_options[@]}" show "$package_name"
             apt-get "${apt_options[@]}" -y --download-only --no-install-recommends install "$package_name"
-            find "$apt_root/cache/archives" -maxdepth 1 -type f -name '*.deb' -print -quit | grep -q .
+            mapfile -t downloaded < <(find "$apt_root/cache/archives" -maxdepth 1 -type f -name '*.deb' -print | sort)
+            (( ${#downloaded[@]} >= 1 ))
+            dpkg-deb -f "${downloaded[0]}" Package | grep -Fx "$package_name"
           ) 2>&1 | tee build/reports/rafcodephi-isolated-apt.log
           apt_status="${PIPESTATUS[0]}"
           set -e
