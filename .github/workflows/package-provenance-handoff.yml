@@ -51,6 +51,19 @@ jobs:
         shell: bash
         run: bash scripts/tests/test_rafcodephi_signed_apt_fixture.sh
 
+      - name: Upload signed APT fixture receipt
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: rafcodephi-signed-apt-fixture-${{ github.sha }}
+          path: |
+            build/reports/rafcodephi-signed-apt-fixture.receipt
+            build/reports/rafcodephi-signed-apt-fixture.sha256
+            build/reports/rafcodephi-signed-apt-fixture-resolved-deb.sha256
+            build/reports/rafcodephi-signed-apt-fixture-download.log
+          if-no-files-found: warn
+          retention-days: 30
+
       - name: Negative gate — flattening licenses and promoting build to runtime must fail
         run: |
           cp docs/assurance/package-provenance-handoff.v1.json /tmp/package-assurance.json
