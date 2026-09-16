@@ -39,6 +39,7 @@ jobs:
           python3 -m py_compile scripts/apply-rafcodephi-build-properties.py scripts/emit_rafcodephi_package_custody.py
           python3 scripts/tests/test_rafcodephi_package_custody_contract.py
           test -x scripts/run-docker.sh
+          test -f scripts/run-rafcodephi-bootstrap-docker.sh
           test -x scripts/generate-bootstraps.sh
 
   produce-and-dispatch:
@@ -74,14 +75,10 @@ jobs:
           mkdir -p build/reports
           chmod +x scripts/run-docker.sh scripts/build-rafcodephi-real-bootstrap.sh
           set +e
-          BOOTSTRAP_OUT=/tmp/rafcodephi-bootstrap-out
-          rm -rf artifacts/rafcodephi-bootstrap
-          mkdir -p artifacts/rafcodephi-bootstrap
-          ./scripts/run-docker.sh env RAFCODEPHI_BOOTSTRAP_OUT_DIR="$BOOTSTRAP_OUT" \
+          bash scripts/run-rafcodephi-bootstrap-docker.sh \
             ./scripts/build-rafcodephi-real-bootstrap.sh --architectures arm,aarch64 \
             2>&1 | tee build/reports/rafcodephi-auto-bootstrap.log
           status="${PIPESTATUS[0]}"
-          sudo docker cp "termux-package-builder:$BOOTSTRAP_OUT/." artifacts/rafcodephi-bootstrap/ 2>/dev/null || true
           set -e
           python3 - "$status" <<'PY' > build/reports/rafcodephi-auto-bootstrap-status.json
           import json, sys
