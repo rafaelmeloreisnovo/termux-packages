@@ -8,6 +8,7 @@ set -e
 export TERMUX_SCRIPTDIR=$(realpath "$(dirname "$(realpath "$0")")/../")
 . $(dirname "$(realpath "$0")")/properties.sh
 BOOTSTRAP_TMPDIR=$(mktemp -d "${TMPDIR:-/tmp}/bootstrap-tmp.XXXXXXXX")
+BOOTSTRAP_OUTPUT_DIR="${TERMUX_BOOTSTRAP_OUTPUT_DIR:-.}"
 trap 'rm -rf $BOOTSTRAP_TMPDIR' EXIT
 
 # By default, bootstrap archives will be built for all architectures
@@ -287,7 +288,8 @@ create_bootstrap_archive() {
 		zip -r9 "${BOOTSTRAP_TMPDIR}/bootstrap-${1}.zip" ./*
 	)
 
-	mv -f "${BOOTSTRAP_TMPDIR}/bootstrap-${1}.zip" ./
+	mkdir -p "$BOOTSTRAP_OUTPUT_DIR"
+	mv -f "${BOOTSTRAP_TMPDIR}/bootstrap-${1}.zip" "$BOOTSTRAP_OUTPUT_DIR/"
 	echo "[*] Finished successfully (${1})."
 }
 

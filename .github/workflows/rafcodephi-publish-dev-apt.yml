@@ -127,23 +127,13 @@ jobs:
           set -euo pipefail
           mkdir -p build/reports
           set +e
-          (
-            test -x scripts/run-docker.sh || {
-              echo "RAFCODEPHI_SIGNED_APT_BUILD=BLOCKED reason=DOCKER_RUNNER_MISSING" >&2
-              exit 126
-            }
-            BOOTSTRAP_OUT=/tmp/rafcodephi-bootstrap-out
-            exec ./scripts/run-docker.sh env \
-              RAFCODEPHI_BOOTSTRAP_OUT_DIR="$BOOTSTRAP_OUT" \
-              RAFCODEPHI_APT_REPOSITORY_URL="$RAFCODEPHI_APT_REPOSITORY_URL" \
-              RAFCODEPHI_APT_TRUST_MODE="$RAFCODEPHI_APT_TRUST_MODE" \
-              RAFCODEPHI_APT_PUBLIC_KEY_FILE=/home/builder/termux-packages/build/signing/rafcodephi-archive-key.gpg \
-              bash ./scripts/build-rafcodephi-live-bootstrap.sh --architectures arm,aarch64
-          ) 2>&1 | tee build/reports/rafcodephi-signed-apt-build.log
+          bash scripts/run-rafcodephi-bootstrap-docker.sh env \
+            RAFCODEPHI_APT_REPOSITORY_URL="$RAFCODEPHI_APT_REPOSITORY_URL" \
+            RAFCODEPHI_APT_TRUST_MODE="$RAFCODEPHI_APT_TRUST_MODE" \
+            RAFCODEPHI_APT_PUBLIC_KEY_FILE=/home/builder/termux-packages/build/signing/rafcodephi-archive-key.gpg \
+            bash ./scripts/build-rafcodephi-live-bootstrap.sh --architectures arm,aarch64 \
+            2>&1 | tee build/reports/rafcodephi-signed-apt-build.log
           build_status="${PIPESTATUS[0]}"
-          rm -rf artifacts/rafcodephi-bootstrap
-          mkdir -p artifacts/rafcodephi-bootstrap
-          sudo docker cp "termux-package-builder:/tmp/rafcodephi-bootstrap-out/." artifacts/rafcodephi-bootstrap/ 2>/dev/null || true
           set -e
 
           python3 - "$build_status" > build/reports/rafcodephi-signed-apt-build-status.json <<'PY'
