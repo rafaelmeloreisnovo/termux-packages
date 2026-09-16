@@ -177,7 +177,7 @@ jobs:
           producer_sha, run_id, name, artifact_id, digest, url = sys.argv[1:]
           if not artifact_id.isdigit():
               raise SystemExit("invalid artifact id")
-          if not digest.startswith("sha256:") or len(digest) != 71:
+          if len(digest) != 64 or any(c not in "0123456789abcdef" for c in digest):
               raise SystemExit("invalid artifact digest")
           print(json.dumps({
               "schema": "rafcodephi.github-artifact-binding/v1",
