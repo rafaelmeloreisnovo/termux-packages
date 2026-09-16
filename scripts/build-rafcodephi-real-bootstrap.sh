@@ -110,7 +110,10 @@ resolved_prefix="$(printf '%s\n' "$resolved" | sed -n '2p')"
 
 echo "RAFCODEPHI source-build package=$resolved_package prefix=$resolved_prefix arch=$ARCHITECTURES"
 
-rm -f bootstrap-arm.zip bootstrap-aarch64.zip
+GENERATED_BOOTSTRAP_DIR="$OUT_DIR/upstream"
+rm -rf "$GENERATED_BOOTSTRAP_DIR"
+mkdir -p "$GENERATED_BOOTSTRAP_DIR"
+export TERMUX_BOOTSTRAP_OUTPUT_DIR="$GENERATED_BOOTSTRAP_DIR"
 export RAFCODEPHI_BOOTSTRAP_PACKAGE_EVIDENCE_DIR="$OUT_DIR/debs"
 rm -rf "$RAFCODEPHI_BOOTSTRAP_PACKAGE_EVIDENCE_DIR"
 mkdir -p "$RAFCODEPHI_BOOTSTRAP_PACKAGE_EVIDENCE_DIR"
@@ -137,7 +140,7 @@ printf 'apt_update_guard=RAFCODEPHI_PACKAGE_REPOSITORY_NOT_PUBLISHED\n' >> "$man
 IFS=',' read -r -a arch_list <<< "$ARCHITECTURES"
 for arch in "${arch_list[@]}"; do
     [[ "$arch" == "arm" || "$arch" == "aarch64" ]] || { echo "unsupported arch: $arch" >&2; exit 2; }
-    zip_path="$ROOT/bootstrap-${arch}.zip"
+    zip_path="$GENERATED_BOOTSTRAP_DIR/bootstrap-${arch}.zip"
     [[ -s "$zip_path" ]] || { echo "missing generated $zip_path" >&2; exit 1; }
 
     # Seal the upstream-generated bootstrap with app-side evidence metadata before
