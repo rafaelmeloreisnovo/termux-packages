@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import re
 from pathlib import Path
 
 
@@ -49,15 +50,19 @@ UNCERTAINTY_STATES = {
     "CLOSED",
 }
 REPRODUCTION_STATES = {"TOKEN_VAZIO", "BLOCKED", "PASS", "FAIL", "NOT_APPLICABLE"}
-ROLLBACK_STATES = {"TOKEN_VAZIO", "READY", "EXECUTED", "NOT_APPLICABLE"}
+ROLLBACK_STATES = {"TOKEN_VAZIO", "BLOCKED", "READY", "EXECUTED", "NOT_APPLICABLE"}
 UNRESOLVED = {"TOKEN_VAZIO", "BLOCKED", "PARTIAL"}
-HEX_DIGEST = re.compile(r"^(?:[0-9a-f]{40}|[0-9a-f]{64}|sha1:[0-9a-f]{40}|sha256:[0-9a-f]{64})$")
+HEX_DIGEST = re.compile(r"^(?:[0-9a-f]{40}|[0-9a-f]{64}|sha1:[0-9a-f]{40}|sha256:[0-9a-f]{64}|git-blob-sha1:[0-9a-f]{40})$")
 GITHUB_COMMIT = re.compile(r"^[0-9a-f]{40}$")
 ISO_OBSERVED = re.compile(r"^\d{4}-\d{2}-\d{2}(?:T\d{2}:\d{2}(?::\d{2})?(?:Z|[+-]\d{2}:?\d{2})?)?$")
 
 
 def _nonempty(value: object) -> bool:
     return isinstance(value, str) and bool(value.strip())
+
+
+def _token_vazio(value: object) -> bool:
+    return isinstance(value, str) and value.startswith("TOKEN_VAZIO")
 
 
 def _missing(obj: dict, keys: tuple[str, ...], prefix: str, errors: list[str]) -> None:
@@ -102,6 +107,7 @@ def validate_unit(unit: dict, cfg: dict) -> dict:
     if not isinstance(provenance, dict):
         errors.append("provenance:missing")
     else:
+        prov = provenance
         fields = (
             "source_provider",
             "repository",
@@ -134,6 +140,7 @@ def validate_unit(unit: dict, cfg: dict) -> dict:
     if not isinstance(context, dict):
         errors.append("context:missing")
     else:
+        ctx = context
         _missing(
             context,
             ("intent", "scope", "boundary", "observed_at", "dependencies"),
@@ -163,12 +170,13 @@ def validate_unit(unit: dict, cfg: dict) -> dict:
                 errors.append(f"evidence:{i}:not_object")
                 continue
             _missing(item, ("ref", "type", "scope"), f"evidence:{i}", errors)
+            if _nonempty(item.get("type")):
+                evidence_types.add(item["type"])
 
     contradictions = unit.get("contradictions")
     if not isinstance(contradictions, list):
         errors.append("contradiction:not_list")
     else:
-        allowed = set(states.get("contradiction", []))
         for i, item in enumerate(contradictions):
             if not isinstance(item, dict):
                 errors.append(f"contradiction:{i}:not_object")
@@ -186,7 +194,6 @@ def validate_unit(unit: dict, cfg: dict) -> dict:
     if not isinstance(uncertainty, list):
         errors.append("uncertainty:not_list")
     else:
-        allowed = set(states.get("uncertainty", []))
         for i, item in enumerate(uncertainty):
             if not isinstance(item, dict):
                 errors.append(f"uncertainty:{i}:not_object")
@@ -218,6 +225,10 @@ def validate_unit(unit: dict, cfg: dict) -> dict:
             errors.append("reproduction:invalid_status")
         elif status != "PASS":
             blockers.append(f"reproduction:{status}")
+        else:
+            reproduction_types = set(cfg.get("reproduction_evidence_types", [])) | {"REMOTE_CI"}
+            if not (evidence_types & reproduction_types):
+                blockers.append("reproduction:pass_without_reproduction_evidence")
 
     rollback = unit.get("rollback")
     if not isinstance(rollback, dict):
@@ -230,9 +241,10 @@ def validate_unit(unit: dict, cfg: dict) -> dict:
         if unit.get("mutation_performed") is True and state not in {"READY", "EXECUTED"}:
             blockers.append(f"rollback:{state or 'MISSING'}:mutation_requires_ready")
 
-    if not _nonempty(unit.get("reconstruction_pointer")):
+    pointer = unit.get("reconstruction_pointer")
+    if not _nonempty(pointer):
         errors.append("reconstructibility:missing_pointer")
-    elif expected_pointer and pointer != expected_pointer:
+    elif not any(marker in pointer for marker in ("@", "#", ":")):
         errors.append("reconstructibility:pointer_not_canonical")
 
     if not isinstance(unit.get("mutation_performed"), bool):
