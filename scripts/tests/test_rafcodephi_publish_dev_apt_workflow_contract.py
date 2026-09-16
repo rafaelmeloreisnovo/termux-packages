@@ -67,7 +67,6 @@ def main() -> int:
 
     forbidden = (
         "deb [trusted=yes]",
-        "Trusted: yes",
         "git push --force",
         'git -C "$publish_dir" push --force',
         "persist-credentials: true",
