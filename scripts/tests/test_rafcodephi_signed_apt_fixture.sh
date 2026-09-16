@@ -55,17 +55,16 @@ dpkg-deb --build --root-owner-group "$pkgroot" "$repo/rafcodephi-custody-fixture
 )
 
 aptroot="$tmp/apt"
-mkdir -p "$aptroot/etc/apt" "$aptroot/lists/partial" "$aptroot/cache/archives/partial" "$aptroot/var/lib/dpkg"
+mkdir -p "$aptroot/etc/apt/sourceparts" "$aptroot/lists/partial" "$aptroot/cache/archives/partial" "$aptroot/var/lib/dpkg"
 : > "$aptroot/var/lib/dpkg/status"
 printf 'deb [signed-by=%s/rafcodephi-archive-key.gpg] file:%s ./\n' "$repo" "$repo" > "$aptroot/etc/apt/sources.list"
 
 opts=(
-  -o "Dir=$aptroot"
-  -o 'Dir::Etc::sourcelist=etc/apt/sources.list'
-  -o 'Dir::Etc::sourceparts=-'
-  -o 'Dir::State::status=var/lib/dpkg/status'
-  -o 'Dir::State::lists=lists'
-  -o 'Dir::Cache::archives=cache/archives'
+  -o "Dir::Etc::sourcelist=$aptroot/etc/apt/sources.list"
+  -o "Dir::Etc::sourceparts=$aptroot/etc/apt/sourceparts"
+  -o "Dir::State::status=$aptroot/var/lib/dpkg/status"
+  -o "Dir::State::lists=$aptroot/lists"
+  -o "Dir::Cache::archives=$aptroot/cache/archives"
   -o 'APT::Architecture=arm'
   -o 'APT::Architectures=arm'
   -o 'Acquire::Languages=none'
