@@ -31,8 +31,16 @@ def deb_field(path: Path, field: str) -> str:
 
 
 def recipe_literal(text: str, field: str) -> str:
-    m = re.search(rf"(?m)^\\s*{re.escape(field)}=(?:[\'\\\"])?([^\\n\'\\\"]+)(?:[\'\\\"])?\\s*$", text)
-    return m.group(1).strip() if m else f"TOKEN_VAZIO_{field}"
+    prefix = field + "="
+    for line in text.splitlines():
+        stripped = line.strip()
+        if not stripped.startswith(prefix):
+            continue
+        value = stripped[len(prefix):].strip()
+        if len(value) >= 2 and value[0] == value[-1] and value[0] in {"'", '"'}:
+            value = value[1:-1]
+        return value
+    return f"TOKEN_VAZIO_{field}"
 
 
 def recipe_source_contract(text: str) -> dict:
