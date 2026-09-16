@@ -116,7 +116,7 @@ jobs:
             exec ./scripts/run-docker.sh env \
               RAFCODEPHI_APT_REPOSITORY_URL="$RAFCODEPHI_APT_REPOSITORY_URL" \
               RAFCODEPHI_APT_TRUST_MODE="$RAFCODEPHI_APT_TRUST_MODE" \
-              RAFCODEPHI_APT_PUBLIC_KEY_FILE=build/signing/rafcodephi-archive-key.gpg \
+              RAFCODEPHI_APT_PUBLIC_KEY_FILE=/home/builder/termux-packages/build/signing/rafcodephi-archive-key.gpg \
               bash ./scripts/build-rafcodephi-live-bootstrap.sh --architectures arm
           ) 2>&1 | tee build/reports/rafcodephi-live-bootstrap.log
           build_status="${PIPESTATUS[0]}"
