@@ -11,6 +11,7 @@ on:
       - 'examples/knowledge-work-seven-guards.example.json'
       - 'examples/knowledge-work-seven-guards.handoff-20260913.json'
       - 'docs/assurance/RAFAELIA_KNOWLEDGE_WORK_SEVEN_GUARDS_V1.md'
+      - 'scripts/tests/test_rafcodephi_signed_apt_fixture.sh'
       - '.github/workflows/package-provenance-handoff.yml'
   pull_request:
     paths:
@@ -22,6 +23,7 @@ on:
       - 'examples/knowledge-work-seven-guards.example.json'
       - 'examples/knowledge-work-seven-guards.handoff-20260913.json'
       - 'docs/assurance/RAFAELIA_KNOWLEDGE_WORK_SEVEN_GUARDS_V1.md'
+      - 'scripts/tests/test_rafcodephi_signed_apt_fixture.sh'
       - '.github/workflows/package-provenance-handoff.yml'
 
 permissions:
@@ -44,6 +46,10 @@ jobs:
 
       - name: Validate package provenance/handoff contract
         run: python3 scripts/validate_package_provenance_handoff.py
+
+      - name: Signed APT fixture — real GPG + Signed-By resolution
+        shell: bash
+        run: bash scripts/tests/test_rafcodephi_signed_apt_fixture.sh
 
       - name: Negative gate — flattening licenses and promoting build to runtime must fail
         run: |
