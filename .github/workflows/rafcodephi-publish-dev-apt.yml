@@ -333,6 +333,10 @@ jobs:
           APT_PUBLISH_TOKEN: ${{ secrets.RAFCODEPHI_APT_PUBLISH_TOKEN }}
         run: |
           set -euo pipefail
+          [[ "$GITHUB_REF_NAME" == "main" ]] || {
+            echo "BLOCKED: production publication must be dispatched from main" >&2
+            exit 2
+          }
           [[ "$RAFCODEPHI_APT_SIGNING_MODE" == "production" ]] || {
             echo "BLOCKED: publication requires production signing identity" >&2
             exit 2
