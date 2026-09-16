@@ -38,7 +38,7 @@ def main() -> int:
         require(token in workflow, f"WORKFLOW_TOKEN_MISSING:{token}")
 
     require("missing expected output .deb(s)" in script, "MISSING_OUTPUT_NOT_FAIL_CLOSED")
-    require("claim_allowed": False" in script, "CLAIM_BOUNDARY_MISSING")
+    require('"claim_allowed": False' in script, "CLAIM_BOUNDARY_MISSING")
     print("RAFCODEPHI_PACKAGE_CUSTODY_CONTRACT=PASS per_deb=true recipe_blob=true sha256=true fail_closed=true")
     return 0
 
