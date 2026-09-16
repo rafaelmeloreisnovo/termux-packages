@@ -244,7 +244,7 @@ jobs:
           set -euo pipefail
           repo=/tmp/rafcodephi-apt-publish/repo
           apt_root=/tmp/rafcodephi-apt-client
-          mkdir -p build/reports "$apt_root/etc/apt" "$apt_root/lists/partial" \
+          mkdir -p build/reports "$apt_root/etc/apt/sourceparts" "$apt_root/lists/partial" \
             "$apt_root/cache/archives/partial" "$apt_root/var/lib/dpkg"
           : > "$apt_root/var/lib/dpkg/status"
 
@@ -255,12 +255,11 @@ jobs:
             "$repo" "$repo" > "$apt_root/etc/apt/sources.list"
 
           apt_options=(
-            -o "Dir=$apt_root"
-            -o 'Dir::Etc::sourcelist=etc/apt/sources.list'
-            -o 'Dir::Etc::sourceparts=-'
-            -o 'Dir::State::status=var/lib/dpkg/status'
-            -o 'Dir::State::lists=lists'
-            -o 'Dir::Cache::archives=cache/archives'
+            -o "Dir::Etc::sourcelist=$apt_root/etc/apt/sources.list"
+            -o "Dir::Etc::sourceparts=$apt_root/etc/apt/sourceparts"
+            -o "Dir::State::status=$apt_root/var/lib/dpkg/status"
+            -o "Dir::State::lists=$apt_root/lists"
+            -o "Dir::Cache::archives=$apt_root/cache/archives"
             -o 'APT::Architecture=arm'
             -o 'APT::Architectures=arm'
             -o 'Acquire::Languages=none'
