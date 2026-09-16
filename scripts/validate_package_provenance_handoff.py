@@ -16,9 +16,12 @@ if m['handoff'].get('build_success_is_install_success') is not False: fail('buil
 if m['handoff'].get('install_success_is_runtime_success') is not False: fail('install promoted to runtime')
 if m['handoff'].get('documentation_is_executable_handoff') is not False: fail('docs promoted to executable handoff')
 required = set(m['handoff'].get('required_chain', []))
-for name in ('source_digest','recipe_path_and_commit','artifact_digest','consumer_expected_identity','validator_result'):
+for name in ('source_digest','recipe_path_and_commit','artifact_digest','consumer_expected_identity','validator_result','provider_artifact_id','provider_artifact_digest','producer_receipt_digest','consumer_verified_byte_digests'):
     if name not in required: fail(f'missing handoff field {name}')
 if m['security_privacy'].get('state') != 'FAIL_CLOSED': fail('security/privacy not fail-closed')
-if not any(g['state']=='TOKEN_VAZIO' and g['urgency']=='P0' for g in m['gaps']): fail('P0 gap missing')
+if m.get('signed_apt', {}).get('state') != 'IMPLEMENTED_UNTESTED_ACTIVATION_GATED': fail('signed apt state')
+if m['signed_apt'].get('trust') != 'Signed-By embedded archive key': fail('signed apt trust')
+if m['signed_apt'].get('force_push_allowed') is not False: fail('signed apt force-push boundary')
+if m['signed_apt'].get('automatic_push_publication') is not False: fail('signed apt automatic publication boundary')
 if not m['rollback'].get('available'): fail('rollback')
-print('PASS: package licensing/provenance/handoff remains path-aware and fail-closed')
+print('PASS: package licensing/provenance/handoff is path-aware; custody + signed APT are activation-gated and fail-closed')
