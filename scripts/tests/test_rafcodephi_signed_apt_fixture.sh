@@ -74,9 +74,13 @@ apt-get "${opts[@]}" update >/dev/null
 apt-cache "${opts[@]}" show rafcodephi-custody-fixture | grep -Fx 'Package: rafcodephi-custody-fixture'
 apt-get "${opts[@]}" -y --download-only --no-install-recommends install rafcodephi-custody-fixture \
   2>&1 | tee build/reports/rafcodephi-signed-apt-fixture-download.log
-mapfile -t downloaded < <(find "$aptroot/cache/archives" -maxdepth 1 -type f -name '*.deb' -print | sort)
-(( ${#downloaded[@]} >= 1 )) || { echo "BLOCKED: signed APT resolved package but no downloaded .deb was materialized" >&2; exit 1; }
-dpkg-deb -f "${downloaded[0]}" Package | grep -Fx 'rafcodephi-custody-fixture'
+
+resolved_filename="$(awk -F ': ' '$1 == "Filename" { print $2; exit }' "$repo/Packages")"
+[[ "$resolved_filename" == ./* ]] || { echo "BLOCKED: invalid resolved Filename: $resolved_filename" >&2; exit 1; }
+resolved_deb="$repo/${resolved_filename#./}"
+test -s "$resolved_deb"
+dpkg-deb -f "$resolved_deb" Package | grep -Fx 'rafcodephi-custody-fixture'
+sha256sum "$resolved_deb" | tee build/reports/rafcodephi-signed-apt-fixture-resolved-deb.sha256
 
 sha256sum "$repo/rafcodephi-custody-fixture_1.0.0_arm.deb" "$repo/InRelease" "$repo/Release.gpg" \
   > build/reports/rafcodephi-signed-apt-fixture.sha256
