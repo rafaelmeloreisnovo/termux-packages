@@ -1,0 +1,28 @@
+{
+  "schema": "rafcodephi.custody-signed-apt-implementation/v1",
+  "date": "2026-09-15",
+  "repository": "rafaelmeloreisnovo/termux-packages",
+  "state": "IMPLEMENTED_UNTESTED",
+  "claim_allowed": false,
+  "publish_allowed": false,
+  "deltas": [
+    "producer GitHub artifact id/digest binding",
+    "producer receipt SHA256 dispatch",
+    "consumer exact byte digest equality gate",
+    "per-DEB content-addressed custody manifest",
+    "Signed-By bootstrap trust",
+    "Release/InRelease/Release.gpg signing and verification",
+    "manual publish=true activation only",
+    "no force-push publication",
+    "dedicated publish token boundary"
+  ],
+  "external_activation_bindings": [
+    "RAFCODEPHI_APT_SIGNING_KEY_B64",
+    "RAFCODEPHI_APT_SIGNING_FINGERPRINT",
+    "RAFCODEPHI_APT_PUBLISH_TOKEN"
+  ],
+  "runtime_device": "TOKEN_VAZIO",
+  "exact_head_ci": "TOKEN_VAZIO_PENDING_PR",
+  "physical_android": "TOKEN_VAZIO",
+  "next_gate": "exact-head PR CI -> producer postfix build -> dispatch consumer -> APK receipt -> optional manually authorized signed APT publication"
+}

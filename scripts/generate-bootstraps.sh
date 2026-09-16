@@ -511,4 +511,24 @@ EOF
 
 	# Create bootstrap archive.
 	create_bootstrap_archive "$package_arch"
+
+	# Optional RAFCODEPHI evidence hook: preserve the exact .deb set before the
+	# next architecture clears output/. Upstream behavior is unchanged unless
+	# the evidence directory is explicitly supplied by the caller.
+	if [ "${TERMUX_BUILD_BOOTSTRAPS}" = true ] && [ -n "${RAFCODEPHI_BOOTSTRAP_PACKAGE_EVIDENCE_DIR:-}" ]; then
+		evidence_arch_dir="${RAFCODEPHI_BOOTSTRAP_PACKAGE_EVIDENCE_DIR}/${package_arch}"
+		rm -rf "$evidence_arch_dir"
+		mkdir -p "$evidence_arch_dir"
+		find output -maxdepth 1 -type f -name '*.deb' -exec cp -f {} "$evidence_arch_dir/" \;
+		if ! find "$evidence_arch_dir" -maxdepth 1 -type f -name '*.deb' -print -quit | grep -q .; then
+			echo "ERROR: no .deb evidence preserved for architecture $package_arch" >&2
+			exit 1
+		fi
+		(
+			cd "$evidence_arch_dir"
+			sha256sum ./*.deb | LC_ALL=C sort -k2 > SHA256SUMS
+			sha256sum -c SHA256SUMS
+		)
+		echo "[*] Preserved RAFCODEPHI package evidence for $package_arch at $evidence_arch_dir"
+	fi
 done

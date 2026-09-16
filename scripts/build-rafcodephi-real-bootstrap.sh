@@ -111,6 +111,9 @@ resolved_prefix="$(printf '%s\n' "$resolved" | sed -n '2p')"
 echo "RAFCODEPHI source-build package=$resolved_package prefix=$resolved_prefix arch=$ARCHITECTURES"
 
 rm -f bootstrap-arm.zip bootstrap-aarch64.zip
+export RAFCODEPHI_BOOTSTRAP_PACKAGE_EVIDENCE_DIR="$OUT_DIR/debs"
+rm -rf "$RAFCODEPHI_BOOTSTRAP_PACKAGE_EVIDENCE_DIR"
+mkdir -p "$RAFCODEPHI_BOOTSTRAP_PACKAGE_EVIDENCE_DIR"
 ./scripts/generate-bootstraps.sh \
     --build \
     --architectures "$ARCHITECTURES" \
@@ -419,8 +422,20 @@ PY
     out="$OUT_DIR/rafcodephi-bootstrap-${arch}.zip"
     cp "$zip_path" "$out"
     bytes="$(wc -c < "$out" | tr -d ' ')"
-    printf 'artifact_%s=%s\nbytes_%s=%s\n' "$arch" "$out" "$arch" "$bytes" >> "$manifest"
-    echo "PASS real bootstrap arch=$arch bytes=$bytes"
+
+    deb_dir="$RAFCODEPHI_BOOTSTRAP_PACKAGE_EVIDENCE_DIR/$arch"
+    test -s "$deb_dir/SHA256SUMS" || { echo "$arch missing preserved DEB SHA256SUMS" >&2; exit 1; }
+    (
+        cd "$deb_dir"
+        sha256sum -c SHA256SUMS
+    )
+    deb_count="$(find "$deb_dir" -maxdepth 1 -type f -name '*.deb' | wc -l | tr -d ' ')"
+    deb_set_sha256="$(sha256sum "$deb_dir/SHA256SUMS" | awk '{print $1}')"
+    (( deb_count > 0 )) || { echo "$arch preserved DEB set is empty" >&2; exit 1; }
+
+    printf 'artifact_%s=%s\nbytes_%s=%s\ndeb_evidence_%s=%s\ndeb_count_%s=%s\ndeb_set_sha256_%s=%s\n' \
+        "$arch" "$out" "$arch" "$bytes" "$arch" "$deb_dir" "$arch" "$deb_count" "$arch" "$deb_set_sha256" >> "$manifest"
+    echo "PASS real bootstrap arch=$arch bytes=$bytes deb_count=$deb_count deb_set_sha256=$deb_set_sha256"
 done
 
 printf 'claim_allowed_device_runtime=false\ndevice_runtime_proof=TOKEN_VAZIO\n' >> "$manifest"

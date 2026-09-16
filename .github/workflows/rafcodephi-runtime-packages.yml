@@ -136,6 +136,27 @@ jobs:
           read -r -a recipe_array <<< "$RECIPES"
           ./scripts/run-docker.sh ./build-package.sh -C -a "$ARCH" "${recipe_array[@]}"
 
+      - name: Emit per-DEB custody manifest
+        if: always()
+        env:
+          ARCH: ${{ env.RAFCODEPHI_ARCH }}
+          PROFILE: ${{ env.RAFCODEPHI_PROFILE }}
+        run: |
+          set -euo pipefail
+          if ! compgen -G "output/*.deb" > /dev/null; then
+            echo "RAFCODEPHI_PACKAGE_CUSTODY=TOKEN_VAZIO reason=NO_DEB_OUTPUT" >&2
+            exit 1
+          fi
+          python3 scripts/emit_rafcodephi_package_custody.py \
+            --map rafcodephi-package-source-map.tsv \
+            --repo-root . \
+            --deb-dir output \
+            --out rafcodephi-package-custody.json \
+            --commit "$GITHUB_SHA" \
+            --arch "$ARCH" \
+            --profile "$PROFILE"
+          sha256sum -c rafcodephi-package-custody.json.sha256
+
       - name: Produce content-addressed receipt
         if: always()
         env:
@@ -163,6 +184,7 @@ jobs:
           cp rafcodephi-required-packages.txt rafcodephi-source-recipes.txt \
              rafcodephi-package-source-map.tsv rafcodephi-recipe-sha256.txt \
              rafcodephi-license-metadata.tsv rafcodephi-debs.sha256 \
+             rafcodephi-package-custody.json rafcodephi-package-custody.json.sha256 \
              rafcodephi-package-build.receipt rafcodephi-artifacts/
 
       - name: Upload immutable build evidence

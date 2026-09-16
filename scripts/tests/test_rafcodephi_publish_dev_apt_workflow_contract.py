@@ -1,75 +1,89 @@
 #!/usr/bin/env python3
-"""Static contract for retaining portable RAFCODEPHI ARM32 build evidence."""
-from __future__ import annotations
-
 from pathlib import Path
-
 
 ROOT = Path(__file__).resolve().parents[2]
 WORKFLOW = ROOT / ".github/workflows/rafcodephi-publish-dev-apt.yml"
+LIVE = ROOT / "scripts/build-rafcodephi-live-bootstrap.sh"
+GENERATOR = ROOT / "scripts/generate-bootstraps.sh"
 
 
-def require(condition: bool, token: str) -> None:
-    if not condition:
-        raise SystemExit(f"RAFCODEPHI_PUBLISH_DEV_APT_WORKFLOW=BLOCKED reason={token}")
-
-
-def between(text: str, start: str, end: str) -> str:
-    require(start in text, f"SECTION_START_MISSING:{start}")
-    require(end in text, f"SECTION_END_MISSING:{end}")
-    return text.split(start, 1)[1].split(end, 1)[0]
+def require(cond: bool, token: str) -> None:
+    if not cond:
+        raise SystemExit(f"RAFCODEPHI_SIGNED_APT_WORKFLOW=BLOCKED reason={token}")
 
 
 def main() -> int:
     text = WORKFLOW.read_text(encoding="utf-8")
-    require("rafcodephi-live-bootstrap.log" in text, "BUILD_LOG_CAPTURE_MISSING")
-    require("rafcodephi-live-bootstrap-status.json" in text, "STATUS_RECEIPT_MISSING")
-    require("build_status=\"${PIPESTATUS[0]}\"" in text, "DOCKER_EXIT_STATUS_LOST")
-    require("DOCKER_RUNNER_MISSING" in text, "RUNNER_FAILURE_NOT_RECORDED")
-    require("RAFCODEPHI_LIVE_APT_BUILD=BLOCKED" in text, "FAIL_CLOSED_STATUS_MISSING")
-    require("- name: Upload source-build evidence\n        if: always()" in text, "FAILURE_ARTIFACT_NOT_ALWAYS_UPLOADED")
-    require("output/*.deb" in text, "DEB_CLOSURE_EVIDENCE_MISSING")
-    require("claim_allowed_release\": False" in text, "RELEASE_CLAIM_BOUNDARY_MISSING")
+    live = LIVE.read_text(encoding="utf-8")
+    generator = GENERATOR.read_text(encoding="utf-8")
 
-    require("Bundle portable source-build evidence" in text, "PORTABLE_DEB_BUNDLE_STEP_MISSING")
-    require("rafcodephi-arm32-source-built-debs.tar" in text, "PORTABLE_DEB_BUNDLE_MISSING")
-    require("rafcodephi.portable-source-build-evidence/v1" in text, "PORTABLE_DEB_STATE_SCHEMA_MISSING")
-    source_upload = between(
-        text,
-        "- name: Upload source-build evidence",
-        "- name: Materialize flat APT repository",
+    required = (
+        "Build ARM and ARM64 source closure + signed bootstrap pair",
+        "--architectures arm,aarch64",
+        "artifacts/rafcodephi-bootstrap/debs/arm",
+        "artifacts/rafcodephi-bootstrap/debs/aarch64",
+        "Emit complete per-DEB custody for ARM and ARM64",
+        "--auto-map",
+        "rafcodephi.package-custody-dualarch/v1",
+        "dists/stable/main/binary-arm/Packages",
+        "dists/stable/main/binary-aarch64/Packages",
+        "dpkg-scanpackages -a arm",
+        "dpkg-scanpackages -a aarch64",
+        "pool/main/arm",
+        "pool/main/aarch64",
+        "--clearsign --output dists/stable/InRelease dists/stable/Release",
+        "--detach-sign --output dists/stable/Release.gpg dists/stable/Release",
+        "gpg --batch --verify dists/stable/Release.gpg dists/stable/Release",
+        "Architectures=arm aarch64",
+        "Components=main",
+        "Suite=stable",
+        "for arch in arm aarch64",
+        "signed-by=%s/rafcodephi-archive-key.gpg",
+        "RAFCODEPHI_ISOLATED_APT=PASS",
+        "rafcodephi-dualarch-signed-apt-repository.tar",
+        "RAFCODEPHI_APT_SIGNING_KEY_B64",
+        "RAFCODEPHI_APT_SIGNING_FINGERPRINT",
+        "RAFCODEPHI_APT_PUBLISH_TOKEN",
+        "github.event_name == 'workflow_dispatch' && inputs.publish == true",
+        "production publication must be dispatched from main",
+        'git -C "$publish_dir" push origin',
     )
-    require("output/*.deb" not in source_upload, "RAW_DEB_UPLOAD_PATH_NOT_PORTABLE")
-    require("rafcodephi-arm32-source-built-debs.tar.sha256" in source_upload,
-            "PORTABLE_DEB_DIGEST_NOT_UPLOADED")
+    for token in required:
+        require(token in text, f"MISSING:{token}")
 
-    require("Resolve development repository through isolated APT" in text, "ISOLATED_APT_GATE_MISSING")
-    require("rafcodephi-isolated-apt.log" in text, "ISOLATED_APT_LOG_MISSING")
-    require("rafcodephi-isolated-apt-status.json" in text, "ISOLATED_APT_RECEIPT_MISSING")
-    require("apt-get \"${apt_options[@]}\" update" in text, "APT_UPDATE_NOT_EXECUTED")
-    require("--download-only --no-install-recommends install \"$package_name\"" in text,
-            "APT_DOWNLOAD_RESOLUTION_NOT_EXECUTED")
-    require("RAFCODEPHI_ISOLATED_APT=BLOCKED" in text, "APT_FAILURE_NOT_FAIL_CLOSED")
-    require("RAFCODEPHI_ISOLATED_APT=PASS" in text, "APT_PASS_NOT_EMITTED")
-
-    require("Bundle portable APT repository evidence" in text, "PORTABLE_APT_BUNDLE_STEP_MISSING")
-    require("rafcodephi-arm32-dev-apt-repository.tar" in text, "PORTABLE_APT_BUNDLE_MISSING")
-    require("rafcodephi.portable-apt-repository-evidence/v1" in text,
-            "PORTABLE_APT_STATE_SCHEMA_MISSING")
-    repo_upload = between(
-        text,
-        "- name: Upload bootstrap + repository evidence",
-        "- name: Publish development repository branch",
+    live_required = (
+        "Suites: stable",
+        "Components: main",
+        "Architectures: arm aarch64",
+        "SIGNED_BY_ARCHIVE_KEY",
+        "SIGNED_REPOSITORY_CONFIGURED",
     )
-    require("/tmp/rafcodephi-apt-publish/repo" not in repo_upload,
-            "RAW_APT_REPOSITORY_UPLOAD_PATH_NOT_PORTABLE")
-    require("rafcodephi-arm32-dev-apt-repository.tar.sha256" in repo_upload,
-            "PORTABLE_APT_DIGEST_NOT_UPLOADED")
+    for token in live_required:
+        require(token in live, f"LIVE_BOOTSTRAP_MISSING:{token}")
+
+    require("RAFCODEPHI_BOOTSTRAP_PACKAGE_EVIDENCE_DIR" in generator,
+            "GENERATOR_DEB_EVIDENCE_HOOK_MISSING")
+    require("sha256sum ./*.deb" in generator, "PER_ARCH_DEB_HASH_MISSING")
+
+    forbidden = (
+        "deb [trusted=yes]",
+        "git push --force",
+        'git -C "$publish_dir" push --force',
+        "persist-credentials: true",
+    )
+    for token in forbidden:
+        require(token not in text, f"FORBIDDEN:{token}")
+
+    require("cancel-in-progress: ${{ github.event_name == 'pull_request' }}" in text,
+            "STALE_PR_BUILD_CANCELLATION_MISSING")
+    require("contents: read" in text, "READ_ONLY_DEFAULT_PERMISSION_MISSING")
+    require("claim_allowed_release" in text, "CLAIM_BOUNDARY_MISSING")
 
     print(
-        "RAFCODEPHI_PUBLISH_DEV_APT_WORKFLOW=PASS "
-        "source_build_log=true portable_deb_bundle=true isolated_apt=true "
-        "portable_repo_bundle=true claim_allowed=false"
+        "RAFCODEPHI_SIGNED_APT_WORKFLOW=PASS "
+        "dual_arch=true per_deb_custody=true signed_by=true "
+        "release_signatures=true isolated_resolution=true "
+        "manual_publish_only=true force_push=false"
     )
     return 0
 

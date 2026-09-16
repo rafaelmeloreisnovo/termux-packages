@@ -27,7 +27,11 @@
       "artifact_digest",
       "producer_schema_version",
       "consumer_expected_identity",
-      "validator_result"
+      "validator_result",
+      "provider_artifact_id",
+      "provider_artifact_digest",
+      "producer_receipt_digest",
+      "consumer_verified_byte_digests"
     ],
     "build_success_is_install_success": false,
     "install_success_is_runtime_success": false,
@@ -39,7 +43,10 @@
     "source_pin_required": true,
     "download_checksum_required_when_recipe_supports_it": true,
     "generated_manifest_must_match_consumed_bytes": true,
-    "unknown_origin": "TOKEN_VAZIO"
+    "unknown_origin": "TOKEN_VAZIO",
+    "package_custody_manifest": "rafcodephi.package-custody-manifest/v1",
+    "consumer_byte_equality_required": true,
+    "github_artifact_binding_required": true
   },
   "security_privacy": {
     "state": "FAIL_CLOSED",
@@ -64,24 +71,24 @@
   "gaps": [
     {
       "id": "TV-PACKAGE-LICENSE-INVENTORY",
-      "state": "TOKEN_VAZIO",
+      "state": "IMPLEMENTED_UNTESTED_SCOPED",
       "urgency": "P0",
       "owner": "package_provenance_auditor",
-      "closure": "bind governing upstream/package license for every modified or distributed recipe path"
+      "closure": "per-DEB custody manifest records recipe license/source metadata for every package in the selected RAFCODEPHI profile; exact-head CI must pass"
     },
     {
       "id": "TV-SOURCE-RECIPE-ARTIFACT-CHAIN",
-      "state": "TOKEN_VAZIO",
+      "state": "IMPLEMENTED_UNTESTED",
       "urgency": "P0",
       "owner": "package_build_producer",
-      "closure": "emit exact source/recipe/artifact digests and schema in package handoff receipt"
+      "closure": "scripts/emit_rafcodephi_package_custody.py binds output package -> recipe blob/SHA256 -> declared source digest state -> .deb SHA256 -> canonical records root"
     },
     {
       "id": "TV-CONSUMER-HANDOFF",
-      "state": "TOKEN_VAZIO",
+      "state": "IMPLEMENTED_UNTESTED",
       "urgency": "P0",
       "owner": "producer_and_consumer",
-      "closure": "consumer verifies exact package/artifact/schema identity before promotion"
+      "closure": "consumer verifies producer receipt SHA256 plus exact manifest/ARM/ARM64 byte digests and records provider artifact id/digest before APK receipt"
     },
     {
       "id": "TV-PHYSICAL-PKG-RUNTIME",
@@ -114,5 +121,26 @@
     "available": true,
     "procedure": "revert assurance-only branch; no package recipe, source pin or produced artifact is changed by this contract"
   },
-  "claim_allowed": false
+  "claim_allowed": false,
+  "signed_apt": {
+    "state": "IMPLEMENTED_UNTESTED_ACTIVATION_GATED",
+    "trust": "Signed-By embedded archive key",
+    "metadata": [
+      "Packages",
+      "Packages.gz",
+      "Release",
+      "InRelease",
+      "Release.gpg",
+      "SHA256SUMS"
+    ],
+    "test_signing": "ephemeral CI key",
+    "production_bindings": [
+      "RAFCODEPHI_APT_SIGNING_KEY_B64",
+      "RAFCODEPHI_APT_SIGNING_FINGERPRINT",
+      "RAFCODEPHI_APT_PUBLISH_TOKEN"
+    ],
+    "publication_trigger": "workflow_dispatch publish=true only",
+    "force_push_allowed": false,
+    "automatic_push_publication": false
+  }
 }

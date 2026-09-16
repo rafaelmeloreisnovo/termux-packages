@@ -10,6 +10,8 @@ on:
       - 'scripts/build-rafcodephi-real-bootstrap.sh'
       - 'scripts/apply-rafcodephi-build-properties.py'
       - 'scripts/validate-rafcodephi-build-properties.sh'
+      - 'scripts/emit_rafcodephi_package_custody.py'
+      - 'scripts/tests/test_rafcodephi_package_custody_contract.py'
   workflow_dispatch:
 
 permissions:
@@ -34,7 +36,8 @@ jobs:
           set -euo pipefail
           bash -n scripts/build-rafcodephi-real-bootstrap.sh
           bash -n scripts/validate-rafcodephi-build-properties.sh
-          python3 -m py_compile scripts/apply-rafcodephi-build-properties.py
+          python3 -m py_compile scripts/apply-rafcodephi-build-properties.py scripts/emit_rafcodephi_package_custody.py
+          python3 scripts/tests/test_rafcodephi_package_custody_contract.py
           test -x scripts/run-docker.sh
           test -x scripts/generate-bootstraps.sh
 
@@ -71,8 +74,14 @@ jobs:
           mkdir -p build/reports
           chmod +x scripts/run-docker.sh scripts/build-rafcodephi-real-bootstrap.sh
           set +e
-          ./scripts/run-docker.sh             ./scripts/build-rafcodephi-real-bootstrap.sh             --architectures arm,aarch64             2>&1 | tee build/reports/rafcodephi-auto-bootstrap.log
+          BOOTSTRAP_OUT=/tmp/rafcodephi-bootstrap-out
+          rm -rf artifacts/rafcodephi-bootstrap
+          mkdir -p artifacts/rafcodephi-bootstrap
+          ./scripts/run-docker.sh env RAFCODEPHI_BOOTSTRAP_OUT_DIR="$BOOTSTRAP_OUT" \
+            ./scripts/build-rafcodephi-real-bootstrap.sh --architectures arm,aarch64 \
+            2>&1 | tee build/reports/rafcodephi-auto-bootstrap.log
           status="${PIPESTATUS[0]}"
+          sudo docker cp "termux-package-builder:$BOOTSTRAP_OUT/." artifacts/rafcodephi-bootstrap/ 2>/dev/null || true
           set -e
           python3 - "$status" <<'PY' > build/reports/rafcodephi-auto-bootstrap-status.json
           import json, sys
@@ -149,6 +158,7 @@ jobs:
           sha256sum build/reports/rafcodephi-auto-handoff.json             > build/reports/rafcodephi-auto-handoff.json.sha256
 
       - name: Upload immutable producer artifact
+        id: producer_artifact
         uses: actions/upload-artifact@v7
         with:
           name: ${{ env.ARTIFACT_NAME }}
@@ -159,6 +169,34 @@ jobs:
             build/reports/rafcodephi-auto-*
           if-no-files-found: error
           retention-days: 30
+
+      - name: Emit GitHub artifact binding receipt
+        shell: bash
+        env:
+          ARTIFACT_ID: ${{ steps.producer_artifact.outputs.artifact-id }}
+          ARTIFACT_DIGEST: ${{ steps.producer_artifact.outputs.artifact-digest }}
+          ARTIFACT_URL: ${{ steps.producer_artifact.outputs.artifact-url }}
+        run: |
+          set -euo pipefail
+          python3 - "$GITHUB_SHA" "$GITHUB_RUN_ID" "$ARTIFACT_NAME" "$ARTIFACT_ID" "$ARTIFACT_DIGEST" "$ARTIFACT_URL" <<'PY' > build/reports/rafcodephi-auto-artifact-binding.json
+          import json, sys
+          producer_sha, run_id, name, artifact_id, digest, url = sys.argv[1:]
+          if not artifact_id.isdigit():
+              raise SystemExit("invalid artifact id")
+          if len(digest) != 64 or any(c not in "0123456789abcdef" for c in digest):
+              raise SystemExit("invalid artifact digest")
+          print(json.dumps({
+              "schema": "rafcodephi.github-artifact-binding/v1",
+              "producer_commit": producer_sha,
+              "producer_run_id": int(run_id),
+              "artifact_name": name,
+              "artifact_id": int(artifact_id),
+              "artifact_digest": digest,
+              "artifact_url": url,
+              "claim_allowed": False,
+          }, indent=2, sort_keys=True))
+          PY
+          sha256sum build/reports/rafcodephi-auto-artifact-binding.json > build/reports/rafcodephi-auto-artifact-binding.json.sha256
 
       - name: Dispatch exact producer evidence to app
         shell: bash
@@ -172,9 +210,11 @@ jobs:
           fi
 
           RECEIPT_SHA256="$(awk '{print $1}' build/reports/rafcodephi-auto-handoff.json.sha256)"
-          python3 - "$GITHUB_SHA" "$GITHUB_RUN_ID" "$ARTIFACT_NAME" "$RECEIPT_SHA256" <<'PY' > /tmp/dispatch.json
+          ARTIFACT_ID="${{ steps.producer_artifact.outputs.artifact-id }}"
+          ARTIFACT_DIGEST="${{ steps.producer_artifact.outputs.artifact-digest }}"
+          python3 - "$GITHUB_SHA" "$GITHUB_RUN_ID" "$ARTIFACT_NAME" "$RECEIPT_SHA256" "$ARTIFACT_ID" "$ARTIFACT_DIGEST" <<'PY' > /tmp/dispatch.json
           import json, sys
-          producer_sha, run_id, artifact_name, receipt_sha256 = sys.argv[1:]
+          producer_sha, run_id, artifact_name, receipt_sha256, artifact_id, artifact_digest = sys.argv[1:]
           print(json.dumps({
               "event_type": "rafcodephi_packages_ready",
               "client_payload": {
@@ -182,6 +222,8 @@ jobs:
                   "producer_run_id": int(run_id),
                   "artifact_name": artifact_name,
                   "receipt_sha256": receipt_sha256,
+                  "artifact_id": int(artifact_id),
+                  "artifact_digest": artifact_digest,
               },
           }))
           PY
