@@ -1,4 +1,4 @@
-name: RAFCODEPHI Publish Development APT Repository
+name: RAFCODEPHI Signed APT Repository
 
 on:
   workflow_dispatch:
@@ -9,23 +9,37 @@ on:
         default: false
         type: boolean
   pull_request:
-    paths: ['packages/**', 'scripts/build-rafcodephi-*.sh', 'scripts/tests/test_rafcodephi_publish_dev_apt_workflow_contract.py', '.github/workflows/rafcodephi-publish-dev-apt.yml']
+    paths:
+      - 'packages/**'
+      - 'scripts/generate-bootstraps.sh'
+      - 'scripts/build-rafcodephi-real-bootstrap.sh'
+      - 'scripts/build-rafcodephi-live-bootstrap.sh'
+      - 'scripts/emit_rafcodephi_package_custody.py'
+      - 'scripts/tests/test_rafcodephi_publish_dev_apt_workflow_contract.py'
+      - 'scripts/tests/test_rafcodephi_signed_apt_fixture.sh'
+      - '.github/workflows/rafcodephi-publish-dev-apt.yml'
   push:
-    branches:
-      - main
-      - fix/rafcodephi-live-apt-repository-20260814
-    paths: ['packages/**', 'scripts/build-rafcodephi-*.sh', 'scripts/tests/test_rafcodephi_publish_dev_apt_workflow_contract.py', '.github/workflows/rafcodephi-publish-dev-apt.yml']
+    branches: [main]
+    paths:
+      - 'packages/**'
+      - 'scripts/generate-bootstraps.sh'
+      - 'scripts/build-rafcodephi-real-bootstrap.sh'
+      - 'scripts/build-rafcodephi-live-bootstrap.sh'
+      - 'scripts/emit_rafcodephi_package_custody.py'
+      - 'scripts/tests/test_rafcodephi_publish_dev_apt_workflow_contract.py'
+      - 'scripts/tests/test_rafcodephi_signed_apt_fixture.sh'
+      - '.github/workflows/rafcodephi-publish-dev-apt.yml'
 
 permissions:
   contents: read
 
 concurrency:
-  group: rafcodephi-dev-apt-${{ github.ref }}
+  group: rafcodephi-signed-apt-${{ github.ref }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
-  arm32-repository:
-    runs-on: ubuntu-latest
+  dual-arch-repository:
+    runs-on: ubuntu-24.04
     timeout-minutes: 240
     env:
       CI: 'true'
@@ -33,15 +47,20 @@ jobs:
       RAFCODEPHI_APT_REPOSITORY_URL: ${{ github.ref_name == 'main' && 'https://raw.githubusercontent.com/rafaelmeloreisnovo/termux-packages/rafcodephi-apt/repo' || 'https://raw.githubusercontent.com/rafaelmeloreisnovo/termux-packages/rafcodephi-apt-preview/repo' }}
       RAFCODEPHI_APT_PUBLISH_BRANCH: ${{ github.ref_name == 'main' && 'rafcodephi-apt' || 'rafcodephi-apt-preview' }}
       RAFCODEPHI_APT_TRUST_MODE: signed-by
+
     steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+      - name: Checkout exact candidate
+        uses: actions/checkout@v6
         with:
           fetch-depth: 0
           persist-credentials: false
 
-      - name: Validate development APT workflow contract
+      - name: Validate signed APT workflow contract
         shell: bash
-        run: python3 scripts/tests/test_rafcodephi_publish_dev_apt_workflow_contract.py
+        run: |
+          set -euo pipefail
+          python3 scripts/tests/test_rafcodephi_publish_dev_apt_workflow_contract.py
+          python3 scripts/tests/test_rafcodephi_package_custody_contract.py
 
       - name: Prepare APT signing identity
         shell: bash
@@ -91,18 +110,18 @@ jobs:
           echo "RAFCODEPHI_APT_SIGNING_FINGERPRINT=$FPR" >> "$GITHUB_ENV"
           echo "RAFCODEPHI_APT_SIGNING_MODE=$MODE" >> "$GITHUB_ENV"
 
-      - name: Materialize RAFCODEPHI package/prefix contract
+      - name: Materialize RAFCODEPHI package identity
         shell: bash
         run: |
           set -euo pipefail
           mkdir -p build/reports
           python3 scripts/apply-rafcodephi-build-properties.py \
             --properties scripts/properties.sh \
-            --receipt build/reports/rafcodephi-dev-apt-properties.json
+            --receipt build/reports/rafcodephi-signed-apt-properties.json
           bash scripts/validate-rafcodephi-build-properties.sh
           grep -Fx 'TERMUX_APP__PACKAGE_NAME="com.termux.rafacodephi"' scripts/properties.sh
 
-      - name: Build ARM32 custom-prefix package closure + live bootstrap
+      - name: Build ARM and ARM64 source closure + signed bootstrap pair
         shell: bash
         run: |
           set -euo pipefail
@@ -110,86 +129,143 @@ jobs:
           set +e
           (
             test -x scripts/run-docker.sh || {
-              echo "RAFCODEPHI_LIVE_APT_BUILD=BLOCKED reason=DOCKER_RUNNER_MISSING" >&2
+              echo "RAFCODEPHI_SIGNED_APT_BUILD=BLOCKED reason=DOCKER_RUNNER_MISSING" >&2
               exit 126
             }
             exec ./scripts/run-docker.sh env \
               RAFCODEPHI_APT_REPOSITORY_URL="$RAFCODEPHI_APT_REPOSITORY_URL" \
               RAFCODEPHI_APT_TRUST_MODE="$RAFCODEPHI_APT_TRUST_MODE" \
               RAFCODEPHI_APT_PUBLIC_KEY_FILE=/home/builder/termux-packages/build/signing/rafcodephi-archive-key.gpg \
-              bash ./scripts/build-rafcodephi-live-bootstrap.sh --architectures arm
-          ) 2>&1 | tee build/reports/rafcodephi-live-bootstrap.log
+              bash ./scripts/build-rafcodephi-live-bootstrap.sh --architectures arm,aarch64
+          ) 2>&1 | tee build/reports/rafcodephi-signed-apt-build.log
           build_status="${PIPESTATUS[0]}"
           set -e
-          python3 - "$build_status" > build/reports/rafcodephi-live-bootstrap-status.json <<'PY'
-          import json
-          import sys
 
+          python3 - "$build_status" > build/reports/rafcodephi-signed-apt-build-status.json <<'PY'
+          import json, sys
           status = int(sys.argv[1])
           print(json.dumps({
-              "schema": "rafcodephi.live-bootstrap-build-status/v1",
+              "schema": "rafcodephi.signed-apt-source-build-status/v1",
               "state": "PASS" if status == 0 else "BLOCKED",
               "exit_code": status,
+              "architectures": ["arm", "aarch64"],
               "claim_allowed_release": False,
               "device_runtime_proof": "TOKEN_VAZIO",
           }, sort_keys=True))
           PY
+
           if [[ "$build_status" -ne 0 ]]; then
-            echo "RAFCODEPHI_LIVE_APT_BUILD=BLOCKED exit_code=$build_status; inspect uploaded source-build evidence" >&2
+            echo "RAFCODEPHI_SIGNED_APT_BUILD=BLOCKED exit_code=$build_status" >&2
             exit "$build_status"
           fi
-          test -s artifacts/rafcodephi-bootstrap/rafcodephi-bootstrap-arm.zip
-          test -n "$(find output -maxdepth 1 -type f -name '*.deb' -print -quit)"
-          unzip -p artifacts/rafcodephi-bootstrap/rafcodephi-bootstrap-arm.zip etc/apt/sources.list.d/termux.sources > /tmp/termux.sources
-          grep -Fx 'Enabled: yes' /tmp/termux.sources
-          grep -Fx "URIs: $RAFCODEPHI_APT_REPOSITORY_URL" /tmp/termux.sources
-          grep -Fq 'Signed-By: /data/data/com.termux.rafacodephi/files/usr/etc/apt/keyrings/rafcodephi-archive-key.gpg' /tmp/termux.sources
-          ! grep -Fq 'Trusted: yes' /tmp/termux.sources
-          unzip -p artifacts/rafcodephi-bootstrap/rafcodephi-bootstrap-arm.zip BOOTSTRAP_PROFILE.json | grep -F '"package_repo_runtime_state":"DEVELOPMENT_REPOSITORY_CONFIGURED"'
 
-      - name: Bundle portable source-build evidence
+          for arch in arm aarch64; do
+            zip="artifacts/rafcodephi-bootstrap/rafcodephi-bootstrap-$arch.zip"
+            debdir="artifacts/rafcodephi-bootstrap/debs/$arch"
+            test -s "$zip"
+            test -s "$debdir/SHA256SUMS"
+            (
+              cd "$debdir"
+              sha256sum -c SHA256SUMS
+            )
+            unzip -p "$zip" etc/apt/sources.list.d/termux.sources > "build/reports/termux-$arch.sources"
+            grep -Fx 'Enabled: yes' "build/reports/termux-$arch.sources"
+            grep -Fx "URIs: $RAFCODEPHI_APT_REPOSITORY_URL" "build/reports/termux-$arch.sources"
+            grep -Fx 'Suites: stable' "build/reports/termux-$arch.sources"
+            grep -Fx 'Components: main' "build/reports/termux-$arch.sources"
+            grep -Fx 'Architectures: arm aarch64' "build/reports/termux-$arch.sources"
+            grep -Fq 'Signed-By: /data/data/com.termux.rafacodephi/files/usr/etc/apt/keyrings/rafcodephi-archive-key.gpg' "build/reports/termux-$arch.sources"
+            ! grep -Fq 'Trusted: yes' "build/reports/termux-$arch.sources"
+          done
+
+      - name: Emit complete per-DEB custody for ARM and ARM64
+        shell: bash
+        run: |
+          set -euo pipefail
+          for arch in arm aarch64; do
+            python3 scripts/emit_rafcodephi_package_custody.py \
+              --auto-map \
+              --repo-root . \
+              --deb-dir "artifacts/rafcodephi-bootstrap/debs/$arch" \
+              --out "build/reports/rafcodephi-package-custody-$arch.json" \
+              --commit "$GITHUB_SHA" \
+              --arch "$arch" \
+              --profile bootstrap
+            sha256sum -c "build/reports/rafcodephi-package-custody-$arch.json.sha256"
+          done
+
+          python3 - <<'PY' > build/reports/rafcodephi-package-custody-dualarch.json
+          import hashlib, json
+          from pathlib import Path
+          records = {}
+          for arch in ("arm", "aarch64"):
+              p = Path(f"build/reports/rafcodephi-package-custody-{arch}.json")
+              doc = json.loads(p.read_text())
+              records[arch] = {
+                  "manifest_sha256": hashlib.sha256(p.read_bytes()).hexdigest(),
+                  "records_root_sha256": doc["records_root_sha256"],
+                  "record_count": doc["record_count"],
+              }
+          canonical = json.dumps(records, sort_keys=True, separators=(",", ":")).encode()
+          print(json.dumps({
+              "schema": "rafcodephi.package-custody-dualarch/v1",
+              "source_commit": "${GITHUB_SHA}",
+              "architectures": records,
+              "root_sha256": hashlib.sha256(canonical).hexdigest(),
+              "claim_allowed": False,
+          }, indent=2, sort_keys=True))
+          PY
+          sha256sum build/reports/rafcodephi-package-custody-dualarch.json \
+            > build/reports/rafcodephi-package-custody-dualarch.json.sha256
+
+      - name: Bundle source-build evidence
         if: always()
         shell: bash
         run: |
           set -euo pipefail
           mkdir -p build/reports
-          bundle=build/reports/rafcodephi-arm32-source-built-debs.tar
-          state=build/reports/rafcodephi-arm32-source-built-debs.state
+          bundle=build/reports/rafcodephi-dualarch-source-built-debs.tar
+          state=build/reports/rafcodephi-dualarch-source-built-debs.state
           rm -f "$bundle" "$bundle.sha256"
-          if [[ -d output ]] && compgen -G 'output/*.deb' >/dev/null; then
+
+          if [[ -d artifacts/rafcodephi-bootstrap/debs/arm && -d artifacts/rafcodephi-bootstrap/debs/aarch64 ]]; then
             tar --sort=name --mtime='@0' --owner=0 --group=0 --numeric-owner \
-              -cf "$bundle" -C output .
+              -cf "$bundle" -C artifacts/rafcodephi-bootstrap debs
             sha256sum "$bundle" > "$bundle.sha256"
             printf '%s\n' \
-              'schema=rafcodephi.portable-source-build-evidence/v1' \
+              'schema=rafcodephi.portable-source-build-evidence/v2' \
               'state=PASS' \
+              'architectures=arm,aarch64' \
               "archive=$bundle" \
               'claim_allowed_release=false' \
               'device_runtime_proof=TOKEN_VAZIO' > "$state"
           else
             printf '%s\n' \
-              'schema=rafcodephi.portable-source-build-evidence/v1' \
+              'schema=rafcodephi.portable-source-build-evidence/v2' \
               'state=TOKEN_VAZIO' \
-              'reason=NO_DEB_OUTPUT' \
+              'reason=DUAL_ARCH_DEB_EVIDENCE_NOT_MATERIALIZED' \
               'claim_allowed_release=false' \
               'device_runtime_proof=TOKEN_VAZIO' > "$state"
           fi
-      - name: Upload source-build evidence
-        if: always()
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
-        with:
-          name: rafcodephi-arm32-source-build-evidence-${{ github.sha }}
-          if-no-files-found: warn
-          path: |
-            build/reports/rafcodephi-live-bootstrap.log
-            build/reports/rafcodephi-live-bootstrap-status.json
-            build/reports/rafcodephi-arm32-source-built-debs.tar
-            build/reports/rafcodephi-arm32-source-built-debs.tar.sha256
-            build/reports/rafcodephi-arm32-source-built-debs.state
-            artifacts/rafcodephi-bootstrap/rafcodephi-bootstrap-arm.zip
-            artifacts/rafcodephi-bootstrap/RAFCODEPHI_REAL_BOOTSTRAP_MANIFEST.txt
 
-      - name: Materialize flat signed APT repository
+      - name: Upload source-build and custody evidence
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: rafcodephi-dualarch-source-build-${{ github.sha }}
+          path: |
+            build/reports/rafcodephi-signed-apt-*
+            build/reports/rafcodephi-package-custody-*
+            build/reports/rafcodephi-dualarch-source-built-debs.*
+            build/reports/termux-*.sources
+            artifacts/rafcodephi-bootstrap/rafcodephi-bootstrap-arm.zip
+            artifacts/rafcodephi-bootstrap/rafcodephi-bootstrap-aarch64.zip
+            artifacts/rafcodephi-bootstrap/RAFCODEPHI_REAL_BOOTSTRAP_MANIFEST.txt
+            artifacts/rafcodephi-bootstrap/debs/*/SHA256SUMS
+          if-no-files-found: warn
+          retention-days: 30
+
+      - name: Materialize signed dual-architecture APT repository
         shell: bash
         run: |
           set -euo pipefail
@@ -197,113 +273,163 @@ jobs:
           command -v apt-ftparchive >/dev/null || { sudo apt-get update; sudo apt-get install -y apt-utils; }
           command -v gpg >/dev/null || { sudo apt-get update; sudo apt-get install -y gnupg; }
 
-          rm -rf /tmp/rafcodephi-apt-publish
-          mkdir -p /tmp/rafcodephi-apt-publish/repo
-          cp output/*.deb /tmp/rafcodephi-apt-publish/repo/
-          cd /tmp/rafcodephi-apt-publish/repo
+          root=/tmp/rafcodephi-apt-publish
+          repo="$root/repo"
+          rm -rf "$root"
+          mkdir -p "$repo/pool/main/arm" "$repo/pool/main/aarch64"
+          mkdir -p "$repo/dists/stable/main/binary-arm" "$repo/dists/stable/main/binary-aarch64"
 
-          LC_ALL=C dpkg-scanpackages . /dev/null > Packages
-          gzip -9n -c Packages > Packages.gz
-          LC_ALL=C apt-ftparchive release . > Release
+          cp artifacts/rafcodephi-bootstrap/debs/arm/*.deb "$repo/pool/main/arm/"
+          cp artifacts/rafcodephi-bootstrap/debs/aarch64/*.deb "$repo/pool/main/aarch64/"
+          cp build/signing/rafcodephi-archive-key.gpg "$repo/"
+          cp build/signing/rafcodephi-archive-key.asc "$repo/"
 
-          cp "$GITHUB_WORKSPACE/build/signing/rafcodephi-archive-key.gpg" .
-          cp "$GITHUB_WORKSPACE/build/signing/rafcodephi-archive-key.asc" .
+          (
+            cd "$repo"
+            LC_ALL=C dpkg-scanpackages -a arm pool/main/arm /dev/null \
+              > dists/stable/main/binary-arm/Packages
+            gzip -9n -c dists/stable/main/binary-arm/Packages \
+              > dists/stable/main/binary-arm/Packages.gz
 
-          gpg --batch --yes --local-user "$RAFCODEPHI_APT_SIGNING_FINGERPRINT" \
-            --clearsign --output InRelease Release
-          gpg --batch --yes --local-user "$RAFCODEPHI_APT_SIGNING_FINGERPRINT" \
-            --detach-sign --output Release.gpg Release
-          gpg --batch --verify Release.gpg Release
-          gpg --batch --verify InRelease
+            LC_ALL=C dpkg-scanpackages -a aarch64 pool/main/aarch64 /dev/null \
+              > dists/stable/main/binary-aarch64/Packages
+            gzip -9n -c dists/stable/main/binary-aarch64/Packages \
+              > dists/stable/main/binary-aarch64/Packages.gz
 
-          printf '%s\n' \
-            'schema=rafcodephi.signed-apt-repository/v1' \
-            'package_name=com.termux.rafacodephi' \
-            'prefix=/data/data/com.termux.rafacodephi/files/usr' \
-            'architecture=arm' \
-            "source_commit=${GITHUB_SHA}" \
-            "publish_branch=${RAFCODEPHI_APT_PUBLISH_BRANCH}" \
-            "repository_url=${RAFCODEPHI_APT_REPOSITORY_URL}" \
-            'trust=SIGNED_BY_ARCHIVE_KEY' \
-            "signing_mode=${RAFCODEPHI_APT_SIGNING_MODE}" \
-            "signing_fingerprint=${RAFCODEPHI_APT_SIGNING_FINGERPRINT}" \
-            'claim_allowed_release=false' > RAFCODEPHI_REPOSITORY_MANIFEST.txt
+            apt-ftparchive \
+              -o APT::FTPArchive::Release::Origin=RAFCODEPHI \
+              -o APT::FTPArchive::Release::Label=RAFCODEPHI \
+              -o APT::FTPArchive::Release::Suite=stable \
+              -o APT::FTPArchive::Release::Codename=stable \
+              -o 'APT::FTPArchive::Release::Architectures=arm aarch64' \
+              -o APT::FTPArchive::Release::Components=main \
+              release dists/stable > dists/stable/Release
 
-          sha256sum ./*.deb Packages Packages.gz Release InRelease Release.gpg \
-            rafcodephi-archive-key.gpg rafcodephi-archive-key.asc \
-            RAFCODEPHI_REPOSITORY_MANIFEST.txt \
-            | LC_ALL=C sort -k2 > SHA256SUMS
+            gpg --batch --yes --local-user "$RAFCODEPHI_APT_SIGNING_FINGERPRINT" \
+              --clearsign --output dists/stable/InRelease dists/stable/Release
+            gpg --batch --yes --local-user "$RAFCODEPHI_APT_SIGNING_FINGERPRINT" \
+              --detach-sign --output dists/stable/Release.gpg dists/stable/Release
+            gpg --batch --verify dists/stable/Release.gpg dists/stable/Release
+            gpg --batch --verify dists/stable/InRelease
 
-          grep -q '^Package: ' Packages
-          grep -q '^Architecture: arm$' Packages
-          sha256sum -c SHA256SUMS
+            printf '%s\n' \
+              'schema=rafcodephi.signed-apt-repository/v2' \
+              'package_name=com.termux.rafacodephi' \
+              'prefix=/data/data/com.termux.rafacodephi/files/usr' \
+              'architectures=arm,aarch64' \
+              "source_commit=${GITHUB_SHA}" \
+              "publish_branch=${RAFCODEPHI_APT_PUBLISH_BRANCH}" \
+              "repository_url=${RAFCODEPHI_APT_REPOSITORY_URL}" \
+              'suite=stable' \
+              'component=main' \
+              'trust=SIGNED_BY_ARCHIVE_KEY' \
+              "signing_mode=${RAFCODEPHI_APT_SIGNING_MODE}" \
+              "signing_fingerprint=${RAFCODEPHI_APT_SIGNING_FINGERPRINT}" \
+              'claim_allowed_release=false' > RAFCODEPHI_REPOSITORY_MANIFEST.txt
 
-      - name: Resolve signed repository through isolated APT
+            {
+              find pool dists -type f ! -name 'SHA256SUMS' -print0
+              printf '%s\0' rafcodephi-archive-key.gpg rafcodephi-archive-key.asc RAFCODEPHI_REPOSITORY_MANIFEST.txt
+            } | sort -z | xargs -0 sha256sum > SHA256SUMS
+            sha256sum -c SHA256SUMS
+
+            grep -q '^Architecture: arm$' dists/stable/main/binary-arm/Packages
+            grep -q '^Architecture: aarch64$' dists/stable/main/binary-aarch64/Packages
+            grep -Fx 'Architectures: arm aarch64' dists/stable/Release
+            grep -Fx 'Components: main' dists/stable/Release
+            grep -Fx 'Suite: stable' dists/stable/Release
+          )
+
+      - name: Resolve signed repository through isolated APT on ARM and ARM64
         shell: bash
         run: |
           set -euo pipefail
           repo=/tmp/rafcodephi-apt-publish/repo
-          apt_root=/tmp/rafcodephi-apt-client
-          mkdir -p build/reports "$apt_root/etc/apt/sourceparts" "$apt_root/lists/partial" \
-            "$apt_root/cache/archives/partial" "$apt_root/var/lib/dpkg"
-          : > "$apt_root/var/lib/dpkg/status"
+          mkdir -p build/reports
 
-          package_name="$(awk -F ': ' '$1 == "Package" { print $2; exit }' "$repo/Packages")"
-          test -n "$package_name"
+          for arch in arm aarch64; do
+            apt_root="/tmp/rafcodephi-apt-client-$arch"
+            rm -rf "$apt_root"
+            mkdir -p "$apt_root/etc/apt/sourceparts" "$apt_root/lists/partial" \
+              "$apt_root/cache/archives/partial" "$apt_root/var/lib/dpkg"
+            : > "$apt_root/var/lib/dpkg/status"
 
-          printf 'deb [signed-by=%s/rafcodephi-archive-key.gpg] file:%s ./\n' \
-            "$repo" "$repo" > "$apt_root/etc/apt/sources.list"
+            printf 'deb [arch=%s signed-by=%s/rafcodephi-archive-key.gpg] file:%s stable main\n' \
+              "$arch" "$repo" "$repo" > "$apt_root/etc/apt/sources.list"
 
-          apt_options=(
-            -o "Dir::Etc::sourcelist=$apt_root/etc/apt/sources.list"
-            -o "Dir::Etc::sourceparts=$apt_root/etc/apt/sourceparts"
-            -o "Dir::State::status=$apt_root/var/lib/dpkg/status"
-            -o "Dir::State::lists=$apt_root/lists"
-            -o "Dir::Cache::archives=$apt_root/cache/archives"
-            -o 'APT::Architecture=arm'
-            -o 'APT::Architectures=arm'
-            -o 'Acquire::Languages=none'
-          )
+            apt_options=(
+              -o "Dir::Etc::sourcelist=$apt_root/etc/apt/sources.list"
+              -o "Dir::Etc::sourceparts=$apt_root/etc/apt/sourceparts"
+              -o "Dir::State::status=$apt_root/var/lib/dpkg/status"
+              -o "Dir::State::lists=$apt_root/lists"
+              -o "Dir::Cache::archives=$apt_root/cache/archives"
+              -o "APT::Architecture=$arch"
+              -o "APT::Architectures=$arch"
+              -o 'Acquire::Languages=none'
+            )
 
-          set +e
-          (
-            apt-get "${apt_options[@]}" update
-            apt-cache "${apt_options[@]}" show "$package_name"
-            apt-get "${apt_options[@]}" -y --download-only --no-install-recommends install "$package_name"
-            resolved_filename="$(awk -F ': ' -v pkg="$package_name" '
-              $1 == "Package" { current=$2 }
-              current == pkg && $1 == "Filename" { print $2; exit }
-            ' "$repo/Packages")"
-            [[ "$resolved_filename" == ./* ]]
-            resolved_deb="$repo/${resolved_filename#./}"
-            test -s "$resolved_deb"
-            dpkg-deb -f "$resolved_deb" Package | grep -Fx "$package_name"
-            sha256sum "$resolved_deb" > build/reports/rafcodephi-isolated-apt-resolved-deb.sha256
-          ) 2>&1 | tee build/reports/rafcodephi-isolated-apt.log
-          apt_status="${PIPESTATUS[0]}"
-          set -e
+            packages_file="$repo/dists/stable/main/binary-$arch/Packages"
+            package_name="$(awk -v arch="$arch" '
+              BEGIN { RS=""; FS="\n" }
+              {
+                pkg=""; pa=""
+                for (i=1; i<=NF; i++) {
+                  if ($i ~ /^Package: /) pkg=substr($i, 10)
+                  if ($i ~ /^Architecture: /) pa=substr($i, 15)
+                }
+                if (pkg != "" && (pa == arch || pa == "all")) { print pkg; exit }
+              }
+            ' "$packages_file")"
+            test -n "$package_name"
 
-          python3 - "$apt_status" "$package_name" > build/reports/rafcodephi-isolated-apt-status.json <<'PY'
-          import json
-          import sys
-          status = int(sys.argv[1])
-          print(json.dumps({
-              "schema": "rafcodephi.isolated-signed-apt-resolution/v1",
-              "state": "PASS" if status == 0 else "BLOCKED",
-              "exit_code": status,
-              "package": sys.argv[2],
-              "architecture": "arm",
-              "trust": "SIGNED_BY_ARCHIVE_KEY",
-              "claim_allowed_release": False,
-              "device_runtime_proof": "TOKEN_VAZIO",
-          }, sort_keys=True))
-          PY
+            set +e
+            (
+              apt-get "${apt_options[@]}" update
+              apt-cache "${apt_options[@]}" show "$package_name"
+              apt-get "${apt_options[@]}" -y --download-only --no-install-recommends install "$package_name"
 
-          if [[ "$apt_status" -ne 0 ]]; then
-            echo "RAFCODEPHI_ISOLATED_APT=BLOCKED exit_code=$apt_status" >&2
-            exit "$apt_status"
-          fi
-          echo "RAFCODEPHI_ISOLATED_APT=PASS package=$package_name architecture=arm trust=signed-by"
+              resolved_filename="$(awk -v pkg="$package_name" '
+                BEGIN { RS=""; FS="\n" }
+                {
+                  p=""; f=""
+                  for (i=1; i<=NF; i++) {
+                    if ($i ~ /^Package: /) p=substr($i, 10)
+                    if ($i ~ /^Filename: /) f=substr($i, 11)
+                  }
+                  if (p == pkg) { print f; exit }
+                }
+              ' "$packages_file")"
+              test -n "$resolved_filename"
+              resolved_deb="$repo/$resolved_filename"
+              test -s "$resolved_deb"
+              dpkg-deb -f "$resolved_deb" Package | grep -Fx "$package_name"
+              dpkg-deb -f "$resolved_deb" Architecture | grep -E "^($arch|all)$"
+              sha256sum "$resolved_deb" > "build/reports/rafcodephi-isolated-apt-$arch-resolved-deb.sha256"
+            ) 2>&1 | tee "build/reports/rafcodephi-isolated-apt-$arch.log"
+            apt_status="${PIPESTATUS[0]}"
+            set -e
+
+            python3 - "$apt_status" "$package_name" "$arch" > "build/reports/rafcodephi-isolated-apt-$arch-status.json" <<'PY'
+            import json, sys
+            status = int(sys.argv[1])
+            print(json.dumps({
+                "schema": "rafcodephi.isolated-signed-apt-resolution/v2",
+                "state": "PASS" if status == 0 else "BLOCKED",
+                "exit_code": status,
+                "package": sys.argv[2],
+                "architecture": sys.argv[3],
+                "trust": "SIGNED_BY_ARCHIVE_KEY",
+                "claim_allowed_release": False,
+                "device_runtime_proof": "TOKEN_VAZIO",
+            }, sort_keys=True))
+            PY
+
+            if [[ "$apt_status" -ne 0 ]]; then
+              echo "RAFCODEPHI_ISOLATED_APT=BLOCKED architecture=$arch exit_code=$apt_status" >&2
+              exit "$apt_status"
+            fi
+            echo "RAFCODEPHI_ISOLATED_APT=PASS architecture=$arch package=$package_name trust=signed-by"
+          done
 
       - name: Bundle portable signed APT repository evidence
         if: always()
@@ -312,17 +438,18 @@ jobs:
           set -euo pipefail
           mkdir -p build/reports
           repo=/tmp/rafcodephi-apt-publish/repo
-          bundle=build/reports/rafcodephi-arm32-signed-apt-repository.tar
-          state=build/reports/rafcodephi-arm32-signed-apt-repository.state
+          bundle=build/reports/rafcodephi-dualarch-signed-apt-repository.tar
+          state=build/reports/rafcodephi-dualarch-signed-apt-repository.state
           rm -f "$bundle" "$bundle.sha256"
 
-          if [[ -d "$repo" ]] && compgen -G "$repo/*.deb" >/dev/null; then
+          if [[ -d "$repo/dists/stable" && -d "$repo/pool/main/arm" && -d "$repo/pool/main/aarch64" ]]; then
             tar --sort=name --mtime='@0' --owner=0 --group=0 --numeric-owner \
               -cf "$bundle" -C "$(dirname "$repo")" "$(basename "$repo")"
             sha256sum "$bundle" > "$bundle.sha256"
             printf '%s\n' \
-              'schema=rafcodephi.portable-signed-apt-repository-evidence/v1' \
+              'schema=rafcodephi.portable-signed-apt-repository-evidence/v2' \
               'state=PASS' \
+              'architectures=arm,aarch64' \
               "archive=$bundle" \
               "signing_mode=${RAFCODEPHI_APT_SIGNING_MODE}" \
               "signing_fingerprint=${RAFCODEPHI_APT_SIGNING_FINGERPRINT}" \
@@ -330,27 +457,26 @@ jobs:
               'device_runtime_proof=TOKEN_VAZIO' > "$state"
           else
             printf '%s\n' \
-              'schema=rafcodephi.portable-signed-apt-repository-evidence/v1' \
+              'schema=rafcodephi.portable-signed-apt-repository-evidence/v2' \
               'state=TOKEN_VAZIO' \
-              'reason=APT_REPOSITORY_NOT_MATERIALIZED' \
+              'reason=DUAL_ARCH_APT_REPOSITORY_NOT_MATERIALIZED' \
               'claim_allowed_release=false' \
               'device_runtime_proof=TOKEN_VAZIO' > "$state"
           fi
 
-      - name: Upload bootstrap + signed repository evidence
+      - name: Upload signed repository evidence
         if: always()
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        uses: actions/upload-artifact@v7
         with:
-          name: rafcodephi-arm32-signed-apt-${{ github.sha }}
-          if-no-files-found: warn
+          name: rafcodephi-dualarch-signed-apt-${{ github.sha }}
           path: |
-            build/reports/rafcodephi-arm32-signed-apt-repository.tar
-            build/reports/rafcodephi-arm32-signed-apt-repository.tar.sha256
-            build/reports/rafcodephi-arm32-signed-apt-repository.state
-            build/reports/rafcodephi-isolated-apt.log
-            build/reports/rafcodephi-isolated-apt-status.json
+            build/reports/rafcodephi-dualarch-signed-apt-repository.*
+            build/reports/rafcodephi-isolated-apt-*
             artifacts/rafcodephi-bootstrap/rafcodephi-bootstrap-arm.zip
+            artifacts/rafcodephi-bootstrap/rafcodephi-bootstrap-aarch64.zip
             artifacts/rafcodephi-bootstrap/RAFCODEPHI_REAL_BOOTSTRAP_MANIFEST.txt
+          if-no-files-found: warn
+          retention-days: 30
 
       - name: Publish signed repository branch
         if: github.event_name == 'workflow_dispatch' && inputs.publish == true
@@ -394,7 +520,7 @@ jobs:
           cp -a /tmp/rafcodephi-apt-publish/repo/. "$publish_dir/repo/"
 
           printf '%s\n' '# RAFCODEPHI signed APT repository' '' \
-            'Custom-prefix ARM32 packages for com.termux.rafacodephi.' '' \
+            'Custom-prefix ARM/ARM64 packages for com.termux.rafacodephi.' '' \
             "Signing fingerprint: ${RAFCODEPHI_APT_SIGNING_FINGERPRINT}" \
             "Source commit: ${GITHUB_SHA}" > "$publish_dir/README.md"
 
@@ -404,6 +530,6 @@ jobs:
             exit 0
           fi
 
-          git -C "$publish_dir" commit -m "repo: publish signed RAFCODEPHI ARM32 packages from ${GITHUB_SHA}"
+          git -C "$publish_dir" commit -m "repo: publish signed RAFCODEPHI ARM/ARM64 packages from ${GITHUB_SHA}"
           git -C "$publish_dir" push origin "HEAD:${RAFCODEPHI_APT_PUBLISH_BRANCH}"
           echo "RAFCODEPHI_APT_PUBLISH=PASS branch=${RAFCODEPHI_APT_PUBLISH_BRANCH}"
