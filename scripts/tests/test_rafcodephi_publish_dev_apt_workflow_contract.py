@@ -66,10 +66,28 @@ def main() -> int:
     require("rafcodephi-arm32-dev-apt-repository.tar.sha256" in repo_upload,
             "PORTABLE_APT_DIGEST_NOT_UPLOADED")
 
+
+    require("type: boolean" in text and "publish:" in text, "EXPLICIT_PUBLISH_INPUT_MISSING")
+    require("RAFCODEPHI_APT_SIGNING_KEY_B64" in text, "PRODUCTION_SIGNING_KEY_BINDING_MISSING")
+    require("RAFCODEPHI_APT_SIGNING_FINGERPRINT" in text, "SIGNING_FINGERPRINT_GATE_MISSING")
+    require("RAFCODEPHI_APT_PUBLISH_TOKEN" in text, "DEDICATED_PUBLISH_TOKEN_MISSING")
+    require("Signed-By:" in text, "SIGNED_BY_BOOTSTRAP_GATE_MISSING")
+    require("--clearsign --output InRelease Release" in text, "INRELEASE_SIGNATURE_MISSING")
+    require("--detach-sign --output Release.gpg Release" in text, "RELEASE_GPG_SIGNATURE_MISSING")
+    require("gpg --batch --verify Release.gpg Release" in text, "RELEASE_SIGNATURE_VERIFY_MISSING")
+    require("signed-by=%s/rafcodephi-archive-key.gpg" in text, "ISOLATED_APT_SIGNED_BY_MISSING")
+    require("github.event_name == 'workflow_dispatch' && inputs.publish == true" in text,
+            "PUBLICATION_NOT_EXPLICITLY_GATED")
+    require("git -C \"$publish_dir\" push origin" in text, "NON_FORCE_PUBLICATION_PUSH_MISSING")
+    require("git push --force" not in text and "git -C \"$publish_dir\" push --force" not in text,
+            "FORCE_PUSH_FORBIDDEN")
+    require("deb [trusted=yes]" not in text, "TRUSTED_YES_FORBIDDEN")
+    require("persist-credentials: true" not in text, "PERSISTED_CHECKOUT_CREDENTIAL_FORBIDDEN")
+
     print(
         "RAFCODEPHI_PUBLISH_DEV_APT_WORKFLOW=PASS "
         "source_build_log=true portable_deb_bundle=true isolated_apt=true "
-        "portable_repo_bundle=true claim_allowed=false"
+        "portable_repo_bundle=true signed_repo=true explicit_publish_gate=true claim_allowed=false"
     )
     return 0
 
