@@ -25,9 +25,21 @@ def main() -> int:
     require("RAFCODEPHI_REAL_BOOTSTRAP_BUILD=BLOCKED" in text, "FAIL_CLOSED_STATUS_MISSING")
     require("- name: Upload real bootstrap artifacts\n        if: always()" in text,
             "FAILURE_ARTIFACT_NOT_ALWAYS_UPLOADED")
-    require('"runtime_materialized": False' in (ROOT / "scripts/build-rafcodephi-real-bootstrap.sh").read_text(encoding="utf-8"),
+    builder = (ROOT / "scripts/build-rafcodephi-real-bootstrap.sh").read_text(encoding="utf-8")
+    generator = (ROOT / "scripts/generate-bootstraps.sh").read_text(encoding="utf-8")
+    require('"runtime_materialized": False' in builder,
             "ARCHIVE_MATERIALIZATION_STATE_MISSING")
-    print("RAFCODEPHI_REAL_BOOTSTRAP_WORKFLOW=PASS canonical_overlay=true failure_evidence=true")
+    require('TERMUX_BOOTSTRAP_OUTPUT_DIR' in generator,
+            "WRITABLE_BOOTSTRAP_OUTPUT_HOOK_MISSING")
+    require('BOOTSTRAP_OUTPUT_DIR="${TERMUX_BOOTSTRAP_OUTPUT_DIR:-.}"' in generator,
+            "UPSTREAM_DEFAULT_OUTPUT_COMPATIBILITY_MISSING")
+    require('"$BOOTSTRAP_OUTPUT_DIR/"' in generator,
+            "BOOTSTRAP_ARCHIVE_NOT_ROUTED_TO_OUTPUT_DIR")
+    require('export TERMUX_BOOTSTRAP_OUTPUT_DIR="$GENERATED_BOOTSTRAP_DIR"' in builder,
+            "RAFCODEPHI_WRITABLE_GENERATED_OUTPUT_NOT_BOUND")
+    require('zip_path="$GENERATED_BOOTSTRAP_DIR/bootstrap-${arch}.zip"' in builder,
+            "RAFCODEPHI_GENERATED_ZIP_ROUTE_MISSING")
+    print("RAFCODEPHI_REAL_BOOTSTRAP_WORKFLOW=PASS canonical_overlay=true failure_evidence=true writable_archive_output=true")
     return 0
 
 
