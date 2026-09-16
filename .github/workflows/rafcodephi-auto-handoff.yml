@@ -169,7 +169,7 @@ jobs:
           ARTIFACT_URL: ${{ steps.producer_artifact.outputs.artifact-url }}
         run: |
           set -euo pipefail
-          python3 - "$GITHUB_SHA" "$GITHUB_RUN_ID" "$ARTIFACT_NAME" "$ARTIFACT_ID" "$ARTIFACT_DIGEST" "$ARTIFACT_URL" <<\'PY\' > build/reports/rafcodephi-auto-artifact-binding.json
+          python3 - "$GITHUB_SHA" "$GITHUB_RUN_ID" "$ARTIFACT_NAME" "$ARTIFACT_ID" "$ARTIFACT_DIGEST" "$ARTIFACT_URL" <<'PY' > build/reports/rafcodephi-auto-artifact-binding.json
           import json, sys
           producer_sha, run_id, name, artifact_id, digest, url = sys.argv[1:]
           if not artifact_id.isdigit():
