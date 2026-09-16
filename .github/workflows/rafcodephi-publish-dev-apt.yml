@@ -409,20 +409,9 @@ jobs:
             apt_status="${PIPESTATUS[0]}"
             set -e
 
-            python3 - "$apt_status" "$package_name" "$arch" > "build/reports/rafcodephi-isolated-apt-$arch-status.json" <<'PY'
-            import json, sys
-            status = int(sys.argv[1])
-            print(json.dumps({
-                "schema": "rafcodephi.isolated-signed-apt-resolution/v2",
-                "state": "PASS" if status == 0 else "BLOCKED",
-                "exit_code": status,
-                "package": sys.argv[2],
-                "architecture": sys.argv[3],
-                "trust": "SIGNED_BY_ARCHIVE_KEY",
-                "claim_allowed_release": False,
-                "device_runtime_proof": "TOKEN_VAZIO",
-            }, sort_keys=True))
-            PY
+            python3 -c 'import json,sys; s=int(sys.argv[1]); print(json.dumps({"schema":"rafcodephi.isolated-signed-apt-resolution/v2","state":"PASS" if s == 0 else "BLOCKED","exit_code":s,"package":sys.argv[2],"architecture":sys.argv[3],"trust":"SIGNED_BY_ARCHIVE_KEY","claim_allowed_release":False,"device_runtime_proof":"TOKEN_VAZIO"}, sort_keys=True))' \
+              "$apt_status" "$package_name" "$arch" \
+              > "build/reports/rafcodephi-isolated-apt-$arch-status.json"
 
             if [[ "$apt_status" -ne 0 ]]; then
               echo "RAFCODEPHI_ISOLATED_APT=BLOCKED architecture=$arch exit_code=$apt_status" >&2
