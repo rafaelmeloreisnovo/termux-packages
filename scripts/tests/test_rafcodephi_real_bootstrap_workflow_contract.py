@@ -27,6 +27,7 @@ def main() -> int:
             "FAILURE_ARTIFACT_NOT_ALWAYS_UPLOADED")
     builder = (ROOT / "scripts/build-rafcodephi-real-bootstrap.sh").read_text(encoding="utf-8")
     generator = (ROOT / "scripts/generate-bootstraps.sh").read_text(encoding="utf-8")
+    docker_wrapper = (ROOT / "scripts/run-rafcodephi-bootstrap-docker.sh").read_text(encoding="utf-8")
     require('"runtime_materialized": False' in builder,
             "ARCHIVE_MATERIALIZATION_STATE_MISSING")
     require('TERMUX_BOOTSTRAP_OUTPUT_DIR' in generator,
@@ -39,7 +40,15 @@ def main() -> int:
             "RAFCODEPHI_WRITABLE_GENERATED_OUTPUT_NOT_BOUND")
     require('zip_path="$GENERATED_BOOTSTRAP_DIR/bootstrap-${arch}.zip"' in builder,
             "RAFCODEPHI_GENERATED_ZIP_ROUTE_MISSING")
-    print("RAFCODEPHI_REAL_BOOTSTRAP_WORKFLOW=PASS canonical_overlay=true failure_evidence=true writable_archive_output=true")
+    require("run-rafcodephi-bootstrap-docker.sh" in text,
+            "CANONICAL_DOCKER_HANDOFF_NOT_USED")
+    require('RAFCODEPHI_BOOTSTRAP_OUT_DIR="$CONTAINER_OUT"' in docker_wrapper,
+            "CONTAINER_LOCAL_OUTPUT_NOT_FORCED")
+    require('docker_cmd[@]' in docker_wrapper and ' cp "$CONTAINER:$CONTAINER_OUT/." "$HOST_OUT/"' in docker_wrapper,
+            "DOCKER_COPY_BACK_MISSING")
+    require('RAFCODEPHI_BOOTSTRAP_DOCKER=PASS' in docker_wrapper,
+            "DOCKER_HANDOFF_RECEIPT_MISSING")
+    print("RAFCODEPHI_REAL_BOOTSTRAP_WORKFLOW=PASS canonical_overlay=true failure_evidence=true writable_archive_output=true canonical_docker_handoff=true")
     return 0
 
 
