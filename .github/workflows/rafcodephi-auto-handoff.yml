@@ -74,8 +74,14 @@ jobs:
           mkdir -p build/reports
           chmod +x scripts/run-docker.sh scripts/build-rafcodephi-real-bootstrap.sh
           set +e
-          ./scripts/run-docker.sh             ./scripts/build-rafcodephi-real-bootstrap.sh             --architectures arm,aarch64             2>&1 | tee build/reports/rafcodephi-auto-bootstrap.log
+          BOOTSTRAP_OUT=/tmp/rafcodephi-bootstrap-out
+          rm -rf artifacts/rafcodephi-bootstrap
+          mkdir -p artifacts/rafcodephi-bootstrap
+          ./scripts/run-docker.sh env RAFCODEPHI_BOOTSTRAP_OUT_DIR="$BOOTSTRAP_OUT" \
+            ./scripts/build-rafcodephi-real-bootstrap.sh --architectures arm,aarch64 \
+            2>&1 | tee build/reports/rafcodephi-auto-bootstrap.log
           status="${PIPESTATUS[0]}"
+          sudo docker cp "termux-package-builder:$BOOTSTRAP_OUT/." artifacts/rafcodephi-bootstrap/ 2>/dev/null || true
           set -e
           python3 - "$status" <<'PY' > build/reports/rafcodephi-auto-bootstrap-status.json
           import json, sys
