@@ -30,6 +30,11 @@ def deb_field(path: Path, field: str) -> str:
     ).strip()
 
 
+def recipe_literal(text: str, field: str) -> str:
+    m = re.search(rf"(?m)^\\s*{re.escape(field)}=(?:[\'\\\"])?([^\\n\'\\\"]+)(?:[\'\\\"])?\\s*$", text)
+    return m.group(1).strip() if m else f"TOKEN_VAZIO_{field}"
+
+
 def recipe_source_contract(text: str) -> dict:
     urls = []
     for line in text.splitlines():
@@ -103,7 +108,8 @@ def main() -> int:
             "producer_recipe": f"packages/{recipe_pkg}/build.sh",
             "recipe_git_blob": git_blob(root, recipe),
             "recipe_sha256": sha256_file(recipe),
-            "license_expression": deb_field(deb, "License") if "License" in subprocess.check_output(["dpkg-deb", "-f", str(deb)], text=True) else "TOKEN_VAZIO_DEB_LICENSE_FIELD",
+            "license_expression_declared": recipe_literal(recipe_text, "TERMUX_PKG_LICENSE"),
+            "homepage_declared": recipe_literal(recipe_text, "TERMUX_PKG_HOMEPAGE"),
             **recipe_source_contract(recipe_text),
         }
         records.append(record)
