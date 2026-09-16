@@ -10,6 +10,8 @@ on:
       - 'scripts/build-rafcodephi-real-bootstrap.sh'
       - 'scripts/apply-rafcodephi-build-properties.py'
       - 'scripts/validate-rafcodephi-build-properties.sh'
+      - 'scripts/emit_rafcodephi_package_custody.py'
+      - 'scripts/tests/test_rafcodephi_package_custody_contract.py'
   workflow_dispatch:
 
 permissions:
@@ -34,7 +36,8 @@ jobs:
           set -euo pipefail
           bash -n scripts/build-rafcodephi-real-bootstrap.sh
           bash -n scripts/validate-rafcodephi-build-properties.sh
-          python3 -m py_compile scripts/apply-rafcodephi-build-properties.py
+          python3 -m py_compile scripts/apply-rafcodephi-build-properties.py scripts/emit_rafcodephi_package_custody.py
+          python3 scripts/tests/test_rafcodephi_package_custody_contract.py
           test -x scripts/run-docker.sh
           test -x scripts/generate-bootstraps.sh
 
