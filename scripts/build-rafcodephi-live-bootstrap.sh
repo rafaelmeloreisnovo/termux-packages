@@ -5,23 +5,30 @@ ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT"
 
 REPOSITORY_URL="${RAFCODEPHI_APT_REPOSITORY_URL:-}"
-TRUST_MODE="${RAFCODEPHI_APT_TRUST_MODE:-development-trusted}"
+TRUST_MODE="${RAFCODEPHI_APT_TRUST_MODE:-signed-by}"
+PUBLIC_KEY_FILE="${RAFCODEPHI_APT_PUBLIC_KEY_FILE:-}"
+PACKAGE_NAME="${RAFCODEPHI_PACKAGE_NAME:-com.termux.rafacodephi}"
+TARGET_PREFIX="/data/data/${PACKAGE_NAME}/files/usr"
 
 if [[ -z "$REPOSITORY_URL" ]]; then
     echo "RAFCODEPHI_APT_REPOSITORY_URL is required; refusing to create a bootstrap that pretends pkg/apt is usable." >&2
     exit 2
 fi
 case "$REPOSITORY_URL" in https://*) ;; *) echo "repository URL must use https" >&2; exit 2 ;; esac
-if [[ "$TRUST_MODE" != "development-trusted" ]]; then
-    echo "Only development-trusted is implemented. Production trust remains TOKEN_VAZIO." >&2
+if [[ "$TRUST_MODE" != "signed-by" ]]; then
+    echo "Only signed-by trust is accepted for RAFCODEPHI APT." >&2
     exit 2
 fi
+[[ -n "$PUBLIC_KEY_FILE" && -s "$PUBLIC_KEY_FILE" ]] || {
+    echo "RAFCODEPHI_APT_PUBLIC_KEY_FILE must point to the exported archive public key." >&2
+    exit 2
+}
 
 # Do not depend on the executable bit surviving checkout/container bind mounts.
 bash "$ROOT/scripts/build-rafcodephi-real-bootstrap.sh" "$@"
 OUT_DIR="${RAFCODEPHI_BOOTSTRAP_OUT_DIR:-$ROOT/artifacts/rafcodephi-bootstrap}"
 
-python3 - "$OUT_DIR" "$REPOSITORY_URL" "$TRUST_MODE" <<'PY'
+python3 - "$OUT_DIR" "$REPOSITORY_URL" "$TRUST_MODE" "$PUBLIC_KEY_FILE" "$TARGET_PREFIX" <<'PY'
 import hashlib
 import json
 import os
@@ -32,14 +39,21 @@ from pathlib import Path
 out_dir = Path(sys.argv[1])
 repository_url = sys.argv[2].rstrip('/')
 trust_mode = sys.argv[3]
+public_key_file = Path(sys.argv[4])
+target_prefix = sys.argv[5]
 source_path = "etc/apt/sources.list.d/termux.sources"
 block_path = "etc/apt/apt.conf.d/00rafcodephi-repository-block"
+key_path = "etc/apt/keyrings/rafcodephi-archive-key.gpg"
+public_key_payload = public_key_file.read_bytes()
+if not public_key_payload:
+    raise SystemExit("APT public key payload is empty")
 source_payload = (
     "# RAFCODEPHI_PACKAGE_REPOSITORY=DEVELOPMENT_REPOSITORY_CONFIGURED\n"
     "Enabled: yes\nTypes: deb\n"
     f"URIs: {repository_url}\n"
-    "Suites: ./\nTrusted: yes\n"
-    "# Development boundary: HTTPS transport only; production signing root is TOKEN_VAZIO.\n"
+    "Suites: ./\n"
+    f"Signed-By: {target_prefix}/{key_path}\n"
+    "# Trust boundary: Release/InRelease must verify against the embedded RAFCODEPHI archive key.\n"
 ).encode()
 block_payload = (
     "// RAFCODEPHI development repository configured.\n"
@@ -71,7 +85,7 @@ for path in sorted(out_dir.glob("rafcodephi-bootstrap-*.zip")):
                     "package_repo_runtime_state": "DEVELOPMENT_REPOSITORY_CONFIGURED",
                     "apt_update_guard": "DISABLED_DEV_REPOSITORY_CONFIGURED",
                     "apt_repository_url": repository_url,
-                    "apt_repository_trust": "GITHUB_HTTPS_TRANSPORT_ONLY",
+                    "apt_repository_trust": "SIGNED_BY_ARCHIVE_KEY",
                     "apt_repository_trust_mode": trust_mode,
                     "claim_allowed": False,
                     "release_allowed": False,
@@ -87,13 +101,17 @@ for path in sorted(out_dir.glob("rafcodephi-bootstrap-*.zip")):
                 rows.update({
                     "RAFCODEPHI_PACKAGE_REPO_STATE": "DEVELOPMENT_REPOSITORY_CONFIGURED",
                     "RAFCODEPHI_APT_REPOSITORY_URL": repository_url,
-                    "RAFCODEPHI_APT_REPOSITORY_TRUST": "GITHUB_HTTPS_TRANSPORT_ONLY",
+                    "RAFCODEPHI_APT_REPOSITORY_TRUST": "SIGNED_BY_ARCHIVE_KEY",
                     "RAFCODEPHI_APT_UPDATE_GUARD": "DISABLED_DEV_REPOSITORY_CONFIGURED",
                     "RAFCODEPHI_DEVICE_VALIDATION": "TOKEN_VAZIO",
                     "RAFCODEPHI_CLAIM_ALLOWED": "0",
                 })
                 payload = "".join(f"{k}={rows[k]}\n" for k in sorted(rows)).encode()
             target.writestr(info, payload)
+        key_info = zipfile.ZipInfo(key_path)
+        key_info.date_time = (1980, 1, 1, 0, 0, 0)
+        key_info.external_attr = 0o100644 << 16
+        target.writestr(key_info, public_key_payload)
     os.replace(tmp, path)
 
     with zipfile.ZipFile(path, "r") as zf:
@@ -102,6 +120,11 @@ for path in sorted(out_dir.glob("rafcodephi-bootstrap-*.zip")):
         block = zf.read(block_path).decode()
         if "Enabled: yes" not in source_text or f"URIs: {repository_url}" not in source_text:
             raise SystemExit(f"{path.name}: live apt source validation failed")
+        expected_signed_by = f"Signed-By: {target_prefix}/{key_path}"
+        if expected_signed_by not in source_text or "Trusted: yes" in source_text:
+            raise SystemExit(f"{path.name}: signed-by trust contract missing")
+        if key_path not in zf.namelist() or zf.read(key_path) != public_key_payload:
+            raise SystemExit(f"{path.name}: embedded APT key mismatch")
         if "APT::Update::Pre-Invoke" in block:
             raise SystemExit(f"{path.name}: old apt blocker still active")
         if profile.get("profile") != "real-pkg" or profile.get("package_layer") != "real-pkg":
@@ -132,7 +155,7 @@ rows.update({
     "package_repo_runtime_state": "DEVELOPMENT_REPOSITORY_CONFIGURED",
     "apt_update_guard": "DISABLED_DEV_REPOSITORY_CONFIGURED",
     "apt_repository_url": repository_url,
-    "apt_repository_trust": "GITHUB_HTTPS_TRANSPORT_ONLY",
+    "apt_repository_trust": "SIGNED_BY_ARCHIVE_KEY",
     "apt_repository_trust_mode": trust_mode,
     "claim_allowed_release": "false",
     "claim_allowed_device_runtime": "false",
