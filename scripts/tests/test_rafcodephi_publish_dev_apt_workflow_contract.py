@@ -37,33 +37,34 @@ def main() -> int:
     source_upload = between(
         text,
         "- name: Upload source-build evidence",
-        "- name: Materialize flat APT repository",
+        "- name: Materialize flat signed APT repository",
     )
     require("output/*.deb" not in source_upload, "RAW_DEB_UPLOAD_PATH_NOT_PORTABLE")
     require("rafcodephi-arm32-source-built-debs.tar.sha256" in source_upload,
             "PORTABLE_DEB_DIGEST_NOT_UPLOADED")
 
-    require("Resolve development repository through isolated APT" in text, "ISOLATED_APT_GATE_MISSING")
+    require("Resolve signed repository through isolated APT" in text, "ISOLATED_APT_GATE_MISSING")
     require("rafcodephi-isolated-apt.log" in text, "ISOLATED_APT_LOG_MISSING")
     require("rafcodephi-isolated-apt-status.json" in text, "ISOLATED_APT_RECEIPT_MISSING")
     require("apt-get \"${apt_options[@]}\" update" in text, "APT_UPDATE_NOT_EXECUTED")
+    require("signed-by=%s/rafcodephi-archive-key.gpg" in text, "SIGNED_APT_CLIENT_MISSING")
     require("--download-only --no-install-recommends install \"$package_name\"" in text,
             "APT_DOWNLOAD_RESOLUTION_NOT_EXECUTED")
     require("RAFCODEPHI_ISOLATED_APT=BLOCKED" in text, "APT_FAILURE_NOT_FAIL_CLOSED")
     require("RAFCODEPHI_ISOLATED_APT=PASS" in text, "APT_PASS_NOT_EMITTED")
 
-    require("Bundle portable APT repository evidence" in text, "PORTABLE_APT_BUNDLE_STEP_MISSING")
-    require("rafcodephi-arm32-dev-apt-repository.tar" in text, "PORTABLE_APT_BUNDLE_MISSING")
-    require("rafcodephi.portable-apt-repository-evidence/v1" in text,
+    require("Bundle portable signed APT repository evidence" in text, "PORTABLE_APT_BUNDLE_STEP_MISSING")
+    require("rafcodephi-arm32-signed-apt-repository.tar" in text, "PORTABLE_APT_BUNDLE_MISSING")
+    require("rafcodephi.portable-signed-apt-repository-evidence/v1" in text,
             "PORTABLE_APT_STATE_SCHEMA_MISSING")
     repo_upload = between(
         text,
-        "- name: Upload bootstrap + repository evidence",
-        "- name: Publish development repository branch",
+        "- name: Upload bootstrap + signed repository evidence",
+        "- name: Publish signed repository branch",
     )
     require("/tmp/rafcodephi-apt-publish/repo" not in repo_upload,
             "RAW_APT_REPOSITORY_UPLOAD_PATH_NOT_PORTABLE")
-    require("rafcodephi-arm32-dev-apt-repository.tar.sha256" in repo_upload,
+    require("rafcodephi-arm32-signed-apt-repository.tar.sha256" in repo_upload,
             "PORTABLE_APT_DIGEST_NOT_UPLOADED")
 
 
