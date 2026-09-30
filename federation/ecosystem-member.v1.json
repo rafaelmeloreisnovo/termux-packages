@@ -1,0 +1,44 @@
+{
+  "schema": "rafaelia.ecosystem-member/v1",
+  "repository": "rafaelmeloreisnovo/termux-packages",
+  "authority": "package-build-and-distribution-authority",
+  "authority_sources": [
+    "docs/RAFCODEPHI_DELIVERY_CONTRACT_V1.md",
+    "federation/functional-freestanding-leaf.v1.json"
+  ],
+  "planes": [
+    "artifact-production",
+    "distribution"
+  ],
+  "interface": {
+    "produces": [
+      "deb-artifact",
+      "apt-metadata",
+      "bootstrap-input",
+      "package-provenance-receipt"
+    ],
+    "consumes": [
+      "package-recipe",
+      "source-archive",
+      "build-policy"
+    ],
+    "boundary": "contract-or-artifact-reference"
+  },
+  "shared_components": [],
+  "invariants": {
+    "relationship_is_not_authority_merge": true,
+    "source_is_not_artifact": true,
+    "artifact_is_not_execution": true,
+    "execution_is_not_evidence": true,
+    "evidence_is_not_claim": true,
+    "token_vazio_is_not_zero": true,
+    "implemented_untested_is_not_pass": true,
+    "missing_evidence_may_be_promoted": false
+  },
+  "federation": {
+    "authority_transfer_allowed": false,
+    "body_copy_required": false,
+    "local_gate_required_before_promotion": true
+  },
+  "claim_allowed": false
+}
