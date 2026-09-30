@@ -1,0 +1,36 @@
+{
+  "schema": "rafaelia.ecosystem-federation-receipt/v1",
+  "date": "2026-09-30",
+  "state": "SOURCE_PASS",
+  "materialized": [
+    "federation/functional-freestanding-leaf.v1.json",
+    "federation/ecosystem-member.v1.json"
+  ],
+  "workflows": [
+    {
+      "name": "Phase 9.15 Production Hardening CI/CD",
+      "state": "PASS"
+    }
+  ],
+  "d3_workflow": {
+    "path": ".github/workflows/rafcodephi-d3-real-deb.yml",
+    "trigger_available": "workflow_dispatch",
+    "executed_for_this_pr": "NOT_RUN",
+    "reason": "PR path filter does not include federation files"
+  },
+  "gates": {
+    "D3": "TOKEN_VAZIO",
+    "D4": "TOKEN_VAZIO",
+    "D5": "TOKEN_VAZIO",
+    "D6": "TOKEN_VAZIO",
+    "D7": "TOKEN_VAZIO",
+    "D8_ARM32": "TOKEN_VAZIO",
+    "D8_ARM64": "TOKEN_VAZIO"
+  },
+  "claim_allowed": false,
+  "R3": {
+    "F_ok": "source/federation gate green",
+    "F_gap": "D3+ not executed here",
+    "F_next": "run repository-owned D3 workflow without manufacturing evidence"
+  }
+}
