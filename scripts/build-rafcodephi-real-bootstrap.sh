@@ -210,6 +210,10 @@ for number, line in enumerate(symlink_text.splitlines(), 1):
     target, link = parts
     if link.startswith("/") or ".." in link or "\\" in link:
         raise SystemExit(f"unsafe symlink destination line {number}: {link!r}")
+    while link.startswith("./"):
+        link = link[2:]
+    if not link:
+        raise SystemExit(f"empty normalized symlink destination line {number}: {line!r}")
     symlink_destinations.add(link)
 available = names | symlink_destinations | {
     "BOOTSTRAP_INFO",
@@ -363,7 +367,12 @@ for line in symlinks:
     parts = line.split("←")
     if len(parts) != 2:
         raise SystemExit(f"malformed symlink line: {line!r}")
-    links.add(parts[1])
+    link = parts[1]
+    while link.startswith("./"):
+        link = link[2:]
+    if not link:
+        raise SystemExit(f"empty normalized symlink destination: {line!r}")
+    links.add(link)
 available = names | links
 missing = [name for name in required if name not in available]
 if missing:
@@ -384,11 +393,64 @@ PY
         fi
     done
 
-    api_target="$(sed -n 's#^termux-api-broadcast←libexec/termux-api$#termux-api-broadcast#p' "$extract/SYMLINKS.txt")"
-    [[ "$api_target" == "termux-api-broadcast" ]] || {
+    if ! grep -Eq '^termux-api-broadcast←(\./)?libexec/termux-api
+    if ! grep -aFq "$API_RECEIVER_COMPONENT" "$extract/libexec/termux-api-broadcast"; then
+        echo "$arch termux-api client does not target the RAFCODEPHI API receiver" >&2
+        exit 1
+    fi
+    if grep -aFq 'com.termux/com.termux.app.TermuxService' "$extract/libexec/termux-api-broadcast" || \
+       grep -aFq 'com.termux.service_api' "$extract/libexec/termux-api-broadcast"; then
+        echo "$arch termux-api client contains the removed service stub route" >&2
+        exit 1
+    fi
+
+    if grep -aFq 'RAFCODEPHI pkg bridge' "$extract/bin/pkg" || \
+       grep -aFq 'real apt/apt-get backend is not installed yet' "$extract/bin/pkg"; then
+        echo "$arch pkg is a bridge, not a real package-manager frontend" >&2
+        exit 1
+    fi
+
+    if grep -R -aFq "$LEGACY_PREFIX" "$extract/etc/apt" "$extract/bin/pkg" "$extract/bin/termux-setup-package-manager" 2>/dev/null; then
+        echo "$arch apt/pkg tooling still contains legacy prefix" >&2
+        exit 1
+    fi
+
+    if ! grep -Fxq '# RAFCODEPHI_PACKAGE_REPOSITORY=BLOCKED_CUSTOM_REPOSITORY_NOT_PUBLISHED' "$extract/etc/apt/sources.list.d/termux.sources" || \
+       ! grep -Fxq 'Enabled: no' "$extract/etc/apt/sources.list.d/termux.sources" || \
+       grep -Fq 'termux.net' "$extract/etc/apt/sources.list.d/termux.sources"; then
+        echo "$arch apt repository is not safely blocked for the custom-prefix payload" >&2
+        exit 1
+    fi
+    if ! grep -Fq 'RAFCODEPHI_PACKAGE_REPOSITORY_NOT_PUBLISHED' "$extract/etc/apt/apt.conf.d/00rafcodephi-repository-block"; then
+        echo "$arch apt update fail-closed hook is missing" >&2
+        exit 1
+    fi
+
+    out="$OUT_DIR/rafcodephi-bootstrap-${arch}.zip"
+    cp "$zip_path" "$out"
+    bytes="$(wc -c < "$out" | tr -d ' ')"
+
+    deb_dir="$RAFCODEPHI_BOOTSTRAP_PACKAGE_EVIDENCE_DIR/$arch"
+    test -s "$deb_dir/SHA256SUMS" || { echo "$arch missing preserved DEB SHA256SUMS" >&2; exit 1; }
+    (
+        cd "$deb_dir"
+        sha256sum -c SHA256SUMS
+    )
+    deb_count="$(find "$deb_dir" -maxdepth 1 -type f -name '*.deb' | wc -l | tr -d ' ')"
+    deb_set_sha256="$(sha256sum "$deb_dir/SHA256SUMS" | awk '{print $1}')"
+    (( deb_count > 0 )) || { echo "$arch preserved DEB set is empty" >&2; exit 1; }
+
+    printf 'artifact_%s=%s\nbytes_%s=%s\ndeb_evidence_%s=%s\ndeb_count_%s=%s\ndeb_set_sha256_%s=%s\n' \
+        "$arch" "$out" "$arch" "$bytes" "$arch" "$deb_dir" "$arch" "$deb_count" "$arch" "$deb_set_sha256" >> "$manifest"
+    echo "PASS real bootstrap arch=$arch bytes=$bytes deb_count=$deb_count deb_set_sha256=$deb_set_sha256"
+done
+
+printf 'claim_allowed_device_runtime=false\ndevice_runtime_proof=TOKEN_VAZIO\n' >> "$manifest"
+echo "REAL_BOOTSTRAP_SOURCEBUILD=PASS manifest=$manifest"
+ "$extract/SYMLINKS.txt"; then
         echo "$arch termux-api compatibility symlink is missing from SYMLINKS.txt" >&2
         exit 1
-    }
+    fi
 
     if ! grep -aFq "$API_RECEIVER_COMPONENT" "$extract/libexec/termux-api-broadcast"; then
         echo "$arch termux-api client does not target the RAFCODEPHI API receiver" >&2
