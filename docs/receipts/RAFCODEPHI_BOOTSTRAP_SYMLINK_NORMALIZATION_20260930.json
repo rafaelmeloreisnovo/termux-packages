@@ -1,0 +1,80 @@
+{
+  "schema": "rafcodephi.bootstrap-symlink-normalization-receipt/v1",
+  "date": "2026-09-30",
+  "repository": "rafaelmeloreisnovo/termux-packages",
+  "branch": "fix/rafcodephi-symlink-normalization-v1-20260930",
+  "pr": 121,
+  "state": "PENDING_CI",
+  "claim_allowed": false,
+  "release_allowed": false,
+  "observed_failure": {
+    "real_bootstrap_run_id": 35051371041,
+    "signed_apt_run_id": 35051371037,
+    "failing_boundary": "bootstrap profile sealing",
+    "message": "cannot seal profile; missing installed entries: bin/sh,libexec/termux-api",
+    "source_deb_artifact": {
+      "artifact_id": 10430643479,
+      "digest": "sha256:b451be10482d3ff7c8be9a8a9c47664466ae835dd5556c1c6b1788575c8c41a6",
+      "architectures": [
+        "arm",
+        "aarch64"
+      ],
+      "observation": "dual-architecture .deb evidence was materialized and SHA-256 verified before bootstrap sealing failed"
+    }
+  },
+  "cause": {
+    "generator_representation": "SYMLINKS.txt destinations are emitted from `find .` and therefore may be prefixed with `./`",
+    "gate_representation": "required_entries uses canonical paths without leading `./`",
+    "affected_entries": [
+      "bin/sh",
+      "libexec/termux-api"
+    ],
+    "upstream_semantics": [
+      "packages/dash installs sh -> dash",
+      "termux/termux-api-package installs libexec/termux-api -> termux-api-broadcast"
+    ]
+  },
+  "delta": {
+    "final_head": "c388808fae698386f5edb25a931dbf9d62f522f0",
+    "files": [
+      "scripts/build-rafcodephi-real-bootstrap.sh",
+      "scripts/tests/test_rafcodephi_real_bootstrap_workflow_contract.py"
+    ],
+    "changes": [
+      "normalize repeated leading ./ on symlink destinations before required-entry comparison",
+      "apply normalization in both sealing and post-sealing verification",
+      "accept optional ./ in explicit termux-api compatibility symlink check",
+      "guard both normalization sites with static contract assertions"
+    ],
+    "intermediate_correction": {
+      "invalid_intermediate_commit": "0d2b7988d281e43f482a3f078a4e0a5e587b35ff",
+      "superseded_by": "c388808fae698386f5edb25a931dbf9d62f522f0",
+      "reason": "initial textual replacement interpreted a replacement-string token and was corrected before promotion"
+    }
+  },
+  "ci": {
+    "producer_handoff": {
+      "run_id": 36700774831,
+      "state": "PASS"
+    },
+    "manifest_fail_closed": {
+      "run_id": 36700774847,
+      "state": "RUNNING"
+    },
+    "phase_9_15": {
+      "run_id": 36700774862,
+      "state": "RUNNING"
+    },
+    "signed_apt": {
+      "run_id": 36700774838,
+      "state": "PENDING"
+    },
+    "real_bootstrap": {
+      "run_id": 36700774879,
+      "state": "PENDING"
+    }
+  },
+  "promotion_rule": "Do not promote bootstrap/repository/runtime claims until the relevant heavy-build receipts are PASS; physical Android remains a separate gate.",
+  "physical_android": "TOKEN_VAZIO",
+  "next": "Evaluate PR #121 heavy-build receipts; if bootstrap and signed APT pass, bind artifact hashes and advance only the corresponding non-device gates."
+}
