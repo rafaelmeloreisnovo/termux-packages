@@ -48,6 +48,12 @@ def main() -> int:
             "DOCKER_COPY_BACK_MISSING")
     require('RAFCODEPHI_BOOTSTRAP_DOCKER=PASS' in docker_wrapper,
             "DOCKER_HANDOFF_RECEIPT_MISSING")
+    require('while link.startswith("./"):' in builder,
+            "SYMLINK_DESTINATION_NORMALIZATION_MISSING")
+    require(builder.count('while link.startswith("./"):') >= 2,
+            "SYMLINK_DESTINATION_NORMALIZATION_NOT_APPLIED_TO_BOTH_GATES")
+    require("termux-api-broadcast←(\\./)?libexec/termux-api" in builder,
+            "TERMUX_API_SYMLINK_OPTIONAL_DOT_SLASH_GATE_MISSING")
     print("RAFCODEPHI_REAL_BOOTSTRAP_WORKFLOW=PASS canonical_overlay=true failure_evidence=true writable_archive_output=true canonical_docker_handoff=true")
     return 0
 
