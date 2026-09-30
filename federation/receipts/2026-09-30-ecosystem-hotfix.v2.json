@@ -1,0 +1,42 @@
+{
+  "schema": "rafaelia.ecosystem-federation-hotfix-receipt/v2",
+  "date": "2026-09-30",
+  "repository": "rafaelmeloreisnovo/termux-packages",
+  "branch": "hotfix/ecosystem-federation-v2-20260930",
+  "supersedes": "federation/receipts/2026-09-30-ecosystem-federation.v1.json",
+  "state": "SOURCE_PASS_ARTIFACT_GAPS_OPEN",
+  "errors": [],
+  "urgencies": [
+    "execute D3 real Debian evidence before D4-D8"
+  ],
+  "gates": {
+    "production_hardening": "PASS_PREDECESSOR",
+    "D3": "NOT_RUN",
+    "D4": "TOKEN_VAZIO",
+    "D5": "TOKEN_VAZIO",
+    "D6": "TOKEN_VAZIO",
+    "D7": "TOKEN_VAZIO",
+    "D8_ARM32": "TOKEN_VAZIO",
+    "D8_ARM64": "TOKEN_VAZIO"
+  },
+  "token_vazio": [
+    "D3-D8 continuous evidence chain"
+  ],
+  "provisions": [
+    "retain .github/workflows/rafcodephi-d3-real-deb.yml as repository-owned artifact gate"
+  ],
+  "needs": [
+    "workflow dispatch/execution of D3",
+    "resulting .deb and receipt artifacts"
+  ],
+  "rollback": "Close successor PR or revert federation-only commits; no package/repository/bootstrap artifact was promoted.",
+  "hotfix_commits": [],
+  "claim_allowed": false,
+  "R3": {
+    "F_ok": "SOURCE_PASS_ARTIFACT_GAPS_OPEN",
+    "F_gap": [
+      "D3-D8 continuous evidence chain"
+    ],
+    "F_next": "execute D3 real Debian evidence before D4-D8"
+  }
+}
