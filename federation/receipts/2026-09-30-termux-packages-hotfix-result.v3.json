@@ -1,0 +1,35 @@
+{
+  "schema": "rafaelia.ecosystem-federation-hotfix-result/v3",
+  "date": "2026-09-30",
+  "repository": "rafaelmeloreisnovo/termux-packages",
+  "supersedes": "federation/receipts/2026-09-30-ecosystem-hotfix.v2.json",
+  "evidence": {
+    "workflow": "Phase 9.15 Production Hardening CI/CD",
+    "run_id": 36705662359,
+    "jobs": {
+      "structural_validation": "PASS",
+      "gcc_hardening": "PASS",
+      "clang_hardening": "PASS",
+      "source_code_contract": "PASS",
+      "coherence_metrics": "PASS"
+    }
+  },
+  "scope": "SOURCE_AND_HARDENING_ONLY",
+  "gates": {
+    "D3": "NOT_RUN",
+    "D4": "TOKEN_VAZIO",
+    "D5": "TOKEN_VAZIO",
+    "D6": "TOKEN_VAZIO",
+    "D7": "TOKEN_VAZIO",
+    "D8_ARM32": "TOKEN_VAZIO",
+    "D8_ARM64": "TOKEN_VAZIO"
+  },
+  "closure_id": "CLOSURE_L11_OPERATIONAL_GAP_TOPOLOGY",
+  "claim_allowed": false,
+  "rollback": "Revert this receipt/federation delta only; no .deb, repository metadata, bootstrap or device state was promoted.",
+  "R3": {
+    "F_ok": "source/hardening gates PASS",
+    "F_gap": "D3-D8 unexecuted",
+    "F_next": "execute repository-owned D3 real-deb workflow"
+  }
+}
