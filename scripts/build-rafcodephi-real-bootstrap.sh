@@ -210,6 +210,10 @@ for number, line in enumerate(symlink_text.splitlines(), 1):
     target, link = parts
     if link.startswith("/") or ".." in link or "\\" in link:
         raise SystemExit(f"unsafe symlink destination line {number}: {link!r}")
+    while link.startswith("./"):
+        link = link[2:]
+    if not link:
+        raise SystemExit(f"empty normalized symlink destination line {number}: {line!r}")
     symlink_destinations.add(link)
 available = names | symlink_destinations | {
     "BOOTSTRAP_INFO",
@@ -363,7 +367,12 @@ for line in symlinks:
     parts = line.split("←")
     if len(parts) != 2:
         raise SystemExit(f"malformed symlink line: {line!r}")
-    links.add(parts[1])
+    link = parts[1]
+    while link.startswith("./"):
+        link = link[2:]
+    if not link:
+        raise SystemExit(f"empty normalized symlink destination: {line!r}")
+    links.add(link)
 available = names | links
 missing = [name for name in required if name not in available]
 if missing:
@@ -384,11 +393,10 @@ PY
         fi
     done
 
-    api_target="$(sed -n 's#^termux-api-broadcast←libexec/termux-api$#termux-api-broadcast#p' "$extract/SYMLINKS.txt")"
-    [[ "$api_target" == "termux-api-broadcast" ]] || {
+    if ! grep -Eq '^termux-api-broadcast←(\./)?libexec/termux-api$' "$extract/SYMLINKS.txt"; then
         echo "$arch termux-api compatibility symlink is missing from SYMLINKS.txt" >&2
         exit 1
-    }
+    fi
 
     if ! grep -aFq "$API_RECEIVER_COMPONENT" "$extract/libexec/termux-api-broadcast"; then
         echo "$arch termux-api client does not target the RAFCODEPHI API receiver" >&2
