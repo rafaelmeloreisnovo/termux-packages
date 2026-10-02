@@ -74,9 +74,10 @@ jobs:
           set -euo pipefail
           make -C core clean
           make -C core CC='${{ matrix.cc }}' \
-            pkg-real metrics-producer contract-validate receipt-validate receipt-ledger arch-probe
+            pkg-real metrics-producer contract-validate receipt-validate receipt-ledger arch-probe \
+            pkg-count-freestanding
           mkdir -p "_d3/${{ matrix.arch }}/bin"
-          for bin in pkg-real metrics-producer contract-validate receipt-validate receipt-ledger arch-probe; do
+          for bin in pkg-real metrics-producer contract-validate receipt-validate receipt-ledger arch-probe pkg-count-freestanding; do
             cp "core/$bin" "_d3/${{ matrix.arch }}/bin/$bin"
           done
 
@@ -91,6 +92,26 @@ jobs:
             readelf -h "$bin" | grep -E 'Class:|Machine:' | tee -a "$D/elf-before-package.txt"
             readelf -h "$bin" | grep -Eq 'Machine:.*${{ matrix.machine_regex }}'
           done
+
+      - name: Prove freestanding binary has no runtime loader or shared-library dependency
+        shell: bash
+        run: |
+          set -euo pipefail
+          D="_d3/${{ matrix.arch }}"
+          F="$D/bin/pkg-count-freestanding"
+          test -x "$F"
+          readelf -l "$F" > "$D/freestanding-program-headers.txt"
+          readelf -d "$F" > "$D/freestanding-dynamic.txt" 2>&1 || true
+          if grep -q 'Requesting program interpreter' "$D/freestanding-program-headers.txt"; then
+            echo 'FAIL: freestanding binary contains PT_INTERP' >&2
+            exit 71
+          fi
+          if grep -q '(NEEDED)' "$D/freestanding-dynamic.txt"; then
+            echo 'FAIL: freestanding binary contains DT_NEEDED' >&2
+            exit 72
+          fi
+          printf 'PASS freestanding_no_pt_interp=1 freestanding_no_dt_needed=1\n' \
+            | tee "$D/freestanding-dependency-proof.txt"
 
       - name: Build D3 source-derived Debian artifact
         shell: bash
@@ -122,7 +143,9 @@ jobs:
             echo "physical_android=$PHYSICAL_ANDROID"
             echo "d4_repository=$D4_REPOSITORY"
             echo "apt_pkg_runtime=$APT_PKG_RUNTIME"
-            sha256sum "$INSTALL"/*
+            for bin in pkg-real metrics-producer contract-validate receipt-validate receipt-ledger arch-probe pkg-count-freestanding; do
+              sha256sum "$INSTALL/$bin"
+            done
           } > "$ROOT/$PREFIX/libexec/rafcodephi/real/SOURCE-MANIFEST.txt"
           ART="$D/com.termux.rafacodephi-real-evidence_${VERSION}_${ARCH}.deb"
           dpkg-deb --root-owner-group --build "$ROOT" "$ART"
@@ -164,12 +187,16 @@ jobs:
           DIR="$OUT/data/data/com.termux.rafacodephi/files/usr/libexec/rafcodephi/real"
           test -f "$DIR/SOURCE-MANIFEST.txt"
           : > "$D/elf-after-package.txt"
-          for bin in pkg-real metrics-producer contract-validate receipt-validate receipt-ledger arch-probe; do
+          for bin in pkg-real metrics-producer contract-validate receipt-validate receipt-ledger arch-probe pkg-count-freestanding; do
             test -x "$DIR/$bin"
             cmp "$D/bin/$bin" "$DIR/$bin"
             readelf -h "$DIR/$bin" | grep -Eq 'Machine:.*${{ matrix.machine_regex }}'
             sha256sum "$DIR/$bin" | tee -a "$D/elf-after-package.txt"
           done
+          readelf -l "$DIR/pkg-count-freestanding" > "$D/freestanding-packaged-program-headers.txt"
+          readelf -d "$DIR/pkg-count-freestanding" > "$D/freestanding-packaged-dynamic.txt" 2>&1 || true
+          ! grep -q 'Requesting program interpreter' "$D/freestanding-packaged-program-headers.txt"
+          ! grep -q '(NEEDED)' "$D/freestanding-packaged-dynamic.txt"
 
       - name: Execute unpacked D3 binaries under QEMU
         shell: bash
@@ -189,6 +216,8 @@ jobs:
           "$Q" -L "$S" "$DIR/receipt-ledger" verify "$D/d3-ledger.jsonl" | tee "$D/d3-ledger-verify.log"
           "$Q" -L "$S" "$DIR/arch-probe" "$D/d3-arch.json"
           jq -e '.schema == "arch_capability/1.0.0"' "$D/d3-arch.json" >/dev/null
+          "$Q" "$DIR/pkg-count-freestanding" . | tee "$D/d3-freestanding-count.txt"
+          grep -Eq '^total_build_sh=[1-9][0-9]*$' "$D/d3-freestanding-count.txt"
 
       - name: Emit D3 provenance receipt
         shell: bash
@@ -199,6 +228,7 @@ jobs:
           ART_SHA="$(sha256sum "$ART" | awk '{print $1}')"
           GATE_SHA="$(sha256sum "$D/delivery-artifact-gate.json" | awk '{print $1}')"
           LEDGER_SHA="$(sha256sum "$D/d3-ledger.jsonl" | awk '{print $1}')"
+          FREE_SHA="$(sha256sum "$D/bin/pkg-count-freestanding" | awk '{print $1}')"
           cat > "$D/d3-receipt.json" <<EOF
           {
             "schema": "rafcodephi_d3_real_receipt/1.0.0",
@@ -215,6 +245,11 @@ jobs:
             "packaged_elf_identity": "PASS",
             "packaged_binary_byte_identity": "PASS",
             "qemu_execution_from_unpacked_deb": "PASS",
+            "freestanding_binary": "pkg-count-freestanding",
+            "freestanding_sha256": "$FREE_SHA",
+            "freestanding_no_pt_interp": "PASS",
+            "freestanding_no_dt_needed": "PASS",
+            "freestanding_qemu_without_sysroot": "PASS",
             "d4_repository": "$D4_REPOSITORY",
             "apt_pkg_runtime": "$APT_PKG_RUNTIME",
             "physical_android": "$PHYSICAL_ANDROID"
@@ -227,6 +262,11 @@ jobs:
             .packaged_elf_identity == "PASS" and
             .packaged_binary_byte_identity == "PASS" and
             .qemu_execution_from_unpacked_deb == "PASS" and
+            .freestanding_binary == "pkg-count-freestanding" and
+            .freestanding_sha256 != null and
+            .freestanding_no_pt_interp == "PASS" and
+            .freestanding_no_dt_needed == "PASS" and
+            .freestanding_qemu_without_sysroot == "PASS" and
             .d4_repository == "TOKEN_VAZIO" and
             .apt_pkg_runtime == "TOKEN_VAZIO" and
             .physical_android == "TOKEN_VAZIO"
