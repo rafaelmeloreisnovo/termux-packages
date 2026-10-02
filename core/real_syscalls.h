@@ -53,9 +53,16 @@ typedef unsigned long       real_size_t;
 #  error "REAL freestanding syscall ABI unsupported on this architecture"
 #endif
 
-/* Open / *at flags from Linux UAPI asm-generic/fcntl.h. */
+/*
+ * Open / *at flags from Linux UAPI.
+ * ARM/AArch64 override the asm-generic O_DIRECTORY/O_DIRECT bit positions.
+ */
 #define O_RDONLY             0
-#define O_DIRECTORY          0200000
+#if defined(__aarch64__) || defined(__arm__)
+#  define O_DIRECTORY       (1 << 14)
+#else
+#  define O_DIRECTORY       (1 << 16)
+#endif
 #define AT_FDCWD             -100
 #define AT_SYMLINK_NOFOLLOW  0x100
 
