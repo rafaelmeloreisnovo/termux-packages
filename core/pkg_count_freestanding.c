@@ -55,16 +55,12 @@ static real_u32 count_build_sh_in(const char *pkgs_dir,
            (ent->d_name[1] == '.' && ent->d_name[2] == '\0'))) {
         continue;
       }
-      /* We only care about directories (packages) */
-      if (ent->d_type != DT_DIR && ent->d_type != DT_UNKNOWN) continue;
 
       /*
-       * Check <pkgs_dir>/<pkg>/build.sh through openat(2), which is already
-       * required by the directory walk. Avoid statx(2) here: the D3
-       * cross-ABI execution gate observed the static ELF running while the
-       * statx-based file observation collapsed to zero on ARM and AArch64.
-       * An openable canonical build.sh is sufficient for this bounded
-       * inventory gate; parser/package semantics remain independent gates.
+       * Do not trust d_type as a promotion gate. Filesystems and emulated
+       * execution may expose DT_UNKNOWN or non-portable metadata. The later
+       * openat(..., O_DIRECTORY) is the authoritative directory check; a
+       * non-directory candidate fails closed there.
        */
       char pkg_dir[PATH_MAX_R];
       if (real_join_path(pkg_dir, sizeof(pkg_dir), pkgs_dir, ent->d_name) < 0)
@@ -80,7 +76,7 @@ static real_u32 count_build_sh_in(const char *pkgs_dir,
         (void)real_close(build_fd);
       }
 
-      /* Count *.subpackage.sh siblings */
+      /* Count *.subpackage.sh siblings and validate pkg_dir as a directory. */
       int sub_fd = (int)real_open(pkg_dir, O_RDONLY | O_DIRECTORY);
       if (sub_fd < 0) continue;
       char sbuf[GETDENTS_BUF] __attribute__((aligned(8)));
