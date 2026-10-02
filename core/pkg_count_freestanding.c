@@ -58,7 +58,14 @@ static real_u32 count_build_sh_in(const char *pkgs_dir,
       /* We only care about directories (packages) */
       if (ent->d_type != DT_DIR && ent->d_type != DT_UNKNOWN) continue;
 
-      /* Check <pkgs_dir>/<pkg>/build.sh exists and is a regular file. */
+      /*
+       * Check <pkgs_dir>/<pkg>/build.sh through openat(2), which is already
+       * required by the directory walk. Avoid statx(2) here: the D3
+       * cross-ABI execution gate observed the static ELF running while the
+       * statx-based file observation collapsed to zero on ARM and AArch64.
+       * An openable canonical build.sh is sufficient for this bounded
+       * inventory gate; parser/package semantics remain independent gates.
+       */
       char pkg_dir[PATH_MAX_R];
       if (real_join_path(pkg_dir, sizeof(pkg_dir), pkgs_dir, ent->d_name) < 0)
         continue;
@@ -67,11 +74,10 @@ static real_u32 count_build_sh_in(const char *pkgs_dir,
       if (real_join_path(build_sh, sizeof(build_sh), pkg_dir, "build.sh") < 0)
         continue;
 
-      struct real_statx st;
-      real_memset(&st, 0, sizeof(st));
-      if (real_statx(AT_FDCWD, build_sh, 0, STATX_TYPE | STATX_MODE, &st) == 0 &&
-          S_ISREG(st.stx_mode)) {
+      int build_fd = (int)real_open(build_sh, O_RDONLY);
+      if (build_fd >= 0) {
         build_sh_count++;
+        (void)real_close(build_fd);
       }
 
       /* Count *.subpackage.sh siblings */
