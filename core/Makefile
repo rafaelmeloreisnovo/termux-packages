@@ -49,8 +49,8 @@ test-cycle2-1: tests/test_cycle2_1_manifesto_v2.o manifest_loader.o
 test-cycle2-2: tests/test_cycle2_2_source_download.o manifest_loader.o source_download.o
 	$(CC) $(CFLAGS) $(LDFLAGS) -o $@ $^
 
-test-cycle2-3: tests/test_cycle2_3_source_patch.o patch_apply.o
-	$(CC) $(CFLAGS) $(LDFLAGS) -o $@ $^ -lssl -lcrypto
+test-cycle2-3: tests/test_cycle2_3_source_patch.o patch_apply.o real_sha256.o
+	$(CC) $(CFLAGS) $(LDFLAGS) -o $@ $^
 
 test-cycle2-4: tests/test_cycle2_4_manifest_v2.o manifest_v2.o
 	$(CC) $(CFLAGS) $(LDFLAGS) -o $@ $^
@@ -256,8 +256,11 @@ tests/test_cycle2_2_source_download.o: tests/test_cycle2_2_source_download.c man
 tests/test_cycle2_3_source_patch.o: ../tests/test_cycle2_3_source_patch.c
 	$(CC) $(CFLAGS) -D_DEFAULT_SOURCE -c -o $@ $<
 
-patch_apply.o: patch_apply.c
+patch_apply.o: patch_apply.c real_sha256.h
 	$(CC) $(CFLAGS) -D_DEFAULT_SOURCE -c -o $@ $<
+
+real_sha256.o: real_sha256.c real_sha256.h
+	$(CC) $(CFLAGS) -c -o $@ $<
 
 tests/test_build_orchestrator.o: tests/test_build_orchestrator.c build_orchestrator.h
 	$(CC) $(CFLAGS) -c -o $@ $<
