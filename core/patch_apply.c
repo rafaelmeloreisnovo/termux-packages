@@ -2,12 +2,11 @@
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
-#include <openssl/sha.h>
-#include <openssl/evp.h>
 #include <sys/types.h>
 #include <sys/stat.h>
 #include <fcntl.h>
 #include <libgen.h>
+#include "real_sha256.h"
 
 /* Manifest types (from manifest_loader.h) */
 struct termux_manifest_entry {
@@ -35,54 +34,15 @@ static const char *termux_get_string(size_t offset) {
   return NULL;
 }
 
-/* Compute SHA-256 of file contents */
+/* Compute SHA-256 of file contents using the in-repo implementation. */
 static int compute_file_sha256(const char *filepath, unsigned char *digest) {
-  FILE *fp = fopen(filepath, "rb");
-  if (!fp) {
-    perror("fopen");
-    return -1;
-  }
-
-  EVP_MD_CTX *mdctx = EVP_MD_CTX_new();
-  if (!mdctx) {
-    fclose(fp);
-    return -1;
-  }
-
-  if (!EVP_DigestInit_ex(mdctx, EVP_sha256(), NULL)) {
-    EVP_MD_CTX_free(mdctx);
-    fclose(fp);
-    return -1;
-  }
-
-  unsigned char buffer[4096];
-  size_t bytes;
-  while ((bytes = fread(buffer, 1, sizeof(buffer), fp)) > 0) {
-    if (!EVP_DigestUpdate(mdctx, buffer, bytes)) {
-      EVP_MD_CTX_free(mdctx);
-      fclose(fp);
-      return -1;
-    }
-  }
-
-  unsigned int digest_len = 0;
-  if (!EVP_DigestFinal_ex(mdctx, digest, &digest_len)) {
-    EVP_MD_CTX_free(mdctx);
-    fclose(fp);
-    return -1;
-  }
-
-  EVP_MD_CTX_free(mdctx);
-  fclose(fp);
-  return 0;
+  uint64_t ignored_size = 0;
+  return real_sha256_file(filepath, digest, &ignored_size);
 }
 
-/* Convert SHA-256 digest to hex string */
+/* Convert SHA-256 digest to hex string. */
 static void sha256_to_hex(unsigned char *digest, char *hexout) {
-  for (int i = 0; i < 32; i++) {
-    sprintf(hexout + (i * 2), "%02x", digest[i]);
-  }
-  hexout[64] = '\0';
+  real_sha256_hex(digest, hexout);
 }
 
 /* Apply single patch file with hash binding */
