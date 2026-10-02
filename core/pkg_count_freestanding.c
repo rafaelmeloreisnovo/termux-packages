@@ -12,7 +12,7 @@
  *      pkg_count_freestanding.c -o pkg-count-freestanding
  *
  * Usage: pkg-count-freestanding <base_dir>
- * Exit code: 0 if any packages found, non-zero on syscall failure.
+ * Exit code: 0 if any packages found, non-zero if none are observable.
  * Output format (stdout):
  *   packages=<n>
  *   root-packages=<n>
@@ -58,7 +58,15 @@ static real_u32 count_build_sh_in(const char *pkgs_dir,
       /* We only care about directories (packages) */
       if (ent->d_type != DT_DIR && ent->d_type != DT_UNKNOWN) continue;
 
-      /* Check <pkgs_dir>/<pkg>/build.sh exists and is a regular file. */
+      /*
+       * Check <pkgs_dir>/<pkg>/build.sh through openat(2), which is already
+       * required by the directory walk. Avoid statx(2) here: the first D3
+       * cross-ABI execution receipt proved the static ELF could run under
+       * QEMU but collapsed every statx-based file observation to zero on
+       * both ARM and AArch64. An openable canonical build.sh path is enough
+       * for this bounded repository inventory gate; package semantics and
+       * parser validation remain independent gates.
+       */
       char pkg_dir[PATH_MAX_R];
       if (real_join_path(pkg_dir, sizeof(pkg_dir), pkgs_dir, ent->d_name) < 0)
         continue;
@@ -67,11 +75,10 @@ static real_u32 count_build_sh_in(const char *pkgs_dir,
       if (real_join_path(build_sh, sizeof(build_sh), pkg_dir, "build.sh") < 0)
         continue;
 
-      struct real_statx st;
-      real_memset(&st, 0, sizeof(st));
-      if (real_statx(AT_FDCWD, build_sh, 0, STATX_TYPE | STATX_MODE, &st) == 0 &&
-          S_ISREG(st.stx_mode)) {
+      int build_fd = (int)real_open(build_sh, O_RDONLY);
+      if (build_fd >= 0) {
         build_sh_count++;
+        (void)real_close(build_fd);
       }
 
       /* Count *.subpackage.sh siblings */
