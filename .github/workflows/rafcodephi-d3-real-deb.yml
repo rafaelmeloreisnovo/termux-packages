@@ -216,7 +216,15 @@ jobs:
           "$Q" -L "$S" "$DIR/receipt-ledger" verify "$D/d3-ledger.jsonl" | tee "$D/d3-ledger-verify.log"
           "$Q" -L "$S" "$DIR/arch-probe" "$D/d3-arch.json"
           jq -e '.schema == "arch_capability/1.0.0"' "$D/d3-arch.json" >/dev/null
-          "$Q" "$DIR/pkg-count-freestanding" . | tee "$D/d3-freestanding-count.txt"
+          set +e
+          "$Q" -strace "$DIR/pkg-count-freestanding" . \
+            > "$D/d3-freestanding-count.txt" \
+            2> "$D/d3-freestanding-strace.log"
+          FREE_RC=$?
+          set -e
+          cat "$D/d3-freestanding-count.txt"
+          cat "$D/d3-freestanding-strace.log"
+          test "$FREE_RC" -eq 0
           grep -Eq '^total_build_sh=[1-9][0-9]*$' "$D/d3-freestanding-count.txt"
 
       - name: Emit D3 provenance receipt
