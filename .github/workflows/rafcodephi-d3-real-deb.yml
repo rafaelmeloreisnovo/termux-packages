@@ -57,7 +57,7 @@ jobs:
           persist-credentials: false
           fetch-depth: 1
 
-      - name: Install deterministic D3 toolchain
+      - name: Install D3 toolchain and capture provenance
         shell: bash
         run: |
           set -euo pipefail
@@ -67,6 +67,35 @@ jobs:
             gcc-arm-linux-gnueabihf gcc-aarch64-linux-gnu \
             libc6-dev-armhf-cross libc6-dev-arm64-cross \
             binutils-arm-linux-gnueabihf binutils-aarch64-linux-gnu
+
+          D="_d3/${{ matrix.arch }}"
+          mkdir -p "$D"
+          CC_PATH="$(readlink -f "$(command -v '${{ matrix.cc }}')")"
+          QEMU_PATH="$(readlink -f "$(command -v '${{ matrix.qemu }}')")"
+          {
+            echo 'schema=rafcodephi_d3_toolchain/1.0.0'
+            echo "git_sha=$GITHUB_SHA"
+            echo 'runner=ubuntu-24.04'
+            printf 'runner_pretty_name='; sed -n 's/^PRETTY_NAME=//p' /etc/os-release | tr -d '"'
+            echo 'compiler=${{ matrix.cc }}'
+            printf 'compiler_version='; '${{ matrix.cc }}' --version | head -n 1
+            echo "compiler_path=$CC_PATH"
+            printf 'compiler_sha256='; sha256sum "$CC_PATH" | awk '{print $1}'
+            echo 'qemu=${{ matrix.qemu }}'
+            printf 'qemu_version='; '${{ matrix.qemu }}' --version | head -n 1
+            echo "qemu_path=$QEMU_PATH"
+            printf 'qemu_sha256='; sha256sum "$QEMU_PATH" | awk '{print $1}'
+            echo 'packages_begin'
+            dpkg-query -W -f='${binary:Package}=${Version}\n' \
+              qemu-user dpkg-dev jq file \
+              gcc-arm-linux-gnueabihf gcc-aarch64-linux-gnu \
+              libc6-dev-armhf-cross libc6-dev-arm64-cross \
+              binutils-arm-linux-gnueabihf binutils-aarch64-linux-gnu | LC_ALL=C sort
+            echo 'packages_end'
+          } | tee "$D/toolchain-manifest.txt"
+          sha256sum "$D/toolchain-manifest.txt" > "$D/toolchain-manifest.txt.sha256"
+          test -s "$D/toolchain-manifest.txt"
+          test -s "$D/toolchain-manifest.txt.sha256"
 
       - name: Cross-build governed REAL evidence binaries
         shell: bash
@@ -126,6 +155,7 @@ jobs:
           cp "$D"/bin/* "$INSTALL/"
           chmod 0755 "$INSTALL"/*
           VERSION="0.1.0+git.${GITHUB_SHA::12}"
+          TOOLCHAIN_SHA="$(awk '{print $1}' "$D/toolchain-manifest.txt.sha256")"
           cat > "$ROOT/DEBIAN/control" <<EOF
           Package: com.termux.rafacodephi-real-evidence
           Version: $VERSION
@@ -138,6 +168,7 @@ jobs:
             echo "git_sha=$GITHUB_SHA"
             echo "architecture=$ARCH"
             echo "compiler=${{ matrix.cc }}"
+            echo "toolchain_manifest_sha256=$TOOLCHAIN_SHA"
             echo "scope=$EVIDENCE_SCOPE"
             echo "claim_allowed=$CLAIM_ALLOWED"
             echo "physical_android=$PHYSICAL_ANDROID"
@@ -147,7 +178,7 @@ jobs:
               sha256sum "$INSTALL/$bin"
             done
           } > "$ROOT/$PREFIX/libexec/rafcodephi/real/SOURCE-MANIFEST.txt"
-          ART="$D/com.termux.rafacodephi-real-evidence_${VERSION}_${ARCH}.deb"
+          ART="$D/com.termux.rafcodephi-real-evidence_${VERSION}_${ARCH}.deb"
           dpkg-deb --root-owner-group --build "$ROOT" "$ART"
           printf '%s\n' "$ART" > "$D/artifact.path"
           sha256sum "$ART" > "$D/artifact.sha256"
@@ -186,6 +217,7 @@ jobs:
           dpkg-deb -x "$ART" "$OUT"
           DIR="$OUT/data/data/com.termux.rafacodephi/files/usr/libexec/rafcodephi/real"
           test -f "$DIR/SOURCE-MANIFEST.txt"
+          grep -Eq '^toolchain_manifest_sha256=[0-9a-f]{64}$' "$DIR/SOURCE-MANIFEST.txt"
           : > "$D/elf-after-package.txt"
           for bin in pkg-real metrics-producer contract-validate receipt-validate receipt-ledger arch-probe pkg-count-freestanding; do
             test -x "$DIR/$bin"
@@ -229,9 +261,10 @@ jobs:
           GATE_SHA="$(sha256sum "$D/delivery-artifact-gate.json" | awk '{print $1}')"
           LEDGER_SHA="$(sha256sum "$D/d3-ledger.jsonl" | awk '{print $1}')"
           FREE_SHA="$(sha256sum "$D/bin/pkg-count-freestanding" | awk '{print $1}')"
+          TOOLCHAIN_SHA="$(sha256sum "$D/toolchain-manifest.txt" | awk '{print $1}')"
           cat > "$D/d3-receipt.json" <<EOF
           {
-            "schema": "rafcodephi_d3_real_receipt/1.0.0",
+            "schema": "rafcodephi_d3_real_receipt/1.1.0",
             "status": "D3_REAL_EVIDENCE_PASS",
             "claim_allowed": false,
             "git_sha": "$GITHUB_SHA",
@@ -241,6 +274,8 @@ jobs:
             "artifact_sha256": "$ART_SHA",
             "delivery_gate_sha256": "$GATE_SHA",
             "ledger_sha256": "$LEDGER_SHA",
+            "toolchain_provenance": "CAPTURED",
+            "toolchain_manifest_sha256": "$TOOLCHAIN_SHA",
             "source_derived": true,
             "packaged_elf_identity": "PASS",
             "packaged_binary_byte_identity": "PASS",
@@ -258,6 +293,8 @@ jobs:
           jq -e '
             .status == "D3_REAL_EVIDENCE_PASS" and
             .claim_allowed == false and
+            .toolchain_provenance == "CAPTURED" and
+            (.toolchain_manifest_sha256 | test("^[0-9a-f]{64}$")) and
             .source_derived == true and
             .packaged_elf_identity == "PASS" and
             .packaged_binary_byte_identity == "PASS" and
