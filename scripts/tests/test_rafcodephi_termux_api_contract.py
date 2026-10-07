@@ -7,6 +7,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[2]
 PATCH = (ROOT / "packages/termux-api/termux-api.c.patch").read_text(encoding="utf-8")
 BUILDER = (ROOT / "scripts/build-rafcodephi-real-bootstrap.sh").read_text(encoding="utf-8")
+PATCHER = (ROOT / "scripts/build/termux_step_patch_package.sh").read_text(encoding="utf-8")
 TARGET = "com.termux.rafacodephi.api/com.termux.api.TermuxApiReceiver"
 
 
@@ -17,6 +18,14 @@ def require(condition: bool, token: str) -> None:
 
 def main() -> int:
     require(f'+    child_argv[5] = "{TARGET}";' in PATCH, "API_RECEIVER_TARGET_MISSING")
+    require(
+        '+# define PREFIX "@TERMUX_PREFIX@"' in PATCH,
+        "TERMUX_API_PREFIX_TEMPLATE_MISSING",
+    )
+    require(
+        r's%\\@TERMUX_PREFIX\\@%${TERMUX_PREFIX}%g' in PATCHER,
+        "TERMUX_PREFIX_PATCH_SUBSTITUTION_MISSING",
+    )
     require('API_RECEIVER_COMPONENT="${PACKAGE_NAME}.api/com.termux.api.TermuxApiReceiver"' in BUILDER,
             "API_RECEIVER_CLASS_IDENTITY_MISSING")
     require(
@@ -47,7 +56,7 @@ def main() -> int:
     require("claim_allowed_device_runtime=false" in BUILDER, "CLAIM_BOUNDARY_MISSING")
     print(
         "RAFCODEPHI_TERMUX_API_CONTRACT=PASS "
-        f"receiver={TARGET} embedded_cli=true device_runtime_proof=TOKEN_VAZIO claim_allowed=false"
+        f"receiver={TARGET} prefix_template=true embedded_cli=true device_runtime_proof=TOKEN_VAZIO claim_allowed=false"
     )
     return 0
 
