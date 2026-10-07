@@ -78,6 +78,10 @@ def main() -> int:
             "STALE_PR_BUILD_CANCELLATION_MISSING")
     require("contents: read" in text, "READ_ONLY_DEFAULT_PERMISSION_MISSING")
     require("claim_allowed_release" in text, "CLAIM_BOUNDARY_MISSING")
+    require('if block != block_payload.decode("utf-8"):' in live,
+            "LIVE_APT_GUARD_EXACT_MATCH_MISSING")
+    require('if "APT::Update::Pre-Invoke" in block:' not in live,
+            "LIVE_APT_GUARD_COMMENT_FALSE_POSITIVE")
 
     print(
         "RAFCODEPHI_SIGNED_APT_WORKFLOW=PASS "
