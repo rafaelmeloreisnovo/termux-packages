@@ -117,6 +117,21 @@ def main() -> int:
                 "wrong .deb symlink target was not blocked"
             )
 
+        # Missing global symlink metadata is a wider failure and is not rebuilt.
+        missing_manifest = root / "bootstrap-missing-symlinks.zip"
+        with zipfile.ZipFile(
+            missing_manifest, "w", compression=zipfile.ZIP_DEFLATED
+        ) as zf:
+            zf.writestr("bin/dash", b"fixture")
+        try:
+            mod.repair(missing_manifest, debs, PREFIX)
+        except mod.RepairError as exc:
+            assert "exactly one SYMLINKS.txt" in str(exc)
+        else:
+            raise AssertionError(
+                "missing global symlink manifest was partially reconstructed"
+            )
+
         # Existing correct links are accepted without mutating the archive.
         stable = root / "bootstrap-stable.zip"
         with zipfile.ZipFile(
@@ -136,7 +151,7 @@ def main() -> int:
 
     print(
         "RAFCODEPHI_BOOTSTRAP_SYMLINK_REPAIR_TEST=PASS "
-        "positive=true falsifier=true idempotent=true"
+        "positive=true falsifier=true missing_manifest_blocked=true idempotent=true"
     )
     return 0
 
