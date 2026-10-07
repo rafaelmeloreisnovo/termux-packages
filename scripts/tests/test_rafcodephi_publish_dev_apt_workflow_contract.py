@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+import ast
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -60,6 +61,33 @@ def main() -> int:
     )
     for token in live_required:
         require(token in live, f"LIVE_BOOTSTRAP_MISSING:{token}")
+
+    # Exercise the actual embedded validator before launching a long dual-arch build.
+    try:
+        embedded_python = live.split("<<'PY'\n", 1)[1].split("\nPY\n", 1)[0]
+        parsed = ast.parse(embedded_python)
+        helper = next(node for node in parsed.body if isinstance(node, ast.FunctionDef)
+                      and node.name == "has_active_apt_update_preinvoke")
+        block = next(node for node in parsed.body if isinstance(node, ast.Assign)
+                     and any(isinstance(target, ast.Name) and target.id == "block_payload"
+                             for target in node.targets))
+        generated_block = ast.literal_eval(block.value)
+    except (ValueError, IndexError, StopIteration, SyntaxError) as exc:
+        raise SystemExit(
+            f"RAFCODEPHI_SIGNED_APT_WORKFLOW=BLOCKED reason=APT_GUARD_PREFLIGHT:{exc}"
+        ) from exc
+    namespace = {}
+    exec(compile(ast.Module(body=[helper], type_ignores=[]), str(LIVE), "exec"), namespace)
+    guard = namespace["has_active_apt_update_preinvoke"]
+    require("if has_active_apt_update_preinvoke(block):" in embedded_python,
+            "APT_GUARD_NOT_APPLIED")
+    require(not guard(generated_block), "GENERATED_APT_COMMENT_SELF_BLOCKED")
+    require(not guard("  // APT::Update::Pre-Invoke is documented, not active.\n"),
+            "APT_COMMENT_FALSE_POSITIVE")
+    require(guard('APT::Update::Pre-Invoke { "exit 100"; };\n'),
+            "ACTIVE_APT_HOOK_UNDETECTED")
+    require(guard('  APT::Update::Pre-Invoke { "exit 100"; };\n'),
+            "INDENTED_APT_HOOK_UNDETECTED")
 
     require("RAFCODEPHI_BOOTSTRAP_PACKAGE_EVIDENCE_DIR" in generator,
             "GENERATOR_DEB_EVIDENCE_HOOK_MISSING")
