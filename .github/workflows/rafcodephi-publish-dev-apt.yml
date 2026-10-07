@@ -64,6 +64,7 @@ jobs:
         run: |
           set -euo pipefail
           python3 scripts/tests/test_rafcodephi_publish_dev_apt_workflow_contract.py
+          python3 scripts/ci/rafcodephi_failure_triage.py --self-test
           python3 scripts/tests/test_rafcodephi_package_custody_contract.py
           python3 scripts/tests/test_rafcodephi_bootstrap_symlink_repair.py
 
@@ -177,6 +178,17 @@ jobs:
             grep -Fq 'Signed-By: /data/data/com.termux.rafacodephi/files/usr/etc/apt/keyrings/rafcodephi-archive-key.gpg' "build/reports/termux-$arch.sources"
             ! grep -Fq 'Trusted: yes' "build/reports/termux-$arch.sources"
           done
+
+      - name: Fingerprint failed signed APT build (no rebuild)
+        if: ${{ failure() }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 scripts/ci/rafcodephi_failure_triage.py \
+            --log build/reports/rafcodephi-signed-apt-build.log \
+            --out build/reports/rafcodephi-signed-apt-failure-triage.json \
+            --markdown build/reports/rafcodephi-signed-apt-failure-triage.md
+          cat build/reports/rafcodephi-signed-apt-failure-triage.md >> "$GITHUB_STEP_SUMMARY"
 
       - name: Emit complete per-DEB custody for ARM and ARM64
         shell: bash
