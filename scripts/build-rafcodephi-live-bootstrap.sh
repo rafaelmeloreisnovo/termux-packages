@@ -63,6 +63,15 @@ block_payload = (
     "// claim_allowed_release=false; repository trust is bound by Signed-By.\n"
 ).encode()
 
+def has_active_apt_update_preinvoke(apt_conf):
+    # Ignore descriptive // comments, but fail closed on active APT directives.
+    return any(
+        "APT::Update::Pre-Invoke" in line
+        for line in apt_conf.splitlines()
+        if line.strip() and not line.lstrip().startswith("//")
+    )
+
+
 artifacts = {}
 for path in sorted(out_dir.glob("rafcodephi-bootstrap-*.zip")):
     arch = path.stem.removeprefix("rafcodephi-bootstrap-")
@@ -130,7 +139,7 @@ for path in sorted(out_dir.glob("rafcodephi-bootstrap-*.zip")):
             raise SystemExit(f"{path.name}: signed-by trust contract missing")
         if key_path not in zf.namelist() or zf.read(key_path) != public_key_payload:
             raise SystemExit(f"{path.name}: embedded APT key mismatch")
-        if "APT::Update::Pre-Invoke" in block:
+        if has_active_apt_update_preinvoke(block):
             raise SystemExit(f"{path.name}: old apt blocker still active")
         if profile.get("profile") != "real-pkg" or profile.get("package_layer") != "real-pkg":
             raise SystemExit(f"{path.name}: real-pkg contract regressed")
