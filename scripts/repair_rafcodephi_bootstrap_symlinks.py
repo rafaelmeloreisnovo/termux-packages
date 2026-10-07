@@ -161,7 +161,12 @@ def repair(zip_path: Path, deb_dir: Path, prefix: str) -> dict:
     before = sha256(zip_path)
     with zipfile.ZipFile(zip_path, "r") as zf:
         names = zf.namelist()
-        payload = zf.read("SYMLINKS.txt") if "SYMLINKS.txt" in names else b""
+        if names.count("SYMLINKS.txt") != 1:
+            raise RepairError(
+                "bootstrap must contain exactly one SYMLINKS.txt; "
+                "refusing partial reconstruction"
+            )
+        payload = zf.read("SYMLINKS.txt")
 
     mapping = parse_symlinks(payload)
     proofs = []
