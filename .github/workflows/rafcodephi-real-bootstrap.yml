@@ -91,6 +91,7 @@ jobs:
         shell: bash
         run: |
           python3 scripts/tests/test_rafcodephi_termux_api_contract.py
+          python3 scripts/ci/rafcodephi_failure_triage.py --self-test
           python3 scripts/tests/test_rafcodephi_real_bootstrap_workflow_contract.py
           python3 scripts/tests/test_rafcodephi_bootstrap_symlink_repair.py
 
@@ -159,6 +160,17 @@ jobs:
           ! grep -q '^sha256_' "$manifest"
           cat "$manifest"
 
+      - name: Fingerprint failed source build (no rebuild)
+        if: ${{ failure() }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 scripts/ci/rafcodephi_failure_triage.py \
+            --log build/reports/rafcodephi-real-bootstrap.log \
+            --out build/reports/rafcodephi-real-bootstrap-triage.json \
+            --markdown build/reports/rafcodephi-real-bootstrap-triage.md
+          cat build/reports/rafcodephi-real-bootstrap-triage.md >> "$GITHUB_STEP_SUMMARY"
+
       - name: Upload real bootstrap artifacts
         if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
@@ -170,5 +182,7 @@ jobs:
             build/reports/rafcodephi-real-bootstrap-properties.json
             build/reports/rafcodephi-real-bootstrap.log
             build/reports/rafcodephi-real-bootstrap-status.json
+            build/reports/rafcodephi-real-bootstrap-triage.json
+            build/reports/rafcodephi-real-bootstrap-triage.md
           if-no-files-found: warn
           retention-days: 30
