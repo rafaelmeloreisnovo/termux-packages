@@ -23,7 +23,7 @@ def main() -> int:
         "TERMUX_API_PREFIX_TEMPLATE_MISSING",
     )
     require(
-        r's%\\@TERMUX_PREFIX\\@%${TERMUX_PREFIX}%g' in PATCHER,
+        r's%\@TERMUX_PREFIX\@%${TERMUX_PREFIX}%g' in PATCHER,
         "TERMUX_PREFIX_PATCH_SUBSTITUTION_MISSING",
     )
     require('API_RECEIVER_COMPONENT="${PACKAGE_NAME}.api/com.termux.api.TermuxApiReceiver"' in BUILDER,
