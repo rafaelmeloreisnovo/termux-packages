@@ -13,10 +13,14 @@ on:
       - 'packages/**'
       - 'scripts/generate-bootstraps.sh'
       - 'scripts/build-rafcodephi-real-bootstrap.sh'
+      - 'scripts/repair_rafcodephi_bootstrap_symlinks.py'
+      - 'scripts/repair_rafcodephi_bootstrap_symlinks.py'
       - 'scripts/build-rafcodephi-live-bootstrap.sh'
       - 'scripts/emit_rafcodephi_package_custody.py'
       - 'scripts/tests/test_rafcodephi_publish_dev_apt_workflow_contract.py'
       - 'scripts/tests/test_rafcodephi_signed_apt_fixture.sh'
+      - 'scripts/tests/test_rafcodephi_bootstrap_symlink_repair.py'
+      - 'scripts/tests/test_rafcodephi_bootstrap_symlink_repair.py'
       - '.github/workflows/rafcodephi-publish-dev-apt.yml'
   push:
     branches: [main]
@@ -61,6 +65,7 @@ jobs:
           set -euo pipefail
           python3 scripts/tests/test_rafcodephi_publish_dev_apt_workflow_contract.py
           python3 scripts/tests/test_rafcodephi_package_custody_contract.py
+          python3 scripts/tests/test_rafcodephi_bootstrap_symlink_repair.py
 
       - name: Prepare APT signing identity
         shell: bash
@@ -256,6 +261,7 @@ jobs:
             artifacts/rafcodephi-bootstrap/rafcodephi-bootstrap-arm.zip
             artifacts/rafcodephi-bootstrap/rafcodephi-bootstrap-aarch64.zip
             artifacts/rafcodephi-bootstrap/RAFCODEPHI_REAL_BOOTSTRAP_MANIFEST.txt
+            artifacts/rafcodephi-bootstrap/rafcodephi-bootstrap-*-symlink-repair.json
             artifacts/rafcodephi-bootstrap/debs/*/SHA256SUMS
           if-no-files-found: warn
           retention-days: 30
