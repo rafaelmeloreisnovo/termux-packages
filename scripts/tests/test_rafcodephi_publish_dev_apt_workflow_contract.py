@@ -110,6 +110,8 @@ def main() -> int:
         "artifacts/rafcodephi-bootstrap/debs/arm",
         "artifacts/rafcodephi-bootstrap/debs/aarch64",
         "Emit complete per-DEB custody for ARM and ARM64",
+        "Fingerprint failed signed APT build (no rebuild)",
+        "rafcodephi-signed-apt-failure-triage.json",
         "--auto-map",
         "rafcodephi.package-custody-dualarch/v1",
         "dists/stable/main/binary-arm/Packages",
