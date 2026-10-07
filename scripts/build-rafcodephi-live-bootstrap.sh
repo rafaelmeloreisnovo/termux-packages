@@ -130,7 +130,8 @@ for path in sorted(out_dir.glob("rafcodephi-bootstrap-*.zip")):
             raise SystemExit(f"{path.name}: signed-by trust contract missing")
         if key_path not in zf.namelist() or zf.read(key_path) != public_key_payload:
             raise SystemExit(f"{path.name}: embedded APT key mismatch")
-        if "APT::Update::Pre-Invoke" in block:
+        # APT comments can describe inactive hooks; reject only active directives.
+        if any(line.lstrip().startswith("APT::Update::Pre-Invoke") for line in block.splitlines()):
             raise SystemExit(f"{path.name}: old apt blocker still active")
         if profile.get("profile") != "real-pkg" or profile.get("package_layer") != "real-pkg":
             raise SystemExit(f"{path.name}: real-pkg contract regressed")
