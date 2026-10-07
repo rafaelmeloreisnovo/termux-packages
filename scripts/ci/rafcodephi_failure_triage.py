@@ -16,6 +16,7 @@ RULES = (
     ("LEGACY_PREFIX", re.compile(r"embeds forbidden legacy prefix")),
     ("RECEIVER_ROUTE", re.compile(r"client does not target the RAFCODEPHI API receiver|removed service stub route")),
     ("SYMLINK", re.compile(r"compatibility symlink is missing|missing real bootstrap archive target|symlink evidence repair.*(?:BLOCKED|FAIL)", re.I)),
+    ("APT_GUARD", re.compile(r"old apt blocker still active")),
     ("APT_REPOSITORY", re.compile(r"apt repository is not safely blocked|apt update fail-closed hook is missing")),
     ("PACKAGE_GATE", re.compile(r"REAL_BOOTSTRAP_SOURCEBUILD=BLOCKED|RAFCODEPHI_REAL_BOOTSTRAP_BUILD=BLOCKED")),
     ("PRODUCER_GATE", re.compile(r"RAFCODEPHI_PRODUCER=BLOCKED|RAFCODEPHI_BOOTSTRAP_DOCKER=BLOCKED")),
@@ -68,6 +69,9 @@ def self_test() -> None:
         assert r["primary_candidate"] == "LEGACY_PREFIX", r
         assert r["log_lines"] == 3, r
         assert r["counts"]["PRODUCER_GATE"] == 1, r
+        p.write_text("rafcodephi-bootstrap-aarch64.zip: old apt blocker still active\n", encoding="utf-8")
+        r = scan(p)
+        assert r["primary_candidate"] == "APT_GUARD", r
     print("RAFCODEPHI_FAILURE_TRIAGE_SELF_TEST=PASS")
 
 

@@ -12,6 +12,93 @@ def require(cond: bool, token: str) -> None:
         raise SystemExit(f"RAFCODEPHI_SIGNED_APT_WORKFLOW=BLOCKED reason={token}")
 
 
+
+def exercise_live_apt_guard(live: str) -> None:
+    """Execute the exact inline live sealer against tiny synthetic ARM/ARM64 ZIPs.
+
+    Positive: documented inactive hook passes.
+    Falsifier: generated active APT hook is rejected before expensive source builds.
+    """
+    import json
+    import subprocess
+    import sys
+    import tempfile
+    import zipfile
+
+    marker = """python3 - "$OUT_DIR" "$REPOSITORY_URL" "$TRUST_MODE" "$PUBLIC_KEY_FILE" "$TARGET_PREFIX" <<'PY'\n"""
+    require(live.count(marker) == 1, "INLINE_LIVE_SEALER_UNRESOLVED")
+    sealer = live.split(marker, 1)[1].split("\nPY\n", 1)[0]
+    active = sealer.replace(
+        "// No APT::Update::Pre-Invoke blocker is active.",
+        "APT::Update::Pre-Invoke { echo blocked; };",
+        1,
+    )
+    require(active != sealer, "APT_GUARD_FALSIFIER_NOT_APPLIED")
+
+    with tempfile.TemporaryDirectory(prefix="rafcodephi-apt-guard-") as temp:
+        root = Path(temp)
+        key = root / "archive-key.gpg"
+        key.write_bytes(b"synthetic-public-key-for-fixture")
+        for case, script in (("inactive-comment", sealer), ("active-directive", active)):
+            out = root / case
+            out.mkdir()
+            for arch in ("arm", "aarch64"):
+                with zipfile.ZipFile(out / f"rafcodephi-bootstrap-{arch}.zip", "w") as zf:
+                    zf.writestr("etc/apt/sources.list.d/termux.sources", "Enabled: no\n")
+                    zf.writestr(
+                        "etc/apt/apt.conf.d/00rafcodephi-repository-block",
+                        'APT::Update::Pre-Invoke { "exit 100"; };\n',
+                    )
+                    zf.writestr(
+                        "BOOTSTRAP_PROFILE.json",
+                        json.dumps({
+                            "profile": "real-pkg",
+                            "package_layer": "real-pkg",
+                            "runtime_materialized": False,
+                            "claim_allowed": False,
+                            "release_allowed": False,
+                        }),
+                    )
+                    zf.writestr("BOOTSTRAP_INFO", "RAFCODEPHI_CLAIM_ALLOWED=0\n")
+            (out / "RAFCODEPHI_REAL_BOOTSTRAP_MANIFEST.txt").write_text(
+                "schema=rafcodephi.real-bootstrap-sourcebuild/v1\n",
+                encoding="utf-8",
+            )
+            proc = subprocess.run(
+                [
+                    sys.executable, "-", str(out),
+                    "https://example.invalid/signed-apt", "signed-by",
+                    str(key), "/data/data/com.termux.rafacodephi/files/usr",
+                ],
+                input=script, capture_output=True, text=True, check=False,
+            )
+            if case == "inactive-comment":
+                require(proc.returncode == 0, f"APT_COMMENT_FALSE_BLOCK:{proc.stderr[-250:]}")
+                for arch in ("arm", "aarch64"):
+                    with zipfile.ZipFile(out / f"rafcodephi-bootstrap-{arch}.zip") as zf:
+                        config = zf.read(
+                            "etc/apt/apt.conf.d/00rafcodephi-repository-block"
+                        ).decode()
+                        require(
+                            not any(line.lstrip().startswith("APT::Update::Pre-Invoke")
+                                    for line in config.splitlines()),
+                            f"ACTIVE_APT_BLOCKER_IN_PATCHED_ZIP:{arch}",
+                        )
+                        require(
+                            "Signed-By: /data/data/com.termux.rafacodephi/files/usr/"
+                            "etc/apt/keyrings/rafcodephi-archive-key.gpg"
+                            in zf.read("etc/apt/sources.list.d/termux.sources").decode(),
+                            f"SIGNED_BY_MISSING:{arch}",
+                        )
+            else:
+                require(
+                    proc.returncode != 0
+                    and "old apt blocker still active" in proc.stderr,
+                    f"APT_ACTIVE_BLOCKER_NOT_REJECTED:{proc.returncode}:{proc.stderr[-250:]}",
+                )
+    print("RAFCODEPHI_LIVE_APT_GUARD_FIXTURE=PASS arm=true aarch64=true falsifier=true")
+
+
 def main() -> int:
     text = WORKFLOW.read_text(encoding="utf-8")
     live = LIVE.read_text(encoding="utf-8")
@@ -23,6 +110,8 @@ def main() -> int:
         "artifacts/rafcodephi-bootstrap/debs/arm",
         "artifacts/rafcodephi-bootstrap/debs/aarch64",
         "Emit complete per-DEB custody for ARM and ARM64",
+        "Fingerprint failed signed APT build (no rebuild)",
+        "rafcodephi-signed-apt-failure-triage.json",
         "--auto-map",
         "rafcodephi.package-custody-dualarch/v1",
         "dists/stable/main/binary-arm/Packages",
@@ -60,6 +149,8 @@ def main() -> int:
     )
     for token in live_required:
         require(token in live, f"LIVE_BOOTSTRAP_MISSING:{token}")
+
+    exercise_live_apt_guard(live)
 
     require("RAFCODEPHI_BOOTSTRAP_PACKAGE_EVIDENCE_DIR" in generator,
             "GENERATOR_DEB_EVIDENCE_HOOK_MISSING")
