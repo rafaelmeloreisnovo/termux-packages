@@ -7,6 +7,7 @@ on:
     branches: [main]
     paths:
       - '.github/workflows/rafcodephi-auto-handoff.yml'
+      - 'scripts/ci/rafcodephi_producer_zipraf.py'
       - 'scripts/build-rafcodephi-real-bootstrap.sh'
       - 'scripts/apply-rafcodephi-build-properties.py'
       - 'scripts/validate-rafcodephi-build-properties.sh'
@@ -40,12 +41,17 @@ jobs:
           python3 scripts/tests/test_rafcodephi_termux_api_contract.py
           python3 scripts/ci/rafcodephi_failure_triage.py --self-test
           python3 scripts/tests/test_rafcodephi_package_custody_contract.py
+          python3 scripts/ci/rafcodephi_producer_zipraf.py --self-test
           test -x scripts/run-docker.sh
           test -f scripts/run-rafcodephi-bootstrap-docker.sh
           test -x scripts/generate-bootstraps.sh
 
-  produce-and-dispatch:
-    name: Build bootstrap pair and dispatch app
+  produce:
+    name: Build + attest ARM/ARM64 producer
+    outputs:
+      artifact_id: ${{ steps.producer_artifact.outputs.artifact-id }}
+      artifact_digest: ${{ steps.producer_artifact.outputs.artifact-digest }}
+      handoff_receipt_sha256: ${{ steps.producer_receipt.outputs.sha256 }}
     if: github.event_name != 'pull_request'
     needs: contract
     runs-on: ubuntu-24.04
@@ -123,6 +129,7 @@ jobs:
           retention-days: 14
 
       - name: Gate producer artifacts and emit receipt
+        id: producer_receipt
         shell: bash
         run: |
           set -euo pipefail
@@ -179,6 +186,26 @@ jobs:
           PY
 
           sha256sum build/reports/rafcodephi-auto-handoff.json             > build/reports/rafcodephi-auto-handoff.json.sha256
+          echo "sha256=$(sha256sum build/reports/rafcodephi-auto-handoff.json | cut -d ' ' -f1)" >> "$GITHUB_OUTPUT"
+
+      - name: Bundle immutable non-APK producer evidence as ZIPRAF
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 scripts/ci/rafcodephi_producer_zipraf.py --root . \
+            --source-sha "$GITHUB_SHA" --run-id "$GITHUB_RUN_ID" \
+            --output build/reports/rafcodephi-producer-evidence.zip
+          (cd build/reports && sha256sum -c rafcodephi-producer-evidence.zip.sha256)
+
+      - name: Upload consolidated non-APK ZIPRAF (portable)
+        uses: actions/upload-artifact@v7
+        with:
+          name: rafcodephi-producer-zipraf-${{ github.sha }}
+          path: |
+            build/reports/rafcodephi-producer-evidence.zip
+            build/reports/rafcodephi-producer-evidence.zip.sha256
+          if-no-files-found: error
+          retention-days: 30
 
       - name: Upload immutable producer artifact
         id: producer_artifact
@@ -221,22 +248,45 @@ jobs:
           PY
           sha256sum build/reports/rafcodephi-auto-artifact-binding.json > build/reports/rafcodephi-auto-artifact-binding.json.sha256
 
+  handoff:
+    name: Dispatch only after producer + artifact custody PASS
+    if: github.event_name != 'pull_request'
+    needs: [contract, produce]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    env:
+      APP_REPOSITORY: rafaelmeloreisnovo/termux-app-rafacodephi
+      ARTIFACT_NAME: rafcodephi-termux-packages-${{ github.sha }}
+      PRODUCER_ARTIFACT_ID: ${{ needs.produce.outputs.artifact_id }}
+      PRODUCER_ARTIFACT_DIGEST: ${{ needs.produce.outputs.artifact_digest }}
+      HANDOFF_RECEIPT_SHA256: ${{ needs.produce.outputs.handoff_receipt_sha256 }}
+    steps:
       - name: Dispatch exact producer evidence to app
         shell: bash
         env:
           CROSS_REPO_TOKEN: ${{ secrets.GITPAT || secrets.PATGITHUB || secrets.GIT }}
         run: |
           set -euo pipefail
-          if [[ -z "${CROSS_REPO_TOKEN:-}" ]]; then
-            echo 'TOKEN_VAZIO: PATGITHUB is required for cross-repository repository_dispatch.' >&2
+          [[ -n "${CROSS_REPO_TOKEN:-}" ]] || {
+            echo 'TOKEN_VAZIO: PATGITHUB required for cross-repository dispatch' >&2
             exit 1
-          fi
+          }
+          [[ "$PRODUCER_ARTIFACT_ID" =~ ^[0-9]+$ ]] || {
+            echo 'BLOCKED: producer artifact id unavailable' >&2
+            exit 2
+          }
+          [[ "$PRODUCER_ARTIFACT_DIGEST" =~ ^[0-9a-f]{64}$ ]] || {
+            echo 'BLOCKED: producer artifact digest mismatch' >&2
+            exit 2
+          }
+          [[ "$HANDOFF_RECEIPT_SHA256" =~ ^[0-9a-f]{64}$ ]] || {
+            echo 'BLOCKED: producer handoff receipt digest mismatch' >&2
+            exit 2
+          }
 
-          RECEIPT_SHA256="$(awk '{print $1}' build/reports/rafcodephi-auto-handoff.json.sha256)"
-          ARTIFACT_ID="${{ steps.producer_artifact.outputs.artifact-id }}"
-          ARTIFACT_DIGEST="${{ steps.producer_artifact.outputs.artifact-digest }}"
-          python3 - "$GITHUB_SHA" "$GITHUB_RUN_ID" "$ARTIFACT_NAME" "$RECEIPT_SHA256" "$ARTIFACT_ID" "$ARTIFACT_DIGEST" <<'PY' > /tmp/dispatch.json
-          import json, sys
+          python3 - "$GITHUB_SHA" "$GITHUB_RUN_ID" "$ARTIFACT_NAME" "$HANDOFF_RECEIPT_SHA256" "$PRODUCER_ARTIFACT_ID" "$PRODUCER_ARTIFACT_DIGEST" <<'PY' > /tmp/dispatch.json
+          import json
+          import sys
           producer_sha, run_id, artifact_name, receipt_sha256, artifact_id, artifact_digest = sys.argv[1:]
           print(json.dumps({
               "event_type": "rafcodephi_packages_ready",
@@ -250,7 +300,12 @@ jobs:
               },
           }))
           PY
-
-          curl --fail-with-body --silent --show-error             -X POST             -H "Authorization: Bearer $CROSS_REPO_TOKEN"             -H "Accept: application/vnd.github+json"             -H "X-GitHub-Api-Version: 2022-11-28"             "https://api.github.com/repos/$APP_REPOSITORY/dispatches"             --data-binary @/tmp/dispatch.json
+          curl --fail-with-body --silent --show-error \
+            -X POST \
+            -H "Authorization: Bearer $CROSS_REPO_TOKEN" \
+            -H "Accept: application/vnd.github+json" \
+            -H "X-GitHub-Api-Version: 2022-11-28" \
+            "https://api.github.com/repos/$APP_REPOSITORY/dispatches" \
+            --data-binary @/tmp/dispatch.json
 
           echo "RAFCODEPHI_HANDOFF=DISPATCHED producer_sha=$GITHUB_SHA producer_run_id=$GITHUB_RUN_ID artifact=$ARTIFACT_NAME"
