@@ -16,6 +16,7 @@ on:
     branches: [main]
     paths:
       - 'scripts/build-rafcodephi-real-bootstrap.sh'
+      - 'scripts/repair_rafcodephi_bootstrap_symlinks.py'
       - 'scripts/build-rafcodephi-freestanding-probes.sh'
       - 'scripts/rafcodephi-freestanding/**'
       - 'scripts/apply-rafcodephi-build-properties.py'
@@ -25,6 +26,7 @@ on:
       - 'packages/**'
       - 'scripts/tests/test_rafcodephi_termux_api_contract.py'
       - 'scripts/tests/test_rafcodephi_real_bootstrap_workflow_contract.py'
+      - 'scripts/tests/test_rafcodephi_bootstrap_symlink_repair.py'
       - '.github/workflows/rafcodephi-real-bootstrap.yml'
 
 concurrency:
@@ -90,6 +92,7 @@ jobs:
         run: |
           python3 scripts/tests/test_rafcodephi_termux_api_contract.py
           python3 scripts/tests/test_rafcodephi_real_bootstrap_workflow_contract.py
+          python3 scripts/tests/test_rafcodephi_bootstrap_symlink_repair.py
 
       - name: Materialize RAFCODEPHI package prefix on host checkout
         shell: bash
