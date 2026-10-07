@@ -5,7 +5,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[2]
 workflow = (ROOT / ".github/workflows/rafcodephi-auto-handoff.yml").read_text()
 zipraf = (ROOT / "scripts/ci/rafcodephi_producer_zipraf.py").read_text()
-consumer_contract = "rafcodephi-termux-packages-\${{ github.sha }}"
+consumer_contract = "rafcodephi-termux-packages-${{ github.sha }}"
 
 assert "  contract:\n" in workflow
 assert "  produce:\n" in workflow
@@ -15,7 +15,7 @@ assert "    if: github.event_name != 'pull_request'" in workflow
 assert "python3 scripts/ci/rafcodephi_producer_zipraf.py --self-test" in workflow
 assert "Bundle immutable non-APK producer evidence as ZIPRAF" in workflow
 assert "rafcodephi-producer-evidence.zip" in workflow
-assert "rafcodephi-producer-zipraf-\${{ github.sha }}" in workflow
+assert "rafcodephi-producer-zipraf-${{ github.sha }}" in workflow
 assert consumer_contract in workflow
 assert "    name: Build + attest ARM/ARM64 producer" in workflow
 for name in [
