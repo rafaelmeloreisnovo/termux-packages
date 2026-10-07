@@ -54,7 +54,23 @@ def main() -> int:
             "SYMLINK_DESTINATION_NORMALIZATION_NOT_APPLIED_TO_BOTH_GATES")
     require("termux-api-broadcast←(\\./)?libexec/termux-api" in builder,
             "TERMUX_API_SYMLINK_OPTIONAL_DOT_SLASH_GATE_MISSING")
-    print("RAFCODEPHI_REAL_BOOTSTRAP_WORKFLOW=PASS canonical_overlay=true failure_evidence=true writable_archive_output=true canonical_docker_handoff=true")
+    repair = (ROOT / "scripts/repair_rafcodephi_bootstrap_symlinks.py").read_text(encoding="utf-8")
+    require("repair_rafcodephi_bootstrap_symlinks.py" in builder,
+            "DEB_EVIDENCE_SYMLINK_REPAIR_NOT_CALLED")
+    require('--deb-dir "$RAFCODEPHI_BOOTSTRAP_PACKAGE_EVIDENCE_DIR/$arch"' in builder,
+            "DEB_EVIDENCE_DIR_NOT_BOUND_TO_ARCH")
+    require('rafcodephi-bootstrap-${arch}-symlink-repair.json' in builder,
+            "SYMLINK_REPAIR_RECEIPT_NOT_BOUND")
+    for token in (
+        "rafcodephi.bootstrap-symlink-evidence-repair/v1",
+        '"bin/sh": "dash"',
+        '"libexec/termux-api": "termux-api-broadcast"',
+        '"dpkg-deb", "--fsys-tarfile"',
+        '"claim_allowed": False',
+        '"device_runtime_proof": "TOKEN_VAZIO"',
+    ):
+        require(token in repair, f"SYMLINK_REPAIR_CONTRACT_MISSING:{token}")
+    print("RAFCODEPHI_REAL_BOOTSTRAP_WORKFLOW=PASS canonical_overlay=true failure_evidence=true writable_archive_output=true canonical_docker_handoff=true deb_evidence_symlink_repair=true")
     return 0
 
 
