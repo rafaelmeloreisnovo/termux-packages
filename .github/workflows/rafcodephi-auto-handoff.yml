@@ -37,6 +37,8 @@ jobs:
           bash -n scripts/build-rafcodephi-real-bootstrap.sh
           bash -n scripts/validate-rafcodephi-build-properties.sh
           python3 -m py_compile scripts/apply-rafcodephi-build-properties.py scripts/emit_rafcodephi_package_custody.py
+          python3 scripts/tests/test_rafcodephi_termux_api_contract.py
+          python3 scripts/ci/rafcodephi_failure_triage.py --self-test
           python3 scripts/tests/test_rafcodephi_package_custody_contract.py
           test -x scripts/run-docker.sh
           test -f scripts/run-rafcodephi-bootstrap-docker.sh
@@ -95,6 +97,30 @@ jobs:
             echo "RAFCODEPHI_PRODUCER=BLOCKED exit_code=$status" >&2
             exit "$status"
           fi
+
+      - name: Fingerprint failed producer build (no rebuild)
+        if: ${{ failure() }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 scripts/ci/rafcodephi_failure_triage.py \
+            --log build/reports/rafcodephi-auto-bootstrap.log \
+            --out build/reports/rafcodephi-auto-failure-triage.json \
+            --markdown build/reports/rafcodephi-auto-failure-triage.md
+          cat build/reports/rafcodephi-auto-failure-triage.md >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Preserve failed build log and receipt
+        if: ${{ failure() }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: rafcodephi-producer-failure-${{ github.run_id }}-${{ github.sha }}
+          path: |
+            build/reports/rafcodephi-auto-bootstrap.log
+            build/reports/rafcodephi-auto-bootstrap-status.json
+            build/reports/rafcodephi-auto-failure-triage.json
+            build/reports/rafcodephi-auto-failure-triage.md
+          if-no-files-found: warn
+          retention-days: 14
 
       - name: Gate producer artifacts and emit receipt
         shell: bash
