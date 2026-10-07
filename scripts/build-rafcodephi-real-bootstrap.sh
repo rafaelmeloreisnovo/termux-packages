@@ -54,7 +54,7 @@ if [[ "$ARCHITECTURES" == *x86* ]]; then
     exit 2
 fi
 
-for cmd in python3 unzip zip file strings grep sed; do
+for cmd in python3 unzip zip file strings grep sed dpkg-deb; do
     command -v "$cmd" >/dev/null || { echo "missing required command: $cmd" >&2; exit 127; }
 done
 [[ -f "$PROPERTIES" ]] || { echo "missing $PROPERTIES" >&2; exit 2; }
@@ -142,6 +142,16 @@ for arch in "${arch_list[@]}"; do
     [[ "$arch" == "arm" || "$arch" == "aarch64" ]] || { echo "unsupported arch: $arch" >&2; exit 2; }
     zip_path="$GENERATED_BOOTSTRAP_DIR/bootstrap-${arch}.zip"
     [[ -s "$zip_path" ]] || { echo "missing generated $zip_path" >&2; exit 1; }
+
+    # The upstream bootstrap generator may lose link metadata while repacking.
+    # Repair only when the exact preserved .deb set proves the required link
+    # destination and target. Missing/conflicting package evidence fails closed.
+    symlink_repair_receipt="$OUT_DIR/rafcodephi-bootstrap-${arch}-symlink-repair.json"
+    python3 "$ROOT/scripts/repair_rafcodephi_bootstrap_symlinks.py" \
+        --zip "$zip_path" \
+        --deb-dir "$RAFCODEPHI_BOOTSTRAP_PACKAGE_EVIDENCE_DIR/$arch" \
+        --prefix "$TARGET_PREFIX" \
+        --receipt "$symlink_repair_receipt"
 
     # Seal the upstream-generated bootstrap with app-side evidence metadata before
     # publication. Standard Termux symlinks in SYMLINKS.txt count as installed
