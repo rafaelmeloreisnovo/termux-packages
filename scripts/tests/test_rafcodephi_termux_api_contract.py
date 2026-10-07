@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+import subprocess
 
 ROOT = Path(__file__).resolve().parents[2]
 PATCH = (ROOT / "packages/termux-api/termux-api.c.patch").read_text(encoding="utf-8")
@@ -54,6 +55,27 @@ def main() -> int:
         require(token in BUILDER, f"BUILDER_TOKEN_MISSING:{token}")
     require("device_runtime_proof=TOKEN_VAZIO" in BUILDER, "DEVICE_PROOF_BOUNDARY_MISSING")
     require("claim_allowed_device_runtime=false" in BUILDER, "CLAIM_BOUNDARY_MISSING")
+    # Exercise the same sed token substitution used by the actual package patcher.
+    # Static token presence alone did not protect the old 95-minute build.
+    target_prefix = "/data/data/com.termux.rafacodephi/files/usr"
+    result = subprocess.run(
+        ["sed", "-e", r"s%\@TERMUX_PREFIX\@%" + target_prefix + "%g"],
+        input=PATCH, text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+        check=True,
+    )
+    added = "\n".join(
+        line[1:] for line in result.stdout.splitlines()
+        if line.startswith("+") and not line.startswith("+++")
+    )
+    require(
+        f'# define PREFIX "{target_prefix}"' in added,
+        "PREFIX_PATCH_RUNTIME_SUBSTITUTION_FAILED",
+    )
+    require("@TERMUX_PREFIX@" not in added, "PREFIX_PATCH_TOKEN_UNRESOLVED")
+    require("/data/data/com.termux/files/usr" not in added,
+            "PREFIX_PATCH_LEGACY_PREFIX_IN_ADDITIONS")
+    require(f'child_argv[5] = "{TARGET}";' in added,
+            "API_RECEIVER_RUNTIME_PATCH_MISSING")
     print(
         "RAFCODEPHI_TERMUX_API_CONTRACT=PASS "
         f"receiver={TARGET} prefix_template=true embedded_cli=true device_runtime_proof=TOKEN_VAZIO claim_allowed=false"
