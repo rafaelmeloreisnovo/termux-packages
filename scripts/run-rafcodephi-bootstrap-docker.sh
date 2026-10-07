@@ -29,6 +29,13 @@ mkdir -p "$HOST_OUT"
 # Never inherit stale evidence from a previous command in the persistent builder.
 ./scripts/run-docker.sh sh -c 'rm -rf "$1" && mkdir -p "$1"' _ "$CONTAINER_OUT"
 
+# The bind-mounted source tree can be readable but non-executable. Invoke only
+# this known Bash producer through its interpreter; preserve forwarded arguments
+# and the original exit status. This is a hosted build boundary, not device code.
+if [[ "$1" == "./scripts/build-rafcodephi-real-bootstrap.sh" ]]; then
+    set -- bash "$@"
+fi
+
 set +e
 ./scripts/run-docker.sh env \
     RAFCODEPHI_BOOTSTRAP_OUT_DIR="$CONTAINER_OUT" \
