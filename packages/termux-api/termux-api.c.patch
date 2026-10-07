@@ -1,6 +1,15 @@
 diff -u -r ../cache/termux-api-package-0.59.1/termux-api.c ./termux-api.c
 --- ../cache/termux-api-package-0.59.1/termux-api.c	2025-03-29 21:04:28.000000000 +0000
 +++ ./termux-api.c	2025-09-18 23:37:36.300881974 +0000
+@@ -25,7 +25,7 @@
+ #define TERMUX_API_PACKAGE_VERSION "0.59.1"
+ 
+ #ifndef PREFIX
+-# define PREFIX "/data/data/com.termux/files/usr"
++# define PREFIX "@TERMUX_PREFIX@"
+ #endif
+ 
+ #define LISTEN_SOCKET_ADDRESS "com.termux.api://listen"
 @@ -60,7 +60,7 @@
      // the app process to deliver the intent.
      // - https://github.com/termux/termux-api/issues/638#issuecomment-1813233924
