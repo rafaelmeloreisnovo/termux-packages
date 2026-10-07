@@ -100,3 +100,28 @@ For a handoff-producing action, record at minimum:
 ## Boundaries
 
 `TOKEN_VAZIO != 0`; urgency is not confidence; `READY_TO_TEST != RESOLVED`; build receipt != install receipt != runtime receipt. Historical observations are append-only and evidence does not silently transfer to a new commit. Do not publish raw environment/secrets when a bounded hash/reference is sufficient.
+
+<!-- RAFAELIA_FREESTANDING_POLICY_V1 -->
+## Freestanding / dependency-minimization gate
+
+Default engineering direction: move implementation toward the smallest **authorial, low-level, deterministic and freestanding** core that the target can truthfully support. This is a direction plus gate, not permission to relabel hosted code as freestanding.
+
+Rules:
+
+- Prefer repository-owned primitives over a new external dependency when the local implementation can be smaller, auditable, testable and maintainable.
+- Keep pure/freestanding cores free of network access, package managers, dynamic downloads, hosted runtimes, GC, heap, libc, syscalls and platform APIs unless the owning scoped contract explicitly permits that item.
+- Keep unavoidable OS/Android/JVM/JNI/POSIX/toolchain integrations at an explicit hosted/platform boundary. A build-time tool is not automatically a runtime dependency, and neither may be hidden.
+- Any new or retained external dependency must state: purpose, owner/source, license, version or immutable identity when available, build-time/runtime scope, reason it cannot yet be replaced, tests/evidence, rollback and the smallest credible authorial replacement path. Unknown fields remain `TOKEN_VAZIO`.
+- Never copy/vendor third-party code and call it authorial. Provenance and license survive transformation.
+- Do not add a dependency merely to shorten code. Optimize for reconstructibility, bounded complexity and falsifiable behavior, not dependency-count theater.
+- Node.js 20 is EOL and MUST NOT be introduced or retained as an active CI/tooling baseline. If Node is actually required, use a maintained LTS line; the repository migration baseline on 2026-10-07 is Node 24. Do not add Node to a repository that does not need it.
+- For low-level changes, inspect emitted artifacts/ABI where applicable; source resemblance alone is not freestanding evidence.
+- Preserve `SOURCE != ARTIFACT != EXECUTION != EVIDENCE != CLAIM`, `TOKEN_VAZIO != 0`, and `IMPLEMENTED_UNTESTED != PASS`.
+- Before merging a dependency-reduction change, prove that required behavior did not silently disappear. Removal without equivalent behavior or an explicit scope reduction is a regression, not a freestanding win.
+
+For every material dependency delta record:
+
+`boundary -> previous dependency -> replacement/retention reason -> execution -> evidence -> rollback -> remaining TOKEN_VAZIO`.
+
+<!-- /RAFAELIA_FREESTANDING_POLICY_V1 -->
+
