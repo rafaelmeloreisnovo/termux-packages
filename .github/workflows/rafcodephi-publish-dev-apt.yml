@@ -14,12 +14,10 @@ on:
       - 'scripts/generate-bootstraps.sh'
       - 'scripts/build-rafcodephi-real-bootstrap.sh'
       - 'scripts/repair_rafcodephi_bootstrap_symlinks.py'
-      - 'scripts/repair_rafcodephi_bootstrap_symlinks.py'
       - 'scripts/build-rafcodephi-live-bootstrap.sh'
       - 'scripts/emit_rafcodephi_package_custody.py'
       - 'scripts/tests/test_rafcodephi_publish_dev_apt_workflow_contract.py'
       - 'scripts/tests/test_rafcodephi_signed_apt_fixture.sh'
-      - 'scripts/tests/test_rafcodephi_bootstrap_symlink_repair.py'
       - 'scripts/tests/test_rafcodephi_bootstrap_symlink_repair.py'
       - '.github/workflows/rafcodephi-publish-dev-apt.yml'
   push:
@@ -28,10 +26,12 @@ on:
       - 'packages/**'
       - 'scripts/generate-bootstraps.sh'
       - 'scripts/build-rafcodephi-real-bootstrap.sh'
+      - 'scripts/repair_rafcodephi_bootstrap_symlinks.py'
       - 'scripts/build-rafcodephi-live-bootstrap.sh'
       - 'scripts/emit_rafcodephi_package_custody.py'
       - 'scripts/tests/test_rafcodephi_publish_dev_apt_workflow_contract.py'
       - 'scripts/tests/test_rafcodephi_signed_apt_fixture.sh'
+      - 'scripts/tests/test_rafcodephi_bootstrap_symlink_repair.py'
       - '.github/workflows/rafcodephi-publish-dev-apt.yml'
 
 permissions:
