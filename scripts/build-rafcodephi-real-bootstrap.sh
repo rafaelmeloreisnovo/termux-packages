@@ -57,6 +57,8 @@ fi
 for cmd in python3 unzip zip file strings grep sed dpkg-deb; do
     command -v "$cmd" >/dev/null || { echo "missing required command: $cmd" >&2; exit 127; }
 done
+# Fail cheaply on alias contract errors before any multi-ABI Docker build.
+python3 -m unittest -q scripts.test_rafcodephi_bootstrap_aliases
 [[ -f "$PROPERTIES" ]] || { echo "missing $PROPERTIES" >&2; exit 2; }
 [[ -x "$ROOT/scripts/generate-bootstraps.sh" ]] || chmod +x "$ROOT/scripts/generate-bootstraps.sh" 2>/dev/null || true
 
@@ -210,21 +212,13 @@ if apt_source_path not in names:
     raise SystemExit(f"cannot seal profile; modern apt source missing: {apt_source_path}")
 if "BOOTSTRAP_PROFILE.json" in names or "BOOTSTRAP_INFO" in names or apt_block_path in names:
     raise SystemExit("refusing to overwrite pre-existing RAFCODEPHI bootstrap metadata")
-symlink_destinations = set()
-for number, line in enumerate(symlink_text.splitlines(), 1):
-    if not line:
-        continue
-    parts = line.split("←")
-    if len(parts) != 2 or not parts[0] or not parts[1]:
-        raise SystemExit(f"malformed SYMLINKS.txt line {number}: {line!r}")
-    target, link = parts
-    if link.startswith("/") or ".." in link or "\\" in link:
-        raise SystemExit(f"unsafe symlink destination line {number}: {link!r}")
-    while link.startswith("./"):
-        link = link[2:]
-    if not link:
-        raise SystemExit(f"empty normalized symlink destination line {number}: {line!r}")
-    symlink_destinations.add(link)
+# Verify compatibility aliases from actual source-built executable entries.
+# No synthetic ELF, missing-target bypass, or claim promotion is permitted.
+from scripts.rafcodephi_bootstrap_aliases import normalize_bootstrap_aliases
+try:
+    symlink_text, symlink_destinations = normalize_bootstrap_aliases(names, symlink_text)
+except ValueError as exc:
+    raise SystemExit(f"cannot seal profile; {exc}")
 available = names | symlink_destinations | {
     "BOOTSTRAP_INFO",
     "BOOTSTRAP_PROFILE.json",
@@ -284,6 +278,8 @@ try:
             payload = source.read(source_info.filename)
             if source_info.filename == apt_source_path:
                 payload = apt_source_payload
+            elif source_info.filename == "SYMLINKS.txt":
+                payload = symlink_text.encode("utf-8")
             target.writestr(source_info, payload)
         for name, payload in (
             (apt_block_path, apt_block_payload),
