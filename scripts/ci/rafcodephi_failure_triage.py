@@ -19,8 +19,8 @@ RULES = (
     ("APT_REPOSITORY", re.compile(r"apt repository is not safely blocked|apt update fail-closed hook is missing")),
     ("PACKAGE_GATE", re.compile(r"REAL_BOOTSTRAP_SOURCEBUILD=BLOCKED|RAFCODEPHI_REAL_BOOTSTRAP_BUILD=BLOCKED")),
     ("PRODUCER_GATE", re.compile(r"RAFCODEPHI_PRODUCER=BLOCKED|RAFCODEPHI_BOOTSTRAP_DOCKER=BLOCKED")),
-    ("COMPILER_ERROR", re.compile(r"(?:^|\\s)(?:fatal error:|error:|CMake Error at|FAILED: )")),
-    ("ACTIONS_ERROR", re.compile(r"##\\[error\\]")),
+    ("COMPILER_ERROR", re.compile(r"(?:^|\s)(?:fatal error:|error:|CMake Error at|FAILED: )")),
+    ("ACTIONS_ERROR", re.compile(r"##\[error\]")),
 )
 
 
