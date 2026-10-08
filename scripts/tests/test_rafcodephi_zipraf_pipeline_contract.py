@@ -69,4 +69,21 @@ assert "bootstrap_hash_mismatch" in batch_verifier
 assert "cross_arch_manifest_mismatch" in batch_verifier
 assert "batch_receipt_mismatch" in batch_verifier
 assert "receipt_overwrite_forbidden" in batch_verifier
+
+# Change-sensitive producer: source writes only; no unrelated main pushes.
+# The PR contract job stays cheap, but a main producer must never be
+# cancelled mid-build (its ZIPRAF, digest and dispatch have one exact SHA).
+trigger = workflow.split("\npermissions:\n", 1)[0]
+push = trigger.split("  push:", 1)[1].split("  pull_request:", 1)[0]
+assert "branches: [main]" in push
+for source_path in (
+    "scripts/**", "packages/**", "core/**", "configs/**",
+    ".github/workflows/rafcodephi-auto-handoff.yml",
+):
+    assert source_path in push, source_path
+assert "docs/**" not in push
+assert "  workflow_dispatch:" in trigger
+assert "group: rafcodephi-producer-${{ github.event_name }}-${{ github.ref }}" in workflow
+assert "cancel-in-progress: ${{ github.event_name == 'pull_request' }}" in workflow
+
 print("RAFCODEPHI_PIPELINE_CONTRACT=PASS jobs=5 matrix=arm+aarch64 fan-in=fail-closed handoff=preserved")
