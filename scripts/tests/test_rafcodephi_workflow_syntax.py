@@ -25,10 +25,13 @@ def bash_syntax_check(path: Path, job_name: str, step_index: int, step: dict, de
     if not isinstance(script, str):
         return
 
-    # Reject GitHub expressions mistakenly wrapping raw shell variables.
-    if re.search(r"\x24\x7b\x7b\s*\x22\x24", script):
-        fail(f"shell_variable_in_actions_expression path={path.relative_to(ROOT)} "
-             f"job={job_name} step={step_index}")
+    # Reject shell parameters wrapped in GitHub expressions before bash -n substitution.
+    for segment in script.split(chr(36) + "{{")[1:]:
+        expression_body = segment.split("}}", 1)[0]
+        if re.search(r"\$[A-Za-z_]", expression_body):
+            fail(f"shell_variable_in_actions_expression path={path.relative_to(ROOT)} "
+                 f"job={job_name} step={step_index}")
+
     job_defaults = defaults.get("run", {}) if isinstance(defaults, dict) else {}
     shell = step.get("shell", job_defaults.get("shell", "bash"))
     if not str(shell).startswith(("bash", "sh")):
