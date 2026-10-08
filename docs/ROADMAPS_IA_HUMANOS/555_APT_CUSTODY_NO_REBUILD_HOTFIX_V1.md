@@ -50,7 +50,7 @@ Source: PR #142 was merged at `a7be64df440d0b67373a1530562dc00414053eb4`, govern
 New independent workflow: `.github/workflows/555_20-30_custody_contract.yml`.
 - `pull_request`: only Python/source fixtures, shell-contract and syntax checks; no ARM/AArch64 source builder.
 - `workflow_dispatch` default: only source tests.
-- `workflow_dispatch replay_history=true`: explicit opt-in for signed APT historical run 37696663078, exact source commit 77625363a031a081edd1db93d3f7a48e9bfff7f9, source artifact 11521200291 and outer provider digest 5340b3d05a3257138af7f2513493b8adb5fcd68d1afa4e24c683f3685578af14. Requires run metadata + artifact readback.
+- `workflow_dispatch replay_history=true`: explicit opt-in for signed APT historical run 37696663078, exact PR run head commit 77625363a031a081edd1db93d3f7a48e9bfff7f9, actual build checkout merge commit b1d029649351232649f4b1a03eab2084d0fbc4b6 (distinct evidence fields), source artifact 11521200291 and outer provider digest 5340b3d05a3257138af7f2513493b8adb5fcd68d1afa4e24c683f3685578af14. Requires run metadata + artifact readback.
 - The replay checks the archived TAR SHA, safely extracts the preserved .deb payload, validates both SHA256SUMS sets and calls the PR#142 canonical custody emitter with the original recipe Git commit. Only JSON receipts and hash references are uploaded.
 - Neither this workflow nor its tests publishes the APT repository, compiles source, installs APKs, or verifies physical Android execution.
 - `IMPLEMENTED_UNTESTED_REPLAY` remains until a manual exact-head replay with receipt exists. Any mismatch is BLOCKED and historical artifacts remain unchanged.
