@@ -70,7 +70,10 @@ def main() -> int:
     compose_steps = jobs["compose"]["steps"]
     script = next(s["run"] for s in compose_steps if s.get("id") == "resolve")
     all_run_scripts = "\n".join(s.get("run", "") for s in compose_steps)
-    require('if [[ "$ORIGIN" == "source-contract" ]]; then' in script, "source_branch_bash_guard")
+    require(any(token in script for token in (
+        'if [[ "$ORIGIN" == "source-contract" ]]; then',
+        'if [[ "$ORIGIN" == source-contract ]]; then',
+    )), "source_branch_bash_guard")
     require('[[ "$RUN_ID" =~ ^[1-9][0-9]*$ ]]' in script, "run_id_bash_guard")
     require('[[ "$ARTIFACT_NAME" =~ ^[A-Za-z0-9._,-]{1,160}$ ]]' in script, "artifact_name_bash_guard")
     require('[[ "$producer_sha" =~ ^[a-f0-9]{40}$ ]]' in script, "sha_bash_guard")
