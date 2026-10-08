@@ -68,6 +68,43 @@ def recipe_source_contract(text: str) -> dict:
     }
 
 
+
+def resolve_auto_recipe(root: Path, output_pkg: str) -> tuple[str, str]:
+    """Bind a DEB name to exactly one source, including canonical generated -static."""
+    packages_root = root / "packages"
+    direct = packages_root / output_pkg / "build.sh"
+    explicit = []
+    if direct.is_file():
+        explicit.append((direct.parent.name, "DIRECT_RECIPE"))
+    for subpackage in packages_root.glob(f"*/{output_pkg}.subpackage.sh"):
+        explicit.append((subpackage.parent.name, "DECLARED_SUBPACKAGE"))
+    explicit = sorted(set(explicit))
+    if len(explicit) == 1:
+        return explicit[0]
+    if len(explicit) > 1:
+        raise ValueError(f"cannot resolve unique producing recipe for {output_pkg}: {explicit}")
+    if output_pkg.endswith("-static"):
+        parent = output_pkg[:-len("-static")]
+        generator = root / "scripts/build/termux_create_debian_subpackages.sh"
+        recipe = packages_root / parent / "build.sh"
+        if parent and recipe.is_file() and generator.is_file():
+            source = generator.read_text(encoding="utf-8")
+            if ("${TERMUX_PKG_NAME}-static.subpackage.sh" in source
+                    and "TERMUX_PKG_NO_STATICSPLIT" in source
+                    and "TERMUX_PKG_TMPDIR" in source):
+                recipe_text = recipe.read_text(encoding="utf-8")
+                # An opted-out parent cannot be promoted to a generated producer.
+                if re.search(
+                    r"""(?m)^\s*TERMUX_PKG_NO_STATICSPLIT\s*=\s*['"]?true['"]?\s*(?:#.*)?$""",
+                    recipe_text,
+                ):
+                    raise ValueError(
+                        f"static split explicitly disabled for {output_pkg}: {parent}"
+                    )
+                return parent, "GENERATED_STATIC_SUBPACKAGE"
+    raise ValueError(f"cannot resolve unique producing recipe for {output_pkg}: []")
+
+
 def main() -> int:
     ap = argparse.ArgumentParser()
     source_group = ap.add_mutually_exclusive_group(required=True)
@@ -96,26 +133,19 @@ def main() -> int:
             if not raw.strip():
                 continue
             output_pkg, recipe_pkg = raw.split("\t", 1)
-            rows.append((output_pkg, recipe_pkg))
+            rows.append((output_pkg, recipe_pkg, "EXPLICIT_MAP"))
     else:
         packages_root = root / "packages"
         for output_pkg in sorted(deb_by_package):
-            direct = packages_root / output_pkg / "build.sh"
-            candidates = []
-            if direct.is_file():
-                candidates.append(direct.parent.name)
-            for subpackage in packages_root.glob(f"*/{output_pkg}.subpackage.sh"):
-                candidates.append(subpackage.parent.name)
-            candidates = sorted(set(candidates))
-            if len(candidates) != 1:
-                raise SystemExit(
-                    f"cannot resolve unique producing recipe for {output_pkg}: {candidates}"
-                )
-            rows.append((output_pkg, candidates[0]))
+            try:
+                recipe_pkg, method = resolve_auto_recipe(root, output_pkg)
+            except ValueError as exc:
+                raise SystemExit(str(exc)) from exc
+            rows.append((output_pkg, recipe_pkg, method))
 
     records = []
     missing = []
-    for output_pkg, recipe_pkg in rows:
+    for output_pkg, recipe_pkg, method in rows:
         recipe = root / "packages" / recipe_pkg / "build.sh"
         if not recipe.is_file():
             raise SystemExit(f"missing recipe: {recipe}")
@@ -132,12 +162,18 @@ def main() -> int:
             "deb_bytes": deb.stat().st_size,
             "deb_sha256": sha256_file(deb),
             "producer_recipe": f"packages/{recipe_pkg}/build.sh",
+            "producer_mapping_method": method,
             "recipe_git_blob": git_blob(root, recipe),
             "recipe_sha256": sha256_file(recipe),
             "license_expression_declared": recipe_literal(recipe_text, "TERMUX_PKG_LICENSE"),
             "homepage_declared": recipe_literal(recipe_text, "TERMUX_PKG_HOMEPAGE"),
             **recipe_source_contract(recipe_text),
         }
+        if method == "GENERATED_STATIC_SUBPACKAGE":
+            generator = root / "scripts/build/termux_create_debian_subpackages.sh"
+            record["subpackage_generator"] = "scripts/build/termux_create_debian_subpackages.sh"
+            record["subpackage_generator_git_blob"] = git_blob(root, generator)
+            record["subpackage_generator_sha256"] = sha256_file(generator)
         records.append(record)
 
     if missing:
