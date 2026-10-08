@@ -42,4 +42,5 @@ jobs:
           if test -f scripts/ci/rafcodephi_555_compose.py; then
             python3 -m py_compile scripts/ci/rafcodephi_555_compose.py
             python3 scripts/ci/rafcodephi_555_compose.py --self-test
+            python3 scripts/tests/test_rafcodephi_555_workflow_contract.py
           fi
