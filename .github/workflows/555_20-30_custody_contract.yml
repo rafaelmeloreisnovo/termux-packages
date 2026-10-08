@@ -1,0 +1,68 @@
+name: 555_20-30 | APT CUSTODY CONTRACT
+run-name: 555_20-30_custody_${{ github.event_name }}_${{ github.sha }}
+
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/555_20-30_custody_contract.yml'
+      - '.github/workflows/555-artifact-manifold.yml'
+      - 'scripts/emit_rafcodephi_package_custody.py'
+      - 'scripts/tests/test_rafcodephi_package_custody_contract.py'
+      - 'scripts/build/termux_create_debian_subpackages.sh'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: 555-apt-custody-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  verify-no-rebuild:
+    name: Verify source & generated-static mapping (no builder)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - name: Checkout exact revision
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 1
+          persist-credentials: false
+      - name: Python syntax and no-build positive/negative fixtures
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p build/reports
+          python3 -m py_compile scripts/emit_rafcodephi_package_custody.py scripts/tests/test_rafcodephi_package_custody_contract.py
+          python3 scripts/tests/test_rafcodephi_package_custody_contract.py 2>&1 | tee build/reports/555-apt-custody-contract.log
+          python3 scripts/ci/rafcodephi_555_compose.py --self-test 2>&1 | tee build/reports/555-artifact-manifold-selftest.log
+          python3 - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+          obj = {
+            "schema": "rafcodephi.555-apt-custody-source-contract/v1",
+            "source_commit": os.environ["GITHUB_SHA"],
+            "scope": "SOURCE_SELFTEST_ONLY",
+            "tests": ["custody_mapping_negative_positive", "555_artifact_manifold"],
+            "state": "PASS_SCOPED",
+            "compile_source_packages": False,
+            "artifact_replay": "TOKEN_VAZIO",
+            "signed_repository": "TOKEN_VAZIO",
+            "physical_android": "TOKEN_VAZIO",
+            "claim_allowed": False
+          }
+          Path("build/reports/555-apt-custody-receipt.json").write_text(
+              json.dumps(obj, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+          PY
+          (cd build/reports && sha256sum 555-apt-custody-receipt.json > 555-apt-custody-receipt.json.sha256)
+          cat build/reports/555-apt-custody-receipt.json >> "$GITHUB_STEP_SUMMARY"
+      - name: Preserve scope-limited receipt and logs
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: 555-apt-custody-source-${{ github.sha }}-${{ github.run_id }}
+          path: build/reports/555-*
+          if-no-files-found: warn
+          retention-days: 30
