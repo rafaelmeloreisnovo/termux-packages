@@ -32,7 +32,7 @@ def exercise_dynamic_static_resolution() -> None:
         )
         recipe = root / "packages/attr/build.sh"
         recipe.parent.mkdir(parents=True)
-        recipe.write_text("TERMUX_PKG_VERSION=2.5.2\\n", encoding="utf-8")
+        recipe.write_text("TERMUX_PKG_VERSION=2.5.2\n", encoding="utf-8")
         debs = {"attr": Path("attr"), "attr-static": Path("attr-static")}
         fields = {
             ("attr", "Version"): "2.5.2-1",
@@ -60,10 +60,10 @@ def exercise_dynamic_static_resolution() -> None:
             fields[("attr-static", "Description")] = "Unrelated archive"
             require(resolve(root, "attr-static", debs) is None, "DESCRIPTION_MISMATCH")
             fields[("attr-static", "Description")] = "Static libraries for attr"
-            recipe.write_text("TERMUX_PKG_NO_STATICSPLIT=true\\n", encoding="utf-8")
+            recipe.write_text("TERMUX_PKG_NO_STATICSPLIT=true\n", encoding="utf-8")
             require(resolve(root, "attr-static", debs) is None, "DISABLED_SPLIT_ACCEPTED")
-            recipe.write_text("TERMUX_PKG_VERSION=2.5.2\\n", encoding="utf-8")
-            rule.write_text("unrecognized generator version\\n", encoding="utf-8")
+            recipe.write_text("TERMUX_PKG_VERSION=2.5.2\n", encoding="utf-8")
+            rule.write_text("unrecognized generator version\n", encoding="utf-8")
             try:
                 resolve(root, "attr-static", debs)
             except SystemExit as exc:
