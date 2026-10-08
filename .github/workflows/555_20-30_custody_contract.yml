@@ -11,6 +11,7 @@ on:
       - 'scripts/emit_rafcodephi_package_custody.py'
       - 'scripts/tests/test_rafcodephi_package_custody_contract.py'
       - 'scripts/build/termux_create_debian_subpackages.sh'
+      - 'docs/ROADMAPS_IA_HUMANOS/555_APT_CUSTODY_NO_REBUILD_HOTFIX_V1.md'
   workflow_dispatch:
     inputs:
       replay_history:
