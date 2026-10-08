@@ -26,8 +26,12 @@ def bash_syntax_check(path: Path, job_name: str, step_index: int, step: dict, de
         return
 
     # GitHub expressions cannot evaluate raw shell variables. Such expressions
-    # could pass bash -n after substitution but fail before the job executes.
-    if re.search(r'\$\{\{\s*"\ if isinstance(defaults, dict) else {}
+    # pass bash -n after substitution but fail before a job executes.
+    if re.search(r'\$\{\{\s*"\$', script):
+        fail(f"shell_variable_in_actions_expression path={path.relative_to(ROOT)} "
+             f"job={job_name} step={step_index}")
+
+    job_defaults = defaults.get("run", {}) if isinstance(defaults, dict) else {}
     shell = step.get("shell", job_defaults.get("shell", "bash"))
     if not str(shell).startswith(("bash", "sh")):
         return
