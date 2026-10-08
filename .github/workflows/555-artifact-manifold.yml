@@ -102,7 +102,7 @@ jobs:
           fi
           test "$ORIGIN" = artifact-run
           ${{  "$RUN_ID" =~ ^[1-9][0-9]*$  }}
-          ${{  "$ARTIFACT_NAME" =~ ^[A-Za-z0-9._-]{1,128}$  }}
+          ${{  "$ARTIFACT_NAME" =~ ^[A-Za-z0-9._,-]{1,160}$  }}
           metadata="$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$RUN_ID")"
           printf '%s' "$metadata" | jq -e --arg repo "$GITHUB_REPOSITORY" '
             .repository.full_name == $repo
