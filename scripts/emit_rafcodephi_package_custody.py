@@ -90,7 +90,17 @@ def resolve_auto_recipe(root: Path, output_pkg: str) -> tuple[str, str]:
         if parent and recipe.is_file() and generator.is_file():
             source = generator.read_text(encoding="utf-8")
             if ("${TERMUX_PKG_NAME}-static.subpackage.sh" in source
-                    and "TERMUX_PKG_NO_STATICSPLIT" in source):
+                    and "TERMUX_PKG_NO_STATICSPLIT" in source
+                    and "TERMUX_PKG_TMPDIR" in source):
+                recipe_text = recipe.read_text(encoding="utf-8")
+                # An opted-out parent cannot be promoted to a generated producer.
+                if re.search(
+                    r"""(?m)^\s*TERMUX_PKG_NO_STATICSPLIT\s*=\s*['"]?true['"]?\s*(?:#.*)?$""",
+                    recipe_text,
+                ):
+                    raise ValueError(
+                        f"static split explicitly disabled for {output_pkg}: {parent}"
+                    )
                 return parent, "GENERATED_STATIC_SUBPACKAGE"
     raise ValueError(f"cannot resolve unique producing recipe for {output_pkg}: []")
 
