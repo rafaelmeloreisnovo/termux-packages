@@ -5,14 +5,26 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[2]
 workflow = (ROOT / ".github/workflows/rafcodephi-auto-handoff.yml").read_text()
 zipraf = (ROOT / "scripts/ci/rafcodephi_producer_zipraf.py").read_text()
+batch_verifier = (ROOT / "scripts/ci/rafcodephi_parallel_batches.py").read_text()
 consumer_contract = "rafcodephi-termux-packages-${{ github.sha }}"
 
 assert "  contract:\n" in workflow
 assert "  produce:\n" in workflow
+assert "  verify-batch:\n" in workflow
+assert "  join-batches:\n" in workflow
 assert "  handoff:\n" in workflow
 assert "    needs: [contract, produce]" in workflow
+assert "    needs: [contract, produce, verify-batch]" in workflow
+assert "    needs: [contract, produce, join-batches]" in workflow
 assert "    if: github.event_name != 'pull_request'" in workflow
 assert "python3 scripts/ci/rafcodephi_producer_zipraf.py --self-test" in workflow
+assert "python3 scripts/ci/rafcodephi_parallel_batches.py --self-test" in workflow
+assert "max-parallel: 2" in workflow
+assert "fail-fast: false" in workflow
+assert "matrix:\n        arch: [arm, aarch64]" in workflow
+assert "actions/download-artifact@v8" in workflow
+assert "merge-multiple: true" in workflow
+assert "rafcodephi-batch-join-" in workflow
 assert "Bundle immutable non-APK producer evidence as ZIPRAF" in workflow
 assert "rafcodephi-producer-evidence.zip" in workflow
 assert "rafcodephi-producer-zipraf-${{ github.sha }}" in workflow
@@ -35,7 +47,12 @@ for name in [
     "artifact_digest",
 ]:
     assert name in workflow, name
-assert workflow.index("  contract:") < workflow.index("  produce:") < workflow.index("  handoff:")
+assert workflow.index("  contract:") < workflow.index("  produce:") < workflow.index("  verify-batch:") < workflow.index("  join-batches:") < workflow.index("  handoff:")
+assert "needs: [contract, produce, join-batches]" in workflow[workflow.index("  handoff:"):]
+assert "needs: [contract, produce, verify-batch]" in workflow[workflow.index("  join-batches:"):workflow.index("  handoff:")]
+assert "needs: [contract, produce]" in workflow[workflow.index("  verify-batch:"):workflow.index("  join-batches:")]
+assert "if: github.event_name != 'pull_request'" in workflow[workflow.index("  verify-batch:"):workflow.index("  join-batches:")]
+assert "if: github.event_name != 'pull_request'" in workflow[workflow.index("  join-batches:"):workflow.index("  handoff:")]
 assert "if: github.event_name != 'pull_request'" in workflow[workflow.index("  handoff:"):]
 assert "secrets.GITPAT || secrets.PATGITHUB || secrets.GIT" in workflow[workflow.index("  handoff:"):]
 assert "producer_artifact.outputs.artifact-id" in workflow[workflow.index("  produce:"):workflow.index("  handoff:")]
@@ -45,4 +62,11 @@ assert ".lower().endswith(\".apk\")" in zipraf
 assert "symlink_input_forbidden" in zipraf
 assert "producer_sha256_mismatch" in zipraf
 assert "zip_member_hash_mismatch" in zipraf
-print("RAFCODEPHI_PIPELINE_CONTRACT=PASS jobs=3 handoff=preserved zipraf=non-apk")
+assert 'SCHEMA = "rafcodephi.producer-arch-batch/v1"' in batch_verifier
+assert 'JOIN_SCHEMA = "rafcodephi.producer-arch-batch-join/v1"' in batch_verifier
+assert 'REQUIRED_ZIP_ENTRIES = ("BOOTSTRAP_PROFILE.json", "SYMLINKS.txt")' in batch_verifier
+assert "bootstrap_hash_mismatch" in batch_verifier
+assert "cross_arch_manifest_mismatch" in batch_verifier
+assert "batch_receipt_mismatch" in batch_verifier
+assert "receipt_overwrite_forbidden" in batch_verifier
+print("RAFCODEPHI_PIPELINE_CONTRACT=PASS jobs=5 matrix=arm+aarch64 fan-in=fail-closed handoff=preserved")
