@@ -6,11 +6,13 @@ on:
     paths:
       - '.github/workflows/**'
       - 'scripts/tests/test_rafcodephi_workflow_syntax.py'
+      - 'scripts/tests/test_rafcodephi_555_workflow_contract.py'
   push:
     branches: [main]
     paths:
       - '.github/workflows/**'
       - 'scripts/tests/test_rafcodephi_workflow_syntax.py'
+      - 'scripts/tests/test_rafcodephi_555_workflow_contract.py'
 
 permissions:
   contents: read
@@ -39,6 +41,7 @@ jobs:
         run: |
           set -euo pipefail
           python3 scripts/tests/test_rafcodephi_workflow_syntax.py
+          python3 scripts/tests/test_rafcodephi_555_workflow_contract.py
           if test -f scripts/ci/rafcodephi_555_compose.py; then
             python3 -m py_compile scripts/ci/rafcodephi_555_compose.py
             python3 scripts/ci/rafcodephi_555_compose.py --self-test

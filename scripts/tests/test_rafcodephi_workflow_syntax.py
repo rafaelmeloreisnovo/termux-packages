@@ -30,6 +30,12 @@ def bash_syntax_check(path: Path, job_name: str, step_index: int, step: dict, de
     if not str(shell).startswith(("bash", "sh")):
         return
 
+    # Do not hide invalid GitHub-expression wrappers around shell variables.
+    # These are evaluated by Actions as expressions, not as Bash predicates.
+    if re.search(r"\$\{\{\s*[^A-Za-z0-9]*\$", script):
+        name = step.get("name", "unnamed")
+        fail(f"bash_expression_interpolation path={path.relative_to(ROOT)} job={job_name} step={step_index} name={name}")
+
     normalized = GITHUB_EXPRESSION.sub("CI_EXPRESSION", script)
     result = subprocess.run(
         ["bash", "-n"],

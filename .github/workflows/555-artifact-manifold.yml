@@ -1,5 +1,5 @@
-name: '555_20-30 | APT Diagnose and Artifact Reuse'
-run-name: 555_20-30_${{ inputs.origin }}_${{ inputs.operation }}_${{ inputs.output_mode }}
+name: 555_20-30 | RAFCODEPHI APT Diagnostic & Reuse
+run-name: ${{ github.event_name == 'workflow_dispatch' && format('555_20-30_{0}_{1}_{2}', inputs.origin, inputs.operation, inputs.output_mode) || '555_20-30_CONTRACT_ONLY' }}
 
 on:
   workflow_dispatch:
@@ -30,17 +30,12 @@ on:
           - receipt
           - zipraf
       producer_run_id:
-        description: "Run ID do produtor manual main; 0 em source-contract"
+        description: "Run ID manual do mesmo repositorio; 0 para source-contract"
         required: true
         type: string
         default: "0"
-      permit_preview:
-        description: "Permitir observacao de artefatos de PR do mesmo repositorio (sem promocao)"
-        required: true
-        type: boolean
-        default: false
       expected_producer_sha:
-        description: "SHA exato do commit produtor; obrigatorio para observacao de PR"
+        description: "SHA exato obrigatório para reuso de run pull_request"
         required: false
         type: string
         default: ""
@@ -100,12 +95,11 @@ jobs:
           OPERATION: ${{ inputs.operation }}
           RUN_ID: ${{ inputs.producer_run_id }}
           ARTIFACT_NAME: ${{ inputs.artifact_name }}
-          PERMIT_PREVIEW: ${{ inputs.permit_preview }}
           EXPECTED_SHA: ${{ inputs.expected_producer_sha }}
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
-          if [[ "$ORIGIN" == source-contract ]]; then
+          if [[ "$ORIGIN" == "source-contract" ]]; then
             test "$RUN_ID" = 0
             test -z "$ARTIFACT_NAME"
             test -z "$EXPECTED_SHA"
@@ -121,6 +115,8 @@ jobs:
             .repository.full_name == $repo
             and .head_repository.full_name == $repo
             and (.conclusion == "success" or .conclusion == "failure")
+            and ((.event == "workflow_dispatch" and .head_branch == "main")
+              or (.event == "pull_request" and .head_branch != null))
           ' >/dev/null
           if [[ "$PERMIT_PREVIEW" == "true" ]]; then
             printf '%s' "$metadata" | jq -e '.event == "pull_request" or (.event == "workflow_dispatch" and .head_branch == "main")' >/dev/null
@@ -138,7 +134,7 @@ jobs:
           event_type="$(printf '%s' "$metadata" | jq -r '.event')"
           if [[ "$event_type" == "pull_request" || -n "$EXPECTED_SHA" ]]; then
             [[ "$EXPECTED_SHA" == "$producer_sha" ]] || {
-              echo "BLOCKED: historical preview requires exact producer HEAD SHA" >&2
+              echo 'BLOCKED: expected producer SHA mismatch' >&2
               exit 1
             }
           fi

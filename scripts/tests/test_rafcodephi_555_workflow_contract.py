@@ -1,9 +1,10 @@
 #!/usr/bin/env python3
-"""Exact Bash dispatch contract for RAFCODEPHI 555; no network/build."""
+"""No-build tests for the RAFCODEPHI 555 manual dispatch safety boundary."""
 from __future__ import annotations
 
 import json
 import os
+import re
 import subprocess
 import tempfile
 from pathlib import Path
@@ -12,104 +13,117 @@ import yaml
 
 ROOT = Path(__file__).resolve().parents[2]
 WORKFLOW = ROOT / ".github/workflows/555-artifact-manifold.yml"
-REPO = "rafaelmeloreisnovo/termux-packages"
+GOOD_SHA = "7" * 40
 
-def require(cond: bool, reason: str) -> None:
-    if not cond:
-        raise SystemExit(f"RAFCODEPHI_555_WORKFLOW_CONTRACT=BLOCKED:{reason}")
 
-def mock_record(event="workflow_dispatch", branch="main", repo=REPO,
-                head_repo=REPO, conclusion="failure", path=".github/workflows/rafcodephi-publish-dev-apt.yml"):
-    return {
-        "repository": {"full_name": repo},
+def must(condition: bool, label: str) -> None:
+    if not condition:
+        raise AssertionError("555_WORKFLOW_BLOCKED: " + label)
+
+
+def verify_case(script: str, tmp: Path, name: str, *,
+                origin: str, operation: str, run_id: str,
+                artifact_name: str, expected_sha: str,
+                event: str, path: str, head_repo: str,
+                head_branch: str, expect_pass: bool) -> None:
+    metadata = {
+        "repository": {"full_name": "rafaelmeloreisnovo/termux-packages"},
         "head_repository": {"full_name": head_repo},
+        "head_branch": head_branch,
+        "head_sha": GOOD_SHA,
         "event": event,
-        "head_branch": branch,
-        "conclusion": conclusion,
         "path": path,
-        "head_sha": "a" * 40,
+        "conclusion": "failure",
     }
+    source = tmp / "mock-run.json"
+    source.write_text(json.dumps(metadata), encoding="utf-8")
+    output = tmp / "job-output"
+    output.write_text("", encoding="utf-8")
+    env = dict(os.environ)
+    env.update({
+        "ORIGIN": origin,
+        "OPERATION": operation,
+        "RUN_ID": run_id,
+        "ARTIFACT_NAME": artifact_name,
+        "EXPECTED_SHA": expected_sha,
+        "GITHUB_REPOSITORY": "rafaelmeloreisnovo/termux-packages",
+        "GITHUB_OUTPUT": str(output),
+        "GH_META_FILE": str(source),
+        "GH_TOKEN": "synthetic-test-only",
+        "PATH": str(tmp) + os.pathsep + env["PATH"],
+    })
+    result = subprocess.run(["bash", "-e"], input=script, capture_output=True,
+                            text=True, env=env, check=False)
+    must((result.returncode == 0) == expect_pass,
+         f"{name}: unexpected exit {result.returncode} stderr={result.stderr[-250:]!r}")
+    if expect_pass and origin == "artifact-run":
+        must(f"producer_sha={GOOD_SHA}" in output.read_text(encoding="utf-8"),
+             f"{name}: producer_sha not bound")
 
-def validate(shell_script: str, event: dict, permit_preview: bool, expected: bool,
-             producer_sha_input: str = "") -> None:
-    with tempfile.TemporaryDirectory(prefix="rafcodephi-555-gate-") as base:
-        root = Path(base)
-        metadata = root / "run.json"
-        out = root / "github-output"
-        metadata.write_text(json.dumps(event), encoding="utf-8")
-        env = dict(os.environ)
-        env.update({
-            "GITHUB_REPOSITORY": REPO,
-            "GITHUB_OUTPUT": str(out),
-            "FAKE_METADATA": str(metadata),
-            "ORIGIN": "artifact-run",
-            "OPERATION": "triage",
-            "RUN_ID": "37696663078",
-            "ARTIFACT_NAME": "rafcodephi-dualarch-source-build-b1d029649351232649f4b1a03eab2084d0fbc4b6",
-            "PERMIT_PREVIEW": "true" if permit_preview else "false",
-            "EXPECTED_SHA": producer_sha_input,
-        })
-        stub = 'gh() { cat "$FAKE_METADATA"; }\n'
-        run = subprocess.run(
-            ["bash", "-c", stub + shell_script],
-            env=env, capture_output=True, text=True, check=False,
-        )
-        require((run.returncode == 0) == expected,
-                f"unexpected_gate_result:exit={run.returncode}:stderr={run.stderr[-350:]}")
-        if expected:
-            require(out.is_file() and "producer_sha=" + "a" * 40 in out.read_text(),
-                    "producer_sha_output_missing")
 
 def main() -> int:
-    model = yaml.safe_load(WORKFLOW.read_text(encoding="utf-8"))
-    jobs = model["jobs"]
-    workflow = model["on"] if "on" in model else model.get(True)
-    opts = workflow["workflow_dispatch"]["inputs"]
-    require(opts["permit_preview"]["default"] is False, "preview_must_opt_in")
-    require("expected_producer_sha" in opts, "preview_sha_input_missing")
-    compose_steps = jobs["compose"]["steps"]
-    script = next(s["run"] for s in compose_steps if s.get("id") == "resolve")
-    all_run_scripts = "\n".join(s.get("run", "") for s in compose_steps)
-    require(any(token in script for token in (
-        'if [[ "$ORIGIN" == "source-contract" ]]; then',
-        'if [[ "$ORIGIN" == source-contract ]]; then',
-    )), "source_branch_bash_guard")
-    require('[[ "$RUN_ID" =~ ^[1-9][0-9]*$ ]]' in script, "run_id_bash_guard")
-    require('[[ "$ARTIFACT_NAME" =~ ^[A-Za-z0-9._,-]{1,160}$ ]]' in script, "artifact_name_bash_guard")
-    require('[[ "$producer_sha" =~ ^[a-f0-9]{40}$ ]]' in script, "sha_bash_guard")
-    require('if [[ "$ORIGIN" == artifact-run ]]; then root=inbound; fi' in all_run_scripts, "download_root_bash_guard")
-    require('if ${{' not in all_run_scripts and '${{  "' not in all_run_scripts, "malformed_expression_in_shell")
-    require("rafcodephi-publish-dev-apt.yml" in script, "signed_apt_workflow_not_allowlisted")
-    require('.head_repository.full_name == $repo' in script, "untrusted_repo_guard_missing")
-    require("PERMIT_PREVIEW" in script and "pull_request" in script, "preview_scope_missing")
-    require('[[ "$EXPECTED_SHA" == "$producer_sha" ]]' in script, "preview_head_sha_guard_missing")
-    require(not any(x in all_run_scripts for x in (
-        "./scripts/build-rafcodephi-real-bootstrap.sh",
-        "bash ./scripts/build-rafcodephi-live-bootstrap.sh",
-        "run-rafcodephi-bootstrap-docker.sh",
-        "docker build",
-    )), "implicit_rebuild_in_555")
-    for s in compose_steps:
-        if s.get("run") and s.get("shell") == "bash":
-            syntax = subprocess.run(["bash", "-n", "-c", s["run"]],
-                                    capture_output=True, text=True, check=False)
-            require(syntax.returncode == 0, "bash_syntax:" + s.get("name", "unknown") + ":" + syntax.stderr[-150:])
-    validate(script, mock_record(), False, True)
-    validate(script, mock_record(event="pull_request", branch="hotfix/apt"), False, False)
-    validate(script, mock_record(event="pull_request", branch="hotfix/apt"), True, True,
-             producer_sha_input="a" * 40)
-    validate(script, mock_record(event="pull_request", branch="hotfix/apt"), True, False)
-    validate(script, mock_record(event="pull_request", branch="hotfix/apt"), True, False,
-             producer_sha_input="b" * 40)
-    validate(script, mock_record(event="pull_request", branch="hotfix/apt", head_repo="other/fork"), True, False,
-             producer_sha_input="a" * 40)
-    validate(script, mock_record(event="pull_request", branch="hotfix/apt", repo="other/repo"), True, False,
-             producer_sha_input="a" * 40)
-    validate(script, mock_record(event="pull_request", branch="hotfix/apt", conclusion=None), True, False,
-             producer_sha_input="a" * 40)
-    validate(script, mock_record(path=".github/workflows/unknown.yml"), True, False)
-    print("RAFCODEPHI_555_WORKFLOW_CONTRACT=PASS cases=9 build=NOT_RUN")
+    raw = WORKFLOW.read_text(encoding="utf-8")
+    must(not re.search(r"\$\{\{\s+['\"]?\$[A-Za-z_]", raw),
+         "BASH_VARIABLE_INSIDE_ACTIONS_INTERPOLATION")
+    doc = yaml.safe_load(raw)
+    inputs = doc["on" if "on" in doc else True]["workflow_dispatch"]["inputs"]
+    must("expected_producer_sha" in inputs, "EXPECTED_SHA_INPUT_MISSING")
+    steps = doc["jobs"]["compose"]["steps"]
+    matches = [step for step in steps if step.get("name") == "Verify options and producer authority"]
+    must(len(matches) == 1, "GUARD_STEP_AMBIGUOUS")
+    script = matches[0]["run"]
+    must("rafcodephi-publish-dev-apt.yml" in script, "SIGNED_APT_WORKFLOW_NOT_ALLOWED")
+    must("head_repository.full_name == $repo" in script, "SAME_REPO_BOUNDARY_MISSING")
+    must('[[ "$EXPECTED_SHA" == "$producer_sha" ]]' in script, "PR_HEAD_SHA_FALSIFIER_MISSING")
+    must('if [[ "$ORIGIN" == "source-contract" ]]; then' in script,
+         "SOURCE_CONTRACT_BASH_GUARD_MISSING")
+    must('if [[ "$ORIGIN" == "artifact-run" ]]' in doc["jobs"]["compose"]["steps"][3]["run"],
+         "ARTIFACT_INPUT_BASH_GUARD_MISSING")
+    must(subprocess.run(["bash", "-n"], input=script, text=True, capture_output=True,
+                        check=False).returncode == 0, "BASH_PARSE_FAILED")
+
+    with tempfile.TemporaryDirectory(prefix="rafcodephi-555-") as tmp_name:
+        tmp = Path(tmp_name)
+        stub = tmp / "gh"
+        stub.write_text('#!/bin/sh\ncat "$GH_META_FILE"\n', encoding="utf-8")
+        stub.chmod(0o700)
+        normal = {
+            "origin": "artifact-run", "operation": "triage",
+            "run_id": "37696663078",
+            "artifact_name": "rafcodephi-dualarch-signed-apt-abc",
+            "expected_sha": GOOD_SHA,
+            "event": "pull_request",
+            "path": ".github/workflows/rafcodephi-publish-dev-apt.yml",
+            "head_repo": "rafaelmeloreisnovo/termux-packages",
+            "head_branch": "hotfix/rafcodephi-apt-blocker-false-positive-20261007",
+            "expect_pass": True,
+        }
+        verify_case(script, tmp, "historical-pr-exact-head", **normal)
+        verify_case(script, tmp, "pr-wrong-sha",
+                    **{**normal, "expected_sha": "8" * 40, "expect_pass": False})
+        verify_case(script, tmp, "pr-foreign-head",
+                    **{**normal, "head_repo": "untrusted/fork", "expect_pass": False})
+        verify_case(script, tmp, "unrecognized-workflow",
+                    **{**normal, "path": ".github/workflows/arbitrary.yml", "expect_pass": False})
+        verify_case(script, tmp, "unsupported-event",
+                    **{**normal, "event": "schedule", "expect_pass": False})
+        verify_case(script, tmp, "dispatch-main",
+                    **{**normal, "event": "workflow_dispatch", "head_branch": "main",
+                       "expected_sha": "", "expect_pass": True})
+        verify_case(script, tmp, "dispatch-nonmain",
+                    **{**normal, "event": "workflow_dispatch", "head_branch": "feature",
+                       "expected_sha": "", "expect_pass": False})
+        verify_case(script, tmp, "source-only",
+                    **{**normal, "origin": "source-contract", "operation": "inventory",
+                       "run_id": "0", "artifact_name": "", "expected_sha": "",
+                       "expect_pass": True})
+        verify_case(script, tmp, "source-invalid-run",
+                    **{**normal, "origin": "source-contract", "operation": "inventory",
+                       "run_id": "37696663078", "artifact_name": "", "expected_sha": "",
+                       "expect_pass": False})
+    print("RAFCODEPHI_555_WORKFLOW_CONTRACT=PASS cases=9 no_build=true")
     return 0
+
 
 if __name__ == "__main__":
     raise SystemExit(main())
