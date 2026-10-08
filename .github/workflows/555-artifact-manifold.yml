@@ -1,0 +1,177 @@
+name: RAFCODEPHI 555 Artifact Manifold
+run-name: 555_${{ inputs.origin }}_${{ inputs.operation }}_${{ inputs.output_mode }}
+
+on:
+  workflow_dispatch:
+    inputs:
+      origin:
+        description: "%1 - fonte (no rebuild by default)"
+        required: true
+        type: choice
+        default: source-contract
+        options:
+          - source-contract
+          - artifact-run
+      operation:
+        description: "%2 - movimento de evidencia"
+        required: true
+        type: choice
+        default: inventory
+        options:
+          - inventory
+          - triage
+          - compose
+      output_mode:
+        description: "%3 - forma de receipt"
+        required: true
+        type: choice
+        default: receipt
+        options:
+          - receipt
+          - zipraf
+      producer_run_id:
+        description: "Run ID do produtor manual main; 0 em source-contract"
+        required: true
+        type: string
+        default: "0"
+      artifact_name:
+        description: "Nome exato do artifact da run (vazio em source-contract)"
+        required: false
+        type: string
+        default: ""
+  pull_request:
+    paths:
+      - '.github/workflows/555-artifact-manifold.yml'
+      - 'scripts/ci/rafcodephi_555_compose.py'
+      - 'scripts/ci/rafcodephi_failure_triage.py'
+      - 'docs/ROADMAPS_IA_HUMANOS/555_ARTIFACT_MANIFOLD_V1.md'
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: 555-${{ github.event_name }}-${{ github.ref }}-${{ inputs.producer_run_id || github.sha }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  contract:
+    if: ${{ github.event_name == 'pull_request' }}
+    name: 555 fast test - no producer
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+      - name: Static self-test without rebuilding
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 -m py_compile scripts/ci/rafcodephi_555_compose.py
+          python3 scripts/ci/rafcodephi_failure_triage.py --self-test
+          python3 scripts/ci/rafcodephi_555_compose.py --self-test
+
+  compose:
+    if: ${{ github.event_name == 'workflow_dispatch' }}
+    name: Read, verify and compose references only
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+
+      - name: Verify options and producer authority
+        id: resolve
+        shell: bash
+        env:
+          ORIGIN: ${{ inputs.origin }}
+          OPERATION: ${{ inputs.operation }}
+          RUN_ID: ${{ inputs.producer_run_id }}
+          ARTIFACT_NAME: ${{ inputs.artifact_name }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          if ${{  "$ORIGIN" == source-contract  }}; then
+            test "$RUN_ID" = 0
+            test -z "$ARTIFACT_NAME"
+            test "$OPERATION" = inventory
+            echo 'producer_sha=' >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          test "$ORIGIN" = artifact-run
+          ${{  "$RUN_ID" =~ ^[1-9][0-9]*$  }}
+          ${{  "$ARTIFACT_NAME" =~ ^[A-Za-z0-9._-]{1,128}$  }}
+          metadata="$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$RUN_ID")"
+          printf '%s' "$metadata" | jq -e --arg repo "$GITHUB_REPOSITORY" '
+            .repository.full_name == $repo
+            and .head_repository.full_name == $repo
+            and .head_branch == "main"
+            and .event == "workflow_dispatch"
+            and (.conclusion == "success" or .conclusion == "failure")
+          ' >/dev/null
+          workflow_path="$(printf '%s' "$metadata" | jq -r '.path // ""')"
+          case "$workflow_path" in
+            *'.github/workflows/rafcodephi-auto-handoff.yml'*|*'.github/workflows/rafcodephi-real-bootstrap.yml'*) ;;
+            *) echo 'BLOCKED: producer workflow not allowlisted' >&2; exit 1 ;;
+          esac
+          producer_sha="$(printf '%s' "$metadata" | jq -r '.head_sha')"
+          ${{  "$producer_sha" =~ ^[a-f0-9]{40}$  }}
+          echo "producer_sha=$producer_sha" >> "$GITHUB_OUTPUT"
+          echo "REUSE_VERIFIED_RUN=$RUN_ID sha=$producer_sha"
+
+      - name: Download exact previously uploaded artifact
+        if: ${{ inputs.origin == 'artifact-run' }}
+        uses: actions/download-artifact@v8
+        with:
+          name: ${{ inputs.artifact_name }}
+          run-id: ${{ inputs.producer_run_id }}
+          repository: ${{ github.repository }}
+          github-token: ${{ github.token }}
+          path: inbound
+
+      - name: Inventory, triage or compose (never rebuild)
+        shell: bash
+        env:
+          ORIGIN: ${{ inputs.origin }}
+          OPERATION: ${{ inputs.operation }}
+          OUTPUT_MODE: ${{ inputs.output_mode }}
+          RUN_ID: ${{ inputs.producer_run_id }}
+          ARTIFACT_NAME: ${{ inputs.artifact_name }}
+          PRODUCER_SHA: ${{ steps.resolve.outputs.producer_sha }}
+        run: |
+          set -euo pipefail
+          root=.
+          if ${{  "$ORIGIN" == artifact-run  }}; then root=inbound; fi
+          python3 scripts/ci/rafcodephi_555_compose.py \
+            --origin "$ORIGIN" \
+            --operation "$OPERATION" \
+            --output-mode "$OUTPUT_MODE" \
+            --producer-run-id "$RUN_ID" \
+            --producer-sha "$PRODUCER_SHA" \
+            --artifact-name "$ARTIFACT_NAME" \
+            --current-sha "$GITHUB_SHA" \
+            --input-root "$root" \
+            --out _555
+
+      - name: Summary and fail-closed state
+        if: always()
+        shell: bash
+        run: |
+          if test -f _555/555-receipt.json; then
+            jq '{status,origin,operation,output,custody,producer_sha,verifier_sha,source_commit_differs,compiled_in_this_run,claim_allowed,release_allowed,device_runtime_proof}' _555/555-receipt.json >> "$GITHUB_STEP_SUMMARY"
+          elif test -f _555/555-blocked.json; then
+            cat _555/555-blocked.json >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo '555 BLOCKED before receipt: option or provider authority failed.' >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+      - name: Upload compact evidence only - never rebuild binaries
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: 555-${{ inputs.origin }}-${{ inputs.operation }}-${{ inputs.output_mode }}-${{ github.run_id }}
+          path: _555/
+          if-no-files-found: warn
+          retention-days: 30
