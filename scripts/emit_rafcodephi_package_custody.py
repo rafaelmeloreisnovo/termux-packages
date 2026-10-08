@@ -68,6 +68,38 @@ def recipe_source_contract(text: str) -> dict:
     }
 
 
+def resolve_auto_recipe(packages_root: Path, output_pkg: str, static_generator: Path) -> tuple[str, str]:
+    """Find a unique recipe; recognize source-backed, build-time -static subpackages.
+
+    Do not infer a producer merely from a name. The unique parent build.sh and
+    canonical generating script must both exist and the generator contract must match.
+    """
+    direct = packages_root / output_pkg / "build.sh"
+    candidates: dict[str, str] = {}
+    if direct.is_file():
+        candidates[direct.parent.name] = "DIRECT_RECIPE"
+    for subpackage in packages_root.glob(f"*/{output_pkg}.subpackage.sh"):
+        candidates[subpackage.parent.name] = "STATIC_SUBPACKAGE_RECIPE"
+    if not candidates and output_pkg.endswith("-static"):
+        parent_name = output_pkg[:-len("-static")]
+        parent = packages_root / parent_name / "build.sh"
+        if parent.is_file() and static_generator.is_file():
+            generator = static_generator.read_text(encoding="utf-8")
+            required = (
+                "TERMUX_PKG_NO_STATICSPLIT",
+                "TERMUX_PKG_TMPDIR",
+                "${TERMUX_PKG_NAME}-static.subpackage.sh",
+            )
+            if all(marker in generator for marker in required):
+                candidates[parent_name] = "GENERATED_STATIC_SUBPACKAGE"
+    if len(candidates) != 1:
+        raise ValueError(
+            f"cannot resolve unique producing recipe for {output_pkg}: {sorted(candidates)}"
+        )
+    recipe_pkg, resolution = next(iter(sorted(candidates.items())))
+    return recipe_pkg, resolution
+
+
 def main() -> int:
     ap = argparse.ArgumentParser()
     source_group = ap.add_mutually_exclusive_group(required=True)
@@ -91,27 +123,24 @@ def main() -> int:
         deb_by_package[pkg] = deb
 
     rows = []
+    resolutions = {}
+    generator = root / "scripts/build/termux_create_debian_subpackages.sh"
     if args.map:
         for raw in Path(args.map).read_text(encoding="utf-8").splitlines():
             if not raw.strip():
                 continue
             output_pkg, recipe_pkg = raw.split("\t", 1)
             rows.append((output_pkg, recipe_pkg))
+            resolutions[output_pkg] = "EXPLICIT_MAP"
     else:
         packages_root = root / "packages"
         for output_pkg in sorted(deb_by_package):
-            direct = packages_root / output_pkg / "build.sh"
-            candidates = []
-            if direct.is_file():
-                candidates.append(direct.parent.name)
-            for subpackage in packages_root.glob(f"*/{output_pkg}.subpackage.sh"):
-                candidates.append(subpackage.parent.name)
-            candidates = sorted(set(candidates))
-            if len(candidates) != 1:
-                raise SystemExit(
-                    f"cannot resolve unique producing recipe for {output_pkg}: {candidates}"
-                )
-            rows.append((output_pkg, candidates[0]))
+            try:
+                recipe_pkg, resolution = resolve_auto_recipe(packages_root, output_pkg, generator)
+            except ValueError as error:
+                raise SystemExit(str(error)) from error
+            rows.append((output_pkg, recipe_pkg))
+            resolutions[output_pkg] = resolution
 
     records = []
     missing = []
@@ -132,6 +161,19 @@ def main() -> int:
             "deb_bytes": deb.stat().st_size,
             "deb_sha256": sha256_file(deb),
             "producer_recipe": f"packages/{recipe_pkg}/build.sh",
+            "recipe_resolution": resolutions[output_pkg],
+            "generator_source": (
+                "scripts/build/termux_create_debian_subpackages.sh"
+                if resolutions[output_pkg] == "GENERATED_STATIC_SUBPACKAGE" else "NOT_APPLICABLE"
+            ),
+            "generator_git_blob": (
+                git_blob(root, generator)
+                if resolutions[output_pkg] == "GENERATED_STATIC_SUBPACKAGE" else "NOT_APPLICABLE"
+            ),
+            "generator_sha256": (
+                sha256_file(generator)
+                if resolutions[output_pkg] == "GENERATED_STATIC_SUBPACKAGE" else "NOT_APPLICABLE"
+            ),
             "recipe_git_blob": git_blob(root, recipe),
             "recipe_sha256": sha256_file(recipe),
             "license_expression_declared": recipe_literal(recipe_text, "TERMUX_PKG_LICENSE"),
