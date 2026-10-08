@@ -16,7 +16,7 @@ assert "  handoff:\n" in workflow
 assert "    needs: [contract, produce]" in workflow
 assert "    needs: [contract, produce, verify-batch]" in workflow
 assert "    needs: [contract, produce, join-batches]" in workflow
-assert "    if: github.event_name != 'pull_request'" in workflow
+assert "    if: github.event_name == 'workflow_dispatch'" in workflow
 assert "python3 scripts/ci/rafcodephi_producer_zipraf.py --self-test" in workflow
 assert "python3 scripts/ci/rafcodephi_parallel_batches.py --self-test" in workflow
 assert "max-parallel: 2" in workflow
@@ -51,9 +51,9 @@ assert workflow.index("  contract:") < workflow.index("  produce:") < workflow.i
 assert "needs: [contract, produce, join-batches]" in workflow[workflow.index("  handoff:"):]
 assert "needs: [contract, produce, verify-batch]" in workflow[workflow.index("  join-batches:"):workflow.index("  handoff:")]
 assert "needs: [contract, produce]" in workflow[workflow.index("  verify-batch:"):workflow.index("  join-batches:")]
-assert "if: github.event_name != 'pull_request'" in workflow[workflow.index("  verify-batch:"):workflow.index("  join-batches:")]
-assert "if: github.event_name != 'pull_request'" in workflow[workflow.index("  join-batches:"):workflow.index("  handoff:")]
-assert "if: github.event_name != 'pull_request'" in workflow[workflow.index("  handoff:"):]
+assert "if: github.event_name == 'workflow_dispatch'" in workflow[workflow.index("  verify-batch:"):workflow.index("  join-batches:")]
+assert "if: github.event_name == 'workflow_dispatch'" in workflow[workflow.index("  join-batches:"):workflow.index("  handoff:")]
+assert "if: github.event_name == 'workflow_dispatch'" in workflow[workflow.index("  handoff:"):]
 assert "secrets.GITPAT || secrets.PATGITHUB || secrets.GIT" in workflow[workflow.index("  handoff:"):]
 assert "producer_artifact.outputs.artifact-id" in workflow[workflow.index("  produce:"):workflow.index("  handoff:")]
 assert '    "physical_android": "TOKEN_VAZIO"' in zipraf
@@ -71,8 +71,8 @@ assert "batch_receipt_mismatch" in batch_verifier
 assert "receipt_overwrite_forbidden" in batch_verifier
 
 # Change-sensitive producer: source writes only; no unrelated main pushes.
-# The PR contract job stays cheap, but a main producer must never be
-# cancelled mid-build (its ZIPRAF, digest and dispatch have one exact SHA).
+# Automatic push and PR now execute source contracts only. Producer/ZIPRAF
+# and downstream handoff require explicit manual dispatch of one exact SHA.
 trigger = workflow.split("\npermissions:\n", 1)[0]
 push = trigger.split("  push:", 1)[1].split("  pull_request:", 1)[0]
 assert "branches: [main]" in push
@@ -83,7 +83,7 @@ for source_path in (
     assert source_path in push, source_path
 assert "docs/**" not in push
 assert "  workflow_dispatch:" in trigger
-assert "group: rafcodephi-producer-${{ github.event_name }}-${{ github.ref }}" in workflow
-assert "cancel-in-progress: ${{ github.event_name == 'pull_request' }}" in workflow
+assert "group: rafcodephi-producer-${{ github.event_name }}-${{ github.event.pull_request.number || github.ref }}" in workflow
+assert "cancel-in-progress: ${{ github.event_name == 'pull_request' || github.event_name == 'push' }}" in workflow
 
 print("RAFCODEPHI_PIPELINE_CONTRACT=PASS jobs=5 matrix=arm+aarch64 fan-in=fail-closed handoff=preserved")
