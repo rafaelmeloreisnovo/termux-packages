@@ -153,7 +153,15 @@ def workflow_contract_self_test() -> None:
     ):
         if required not in source:
             raise AssertionError(f"555_WORKFLOW_CONTRACT_MISSING:{required}")
-    if 'if ${{' in source or '${{  "    with tempfile.TemporaryDirectory() as tmp:
+    expression_prefix = "$" + "{{"
+    if ("if " + expression_prefix) in source or (expression_prefix + '  "') in source:
+        raise AssertionError("555_BASH_VARIABLES_IN_GITHUB_EXPRESSION")
+    print("RAFCODEPHI_555_WORKFLOW_CONTRACT=PASS")
+
+
+def self_test() -> None:
+
+    with tempfile.TemporaryDirectory() as tmp:
         base = Path(tmp)
         checkout = base / "repo"
         for name in ROOT_FILES:
