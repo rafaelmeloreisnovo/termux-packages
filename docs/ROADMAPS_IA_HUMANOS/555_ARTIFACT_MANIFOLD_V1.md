@@ -28,7 +28,8 @@ producer_run_id is a workflow RUN ID, not an artifact ID.
 artifact_name is the exact name as shown in that run's Artifacts list.
 Use 0 and an empty name only for source-contract/inventory.
 Unsupported choices must fail closed. No implicit rebuild, automatic source fallback,
-or release. Only manually triggered, completed main producer runs from
+or release. Runs are provider-readback-bound. Manual main runs and same-repository pull_request
+runs are eligible for observation-only evidence reuse (never release). Producer workflows from
 rafcodephi-auto-handoff.yml or rafcodephi-real-bootstrap.yml qualify;
 failure runs are accepted for observation only. Receipts carry the producer
 run, SHA, verifier SHA, digest map and source drift flag.
@@ -101,3 +102,16 @@ R3:
 F_ok = existing sourcebuild/artifact/triage components can be reused.
 F_gap = no run-backed success, cross-run trust, persistent signed repo or Android execution proven here.
 F_next = validate the isolated opt-in manual dispatch on exact producer evidence.
+
+## 555 route 00→10→20→30→90: Signed APT predecessor and custody successor
+
+- ROOT SOURCE: run 37679999701, exact SHA 66e3bfc08bf9a8b50f50a0b1bcc759c4f4200657. ARM/AArch64 source build succeeded, signed bootstrap failed false-positive APT comment hook check.
+- HOTFIX: PR #134 merged, source changed; no retrospective claim for predecessor run.
+- SUCCESSOR: run 37696663078, exact SHA 77625363a031a081edd1db93d3f7a48e9bfff7f9, job 113049956541. Contract, dual-arch build and LIVE_BOOTSTRAP_PATCH steps succeeded; custody failed at "cannot resolve unique producing recipe for attr-static: []".
+- ROOT CAUSE SOURCE: scripts/build/termux_create_debian_subpackages.sh creates `-static.subpackage.sh` under the build-time TEMP directory. Static --auto-map was restricted to checked-in recipes and subpackage files.
+- SOURCE FIX CANDIDATE: resolve the unique parent `packages/attr/build.sh` for generated `attr-static`, conditional on the canonical generator's split markers, bind generator Git blob and SHA256 in the custody record, fail closed for unsupported parents/generator. No input DEBs are rebuilt by this logic.
+- WORKFLOW 555 FIX: five malformed Bash predicates corrected; same-repository PR signed-APT runs permitted for OBSERVATION_ONLY if provider metadata matches workflow, run SHA, repo and artifact name. Default read-only mode unchanged.
+- ARTIFACTS: run 37696663078, IDs 11521200291 (source-build) and 11520990883 (signed-apt), provider SHA256 digests recorded by GitHub; bytes not personally revalidated by this fix.
+- GATES: source-only synthetic fixtures, YAML syntax and 555 dispatch contract; global checks and physical Android runtime still require their own receipts. Claims and release remain false.
+- REBUILD POLICY: **NO_REBUILD**. Existing source build/debs retained. Next action is exact-head CI and an isolated mapper rerun against preserved DEBs; only then consider downstream APT repository verification, never blind publish.
+- ROLLBACK: revert only isolated fixes, do not rewrite historical run receipts.
