@@ -121,7 +121,8 @@ Historical evidence routes:
 
 New option: permit_preview defaults false. When explicitly true it permits
 read-only observation of a completed, same-repository pull_request run whose
-producer YAML is on the allowlist. This NEVER upgrades draft/PR evidence to
+producer YAML is on the allowlist. In addition, expected_producer_sha MUST equal
+GitHub's immutable head_sha for that PR run, otherwise fail closed. This NEVER upgrades draft/PR evidence to
 main/release, does not rebuild, does not execute downloaded packages, and does
 not override source identity, input hashes or `claim_allowed=false`.
 Missing producer handoff SHA metadata remains RUN_BOUND_HASHED_UNATTESTED.
@@ -130,6 +131,7 @@ Actual run after merge, when authorized:
 workflow: .github/workflows/555-artifact-manifold.yml
 origin=artifact-run; operation=triage; output_mode=receipt;
 producer_run_id=37696663078; permit_preview=true;
+expected_producer_sha=77625363a031a081edd1db93d3f7a48e9bfff7f9;
 artifact_name=rafcodephi-dualarch-source-build-b1d029649351232649f4b1a03eab2084d0fbc4b6
 
 Expected: receipt/triage of a historical FAILED run; not a status transition.
@@ -137,7 +139,7 @@ This recipe is NOT an executed 555 run until GitHub readback confirms it.
 No automatic rerun, no publication or Android runtime proof.
 
 Validation: Python test scripts/tests/test_rafcodephi_555_workflow_contract.py
-checks all Bash run steps with bash -n, plus seven simulated GitHub run
+checks all Bash run steps with bash -n, plus nine simulated GitHub run
 metadata decisions (main, preview denied/allowed, foreign/fork,
 unfinished and unknown producer). CI exact HEAD is required before PASS.
 
