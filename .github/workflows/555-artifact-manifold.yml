@@ -118,6 +118,12 @@ jobs:
             and ((.event == "workflow_dispatch" and .head_branch == "main")
               or (.event == "pull_request" and .head_branch != null))
           ' >/dev/null
+          if [[ "$PERMIT_PREVIEW" == "true" ]]; then
+            printf '%s' "$metadata" | jq -e '.event == "pull_request" or (.event == "workflow_dispatch" and .head_branch == "main")' >/dev/null
+          else
+            printf '%s' "$metadata" | jq -e '.event == "workflow_dispatch" and .head_branch == "main"' >/dev/null
+          fi
+          # PR-derived evidence is observation-only, never source promotion.
           workflow_path="$(printf '%s' "$metadata" | jq -r '.path // ""')"
           case "$workflow_path" in
             *'.github/workflows/rafcodephi-auto-handoff.yml'*|*'.github/workflows/rafcodephi-real-bootstrap.yml'*|*'.github/workflows/rafcodephi-publish-dev-apt.yml'*) ;;

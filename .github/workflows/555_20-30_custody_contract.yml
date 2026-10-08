@@ -1,0 +1,228 @@
+name: 555_20-30 | APT CUSTODY CONTRACT
+run-name: 555_20-30_custody_${{ github.event_name }}_${{ github.sha }}
+
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/555_20-30_custody_contract.yml'
+      - '.github/workflows/555-artifact-manifold.yml'
+      - '.github/workflows/rafcodephi-publish-dev-apt.yml'
+      - 'scripts/tests/test_rafcodephi_publish_dev_apt_workflow_contract.py'
+      - 'scripts/emit_rafcodephi_package_custody.py'
+      - 'scripts/tests/test_rafcodephi_package_custody_contract.py'
+      - 'scripts/build/termux_create_debian_subpackages.sh'
+      - 'docs/ROADMAPS_IA_HUMANOS/555_APT_CUSTODY_NO_REBUILD_HOTFIX_V1.md'
+  workflow_dispatch:
+    inputs:
+      replay_history:
+        description: "Reusar artefatos da run 37696663078; sem recompilar, sem publicar"
+        required: true
+        default: false
+        type: boolean
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: 555-apt-custody-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  verify-no-rebuild:
+    name: Verify source & generated-static mapping (no builder)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - name: Checkout exact revision
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 1
+          persist-credentials: false
+      - name: Python syntax and no-build positive/negative fixtures
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p build/reports
+          python3 -m py_compile scripts/emit_rafcodephi_package_custody.py scripts/tests/test_rafcodephi_package_custody_contract.py
+          python3 scripts/tests/test_rafcodephi_package_custody_contract.py 2>&1 | tee build/reports/555-apt-custody-contract.log
+          python3 scripts/ci/rafcodephi_555_compose.py --self-test 2>&1 | tee build/reports/555-artifact-manifold-selftest.log
+          python3 - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+          obj = {
+            "schema": "rafcodephi.555-apt-custody-source-contract/v1",
+            "source_commit": os.environ["GITHUB_SHA"],
+            "scope": "SOURCE_SELFTEST_ONLY",
+            "tests": ["custody_mapping_negative_positive", "555_artifact_manifold"],
+            "state": "PASS_SCOPED",
+            "compile_source_packages": False,
+            "artifact_replay": "TOKEN_VAZIO",
+            "signed_repository": "TOKEN_VAZIO",
+            "physical_android": "TOKEN_VAZIO",
+            "claim_allowed": False
+          }
+          Path("build/reports/555-apt-custody-receipt.json").write_text(
+              json.dumps(obj, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+          PY
+          (cd build/reports && sha256sum 555-apt-custody-receipt.json > 555-apt-custody-receipt.json.sha256)
+          cat build/reports/555-apt-custody-receipt.json >> "$GITHUB_STEP_SUMMARY"
+      - name: Preserve scope-limited receipt and logs
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: 555-apt-custody-source-${{ github.sha }}-${{ github.run_id }}
+          path: build/reports/555-*
+          if-no-files-found: warn
+          retention-days: 30
+
+  replay-preserved:
+    name: Historical APT custody — bytes-only replay (no compile)
+    if: ${{ github.event_name == 'workflow_dispatch' && inputs.replay_history }}
+    needs: [verify-no-rebuild]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    env:
+      GH_TOKEN: ${{ github.token }}
+      PRODUCER_HEAD_SHA: 77625363a031a081edd1db93d3f7a48e9bfff7f9
+      PRODUCER_BUILD_SHA: b1d029649351232649f4b1a03eab2084d0fbc4b6
+      PRODUCER_RUN_ID: '37696663078'
+      ARTIFACT_ID: '11521200291'
+      ARTIFACT_NAME: rafcodephi-dualarch-source-build-b1d029649351232649f4b1a03eab2084d0fbc4b6
+      ARTIFACT_DIGEST: sha256:5340b3d05a3257138af7f2513493b8adb5fcd68d1afa4e24c683f3685578af14
+    steps:
+      - name: Checkout verifier (never builder)
+        uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+      - name: Verify historical provider authority and expected artifact digest
+        shell: bash
+        run: |
+          set -euo pipefail
+          gh api "repos/$GITHUB_REPOSITORY/actions/runs/$PRODUCER_RUN_ID" > run.json
+          jq -e --arg repo "$GITHUB_REPOSITORY" --arg sha "$PRODUCER_HEAD_SHA" '
+             .repository.full_name == $repo
+             and .head_repository.full_name == $repo
+             and .head_sha == $sha
+             and .event == "pull_request"
+             and .conclusion == "failure"
+             and .path == ".github/workflows/rafcodephi-publish-dev-apt.yml"
+          ' run.json >/dev/null
+          gh api "repos/$GITHUB_REPOSITORY/actions/artifacts/$ARTIFACT_ID" > artifact.json
+          jq -e --arg sha "$PRODUCER_HEAD_SHA" --arg digest "$ARTIFACT_DIGEST" \
+            --arg name "$ARTIFACT_NAME" --argjson run "$PRODUCER_RUN_ID" '
+            .expired == false and .name == $name
+            and .digest == $digest
+            and .workflow_run.id == $run
+            and .workflow_run.head_sha == $sha
+          ' artifact.json >/dev/null
+      - name: Checkout exact historical producer source for recipe git blob identity
+        uses: actions/checkout@v6
+        with:
+          ref: b1d029649351232649f4b1a03eab2084d0fbc4b6
+          path: preserved-source
+          fetch-depth: 1
+          persist-credentials: false
+      - name: Download only the exact preserved source artifact
+        uses: actions/download-artifact@v8
+        with:
+          name: rafcodephi-dualarch-source-build-b1d029649351232649f4b1a03eab2084d0fbc4b6
+          run-id: 37696663078
+          repository: ${{ github.repository }}
+          github-token: ${{ github.token }}
+          path: inbound
+      - name: Read-only archive validation and safe extraction
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git -C preserved-source rev-parse HEAD)" = "$PRODUCER_BUILD_SHA"
+          test -s inbound/build/reports/rafcodephi-dualarch-source-built-debs.tar
+          (cd inbound && sha256sum -c build/reports/rafcodephi-dualarch-source-built-debs.tar.sha256)
+          mkdir -p preserved
+          python3 - <<'PY'
+          import tarfile
+          from pathlib import Path, PurePosixPath
+          archive = Path("inbound/build/reports/rafcodephi-dualarch-source-built-debs.tar")
+          with tarfile.open(archive, mode="r:") as tf:
+              members = tf.getmembers()
+              if not members:
+                  raise SystemExit("EMPTY_DEB_CUSTODY_TAR")
+              for member in members:
+                  path = PurePosixPath(member.name)
+                  if (path.is_absolute() or ".." in path.parts
+                      or not path.parts or path.parts[0] != "debs"
+                      or not (member.isfile() or member.isdir())):
+                      raise SystemExit("UNSAFE_ARCHIVE_MEMBER:" + member.name)
+              tf.extractall("preserved", filter="data")
+          PY
+          for arch in arm aarch64; do
+            test -s "preserved/debs/$arch/SHA256SUMS"
+            (cd "preserved/debs/$arch" && sha256sum -c SHA256SUMS) \
+              > "preserved/check-$arch.log"
+          done
+      - name: Replay per-DEB custody from preserved bytes and producer commit
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p replay/receipts
+          for arch in arm aarch64; do
+            python3 scripts/emit_rafcodephi_package_custody.py \
+              --auto-map \
+              --repo-root preserved-source \
+              --deb-dir "preserved/debs/$arch" \
+              --out "replay/receipts/rafcodephi-package-custody-$arch.json" \
+              --commit "$PRODUCER_BUILD_SHA" \
+              --arch "$arch" \
+              --profile bootstrap
+            (cd replay/receipts && sha256sum -c "rafcodephi-package-custody-$arch.json.sha256")
+          done
+          python3 - <<'PY'
+          import hashlib, json, os
+          from pathlib import Path
+          rows = {}
+          for arch in ("arm", "aarch64"):
+              path = Path(f"replay/receipts/rafcodephi-package-custody-{arch}.json")
+              obj = json.loads(path.read_text(encoding="utf-8"))
+              if obj["source_commit"] != os.environ["PRODUCER_BUILD_SHA"]:
+                  raise SystemExit("SOURCE_SHA_MISMATCH")
+              rows[arch] = {
+                  "manifest_sha256": hashlib.sha256(path.read_bytes()).hexdigest(),
+                  "records_root_sha256": obj["records_root_sha256"],
+                  "record_count": obj["record_count"]
+              }
+          canonical = json.dumps(rows, sort_keys=True, separators=(",", ":")).encode()
+          receipt = {
+              "schema": "rafcodephi.555-historical-custody-replay/v1",
+              "state": "CUSTODY_REPLAY_PASS_SCOPED",
+              "producer_run_id": int(os.environ["PRODUCER_RUN_ID"]),
+              "producer_run_head_sha": os.environ["PRODUCER_HEAD_SHA"],
+              "producer_build_checkout_sha": os.environ["PRODUCER_BUILD_SHA"],
+              "verifier_sha": os.environ["GITHUB_SHA"],
+              "artifact_id": int(os.environ["ARTIFACT_ID"]),
+              "artifact_name": os.environ["ARTIFACT_NAME"],
+              "artifact_provider_digest": os.environ["ARTIFACT_DIGEST"],
+              "architectures": rows,
+              "root_sha256": hashlib.sha256(canonical).hexdigest(),
+              "compilation_performed": False,
+              "signed_repository_resolved": "TOKEN_VAZIO",
+              "physical_android": "TOKEN_VAZIO",
+              "claim_allowed": False,
+              "release_allowed": False
+          }
+          Path("replay/receipts/555-apt-custody-replay.json").write_text(
+              json.dumps(receipt, sort_keys=True, indent=2) + "\n", encoding="utf-8")
+          PY
+          (cd replay/receipts && sha256sum 555-apt-custody-replay.json > 555-apt-custody-replay.json.sha256)
+          cat replay/receipts/555-apt-custody-replay.json >> "$GITHUB_STEP_SUMMARY"
+      - name: Upload only compact receipts and checks (not binary rebuild)
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: 555-apt-custody-replay-${{ github.run_id }}
+          path: |
+            replay/receipts/
+            preserved/check-arm.log
+            preserved/check-aarch64.log
+          if-no-files-found: warn
+          retention-days: 30
