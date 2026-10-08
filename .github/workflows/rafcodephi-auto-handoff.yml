@@ -331,7 +331,7 @@ jobs:
             --source-sha "$GITHUB_SHA" --run-id "$GITHUB_RUN_ID" \
             --artifact-id "$ARTIFACT_ID" --artifact-digest "$ARTIFACT_DIGEST" \
             --output batch-receipts/batch-join.json
-          sha256sum batch-receipts/batch-*.json > batch-receipts/SHA256SUMS.txt
+          (cd batch-receipts && sha256sum batch-*.json > SHA256SUMS.txt)
           (cd batch-receipts && sha256sum -c SHA256SUMS.txt)
           cat batch-receipts/batch-join.json >> "$GITHUB_STEP_SUMMARY"
 
