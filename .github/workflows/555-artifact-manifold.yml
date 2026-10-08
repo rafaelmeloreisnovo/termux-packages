@@ -34,6 +34,16 @@ on:
         required: true
         type: string
         default: "0"
+      permit_preview:
+        description: "Permitir observacao de artefatos de PR do mesmo repositorio (sem promocao)"
+        required: true
+        type: boolean
+        default: false
+      expected_producer_sha:
+        description: "SHA exato do commit produtor; obrigatorio para observacao de PR"
+        required: false
+        type: string
+        default: ""
       artifact_name:
         description: "Nome exato do artifact da run (vazio em source-contract)"
         required: false
@@ -90,12 +100,15 @@ jobs:
           OPERATION: ${{ inputs.operation }}
           RUN_ID: ${{ inputs.producer_run_id }}
           ARTIFACT_NAME: ${{ inputs.artifact_name }}
+          PERMIT_PREVIEW: ${{ inputs.permit_preview }}
+          EXPECTED_SHA: ${{ inputs.expected_producer_sha }}
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
           if [[ "$ORIGIN" == source-contract ]]; then
             test "$RUN_ID" = 0
             test -z "$ARTIFACT_NAME"
+            test -z "$EXPECTED_SHA"
             test "$OPERATION" = inventory
             echo 'producer_sha=' >> "$GITHUB_OUTPUT"
             exit 0
@@ -107,10 +120,14 @@ jobs:
           printf '%s' "$metadata" | jq -e --arg repo "$GITHUB_REPOSITORY" '
             .repository.full_name == $repo
             and .head_repository.full_name == $repo
-            and .head_branch == "main"
-            and .event == "workflow_dispatch"
             and (.conclusion == "success" or .conclusion == "failure")
           ' >/dev/null
+          if [[ "$PERMIT_PREVIEW" == "true" ]]; then
+            printf '%s' "$metadata" | jq -e '.event == "pull_request" or (.event == "workflow_dispatch" and .head_branch == "main")' >/dev/null
+          else
+            printf '%s' "$metadata" | jq -e '.event == "workflow_dispatch" and .head_branch == "main"' >/dev/null
+          fi
+          # PR-derived evidence is observation-only, never source promotion.
           workflow_path="$(printf '%s' "$metadata" | jq -r '.path // ""')"
           case "$workflow_path" in
             *'.github/workflows/rafcodephi-auto-handoff.yml'*|*'.github/workflows/rafcodephi-real-bootstrap.yml'*|*'.github/workflows/rafcodephi-publish-dev-apt.yml'*) ;;
@@ -118,6 +135,13 @@ jobs:
           esac
           producer_sha="$(printf '%s' "$metadata" | jq -r '.head_sha')"
           [[ "$producer_sha" =~ ^[a-f0-9]{40}$ ]]
+          event_type="$(printf '%s' "$metadata" | jq -r '.event')"
+          if [[ "$event_type" == "pull_request" || -n "$EXPECTED_SHA" ]]; then
+            [[ "$EXPECTED_SHA" == "$producer_sha" ]] || {
+              echo "BLOCKED: historical preview requires exact producer HEAD SHA" >&2
+              exit 1
+            }
+          fi
           echo "producer_sha=$producer_sha" >> "$GITHUB_OUTPUT"
           echo "REUSE_VERIFIED_RUN=$RUN_ID sha=$producer_sha"
 
