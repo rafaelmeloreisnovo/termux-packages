@@ -102,12 +102,48 @@ F_ok = existing sourcebuild/artifact/triage components can be reused.
 F_gap = no run-backed success, cross-run trust, persistent signed repo or Android execution proven here.
 F_next = validate the isolated opt-in manual dispatch on exact producer evidence.
 
-## Successor: 555_20-30 signed-APT audit route (2026-10-08)
+## Successor: signed APT read-only reconstruction and Bash gate hotfix
 
-The visible GitHub workflow name is `555_20-30 | APT Diagnose and Artifact Reuse`; its original filename remains unchanged for compatibility. User route: `00 → 10 → 20 → 30 → 90`. Manual choices from a failed signed-APT main run: `origin=artifact-run`, `operation=triage`, `output_mode=receipt` or `zipraf`, `producer_run_id=37679999701`, `artifact_name=rafcodephi-dualarch-signed-apt-66e3bfc08bf9a8b50f50a0b1bcc759c4f4200657` (only while artifact is retained and not expired). Another run/arch requires readback of its exact values.
+Date: 2026-10-08. The existing PR #141 was merged; its original 555 manual workflow
+accidentally used GitHub expression delimiters in five Bash predicates. YAML
+syntax PASS was not evidence that manually selected options were executable.
+The successor fixes only these shell predicates and adds a real fake-provider
+execution test in the fast CI gate, with both allowed and forbidden cases.
 
-The allowlist now includes the pre-existing `rafcodephi-publish-dev-apt.yml` as a **read-only** producer evidence source alongside the prior two workflows. Only completed main `workflow_dispatch` runs qualify; a successful artifact download/triage does **not** turn a historically failed build green. Bash predicates are evaluated as Bash, not as GitHub expression text; their exact spellings are guarded by the existing lightweight 555 self-test.
+Historical evidence routes:
+- producer run 37679999701, main commit 66e3bfc08bf9a8b50f50a0b1bcc759c4f4200657,
+  guard-comment false positive; archive artifacts remained on GitHub;
+- producer run 37696663078, same-repo pull_request commit
+  77625363a031a081edd1db93d3f7a48e9bfff7f9: signed bootstrap stage PASS,
+  per-DEB custody fails at generated attr-static; publication SKIPPED;
+- PR #134 guard-comment hotfix merged; PR #142 addresses generated-static custody
+  and its exact-head fast source-contract CI passed, independent of full build.
 
-**Independent custody gap:** Later signed-APT run `37696663078` built both architectures, then failed at `attr-static` while attributing generated subpackages. [PR #142](https://github.com/rafaelmeloreisnovo/termux-packages/pull/142) addresses the family in a separate producer hotfix; it is not evidence of a new runtime proof. Distinguish historical `SOURCE_BUILD=PASS`, `PACKAGE_CUSTODY=FAIL`, `REPOSITORY=SKIPPED`, `PHYSICAL_ANDROID=TOKEN_VAZIO`. Keep publication/release prohibited.
+New option: permit_preview defaults false. When explicitly true it permits
+read-only observation of a completed, same-repository pull_request run whose
+producer YAML is on the allowlist. In addition, expected_producer_sha MUST equal
+GitHub's immutable head_sha for that PR run, otherwise fail closed. This NEVER upgrades draft/PR evidence to
+main/release, does not rebuild, does not execute downloaded packages, and does
+not override source identity, input hashes or `claim_allowed=false`.
+Missing producer handoff SHA metadata remains RUN_BOUND_HASHED_UNATTESTED.
 
-Correction scope: workflow predicates/allowlist/label, analyzer regression self-test, and this minimal route. No old artifacts are overwritten, no compilation is run, no signing keys are touched. Rollback: revert only this successor patch; historical receipts survive.
+Actual run after merge, when authorized:
+workflow: .github/workflows/555-artifact-manifold.yml
+origin=artifact-run; operation=triage; output_mode=receipt;
+producer_run_id=37696663078; permit_preview=true;
+expected_producer_sha=77625363a031a081edd1db93d3f7a48e9bfff7f9;
+artifact_name=rafcodephi-dualarch-source-build-b1d029649351232649f4b1a03eab2084d0fbc4b6
+
+Expected: receipt/triage of a historical FAILED run; not a status transition.
+This recipe is NOT an executed 555 run until GitHub readback confirms it.
+No automatic rerun, no publication or Android runtime proof.
+
+Validation: Python test scripts/tests/test_rafcodephi_555_workflow_contract.py
+checks all Bash run steps with bash -n, plus nine simulated GitHub run
+metadata decisions (main, preview denied/allowed, foreign/fork,
+unfinished and unknown producer). CI exact HEAD is required before PASS.
+
+R3: F_ok=immutable run metadata + explicit read-only provenance boundary;
+F_gap=execution of manual 555 not observed, APT publishing and device
+remain TOKEN_VAZIO; F_next=exact-head CI then choose run option and compare
+historical artifact identity without rebuilding.
