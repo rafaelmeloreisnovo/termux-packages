@@ -101,3 +101,13 @@ R3:
 F_ok = existing sourcebuild/artifact/triage components can be reused.
 F_gap = no run-backed success, cross-run trust, persistent signed repo or Android execution proven here.
 F_next = validate the isolated opt-in manual dispatch on exact producer evidence.
+
+## 2026-10-08: source-bound historical PR reuse (supersedes eligibility prose above)
+
+Observation-only 555 permits completed allowlisted producers from same-repository `workflow_dispatch` on `main`, or `pull_request` with `expected_producer_sha` equal to GitHub's recorded run HEAD. If a SHA is supplied for manual main it must also match. A fork, mismatched SHA, disallowed event/workflow, absent artifact, or missing producer metadata fails closed. This supersedes the earlier manual/main-only rule without erasing precedent.
+
+Historical target: run `37696663078`, event `pull_request`, producer HEAD `77625363a031a081edd1db93d3f7a48e9bfff7f9`, workflow `rafcodephi-publish-dev-apt.yml`. Candidate exact artifact `rafcodephi-dualarch-signed-apt-b1d029649351232649f4b1a03eab2084d0fbc4b6`. Use `inventory` unless logs are found in that artifact; the producing run failed at DEB custody. No rebuild, release, or Android claim.
+
+See `555_BOOTSTRAP_INPUT_CUSTODY_20261008.md` for hash and APT-state discrepancies of the user-provided attachments. They are inputs, **not** automatically authenticated as producer output. The separate dynamic `-static` mapping correction is PR #142; do not mix its causal scope into this guard.
+
+Rollback: revert the isolated follow-up commit; leave producer artifacts and prior receipts immutable.
