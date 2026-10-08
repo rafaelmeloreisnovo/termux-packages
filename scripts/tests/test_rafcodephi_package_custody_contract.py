@@ -78,6 +78,14 @@ def main() -> int:
 
     require("missing expected output .deb(s)" in script, "MISSING_OUTPUT_NOT_FAIL_CLOSED")
     require('"claim_allowed": False' in script, "CLAIM_BOUNDARY_MISSING")
+    workflow_555 = (ROOT / ".github/workflows/555-artifact-manifold.yml").read_text(encoding="utf-8")
+    require('if ${{' not in workflow_555, "555_RUNTIME_PREDICATE_BASH_INTERPOLATION")
+    require('if [[ "$ORIGIN" == source-contract ]]; then' in workflow_555,
+            "555_SOURCE_PREDICATE_MISSING")
+    require('if [[ "$ORIGIN" == artifact-run ]]; then root=inbound; fi' in workflow_555,
+            "555_ARTIFACT_PREDICATE_MISSING")
+    require('[[ "$RUN_ID" =~ ^[1-9][0-9]*$ ]]' in workflow_555,
+            "555_RUN_ID_VALIDATION_MISSING")
     test_generated_static_recipe()
     print("RAFCODEPHI_PACKAGE_CUSTODY_CONTRACT=PASS per_deb=true recipe_blob=true sha256=true fail_closed=true")
     return 0
