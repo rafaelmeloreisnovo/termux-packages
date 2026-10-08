@@ -147,3 +147,26 @@ R3: F_ok=immutable run metadata + explicit read-only provenance boundary;
 F_gap=execution of manual 555 not observed, APT publishing and device
 remain TOKEN_VAZIO; F_next=exact-head CI then choose run option and compare
 historical artifact identity without rebuilding.
+
+## V2 successor after PR #142 merged (2026-10-08)
+
+The previous section records an earlier observation cut (PR #142 not merged).
+Current verified successor: PR #142 **MERGED** into main as
+`a7be64df440d0b67373a1530562dc00414053eb4`. It already repairs
+all five malformed 555 Bash predicates; do not repeat/revert those lines.
+The earlier PR #146 could not merge cleanly after concurrent PR #142
+promotion. The replacement branch `fix/555-preview-reuse-after-pr142-v2`
+is based on the merged main, carries only the opt-in artifact preview scope,
+producer SHA pinning, regression tests and this route documentation.
+PR #146 remains historical predecessor, not authority for release.
+
+For observation of the old failed PR run:
+`permit_preview=true` AND
+`expected_producer_sha=77625363a031a081edd1db93d3f7a48e9bfff7f9`,
+`producer_run_id=37696663078`, plus the exact artifact name.
+No source-build, apt publish or device runtime is performed. The
+input SHA guard must reject a mismatch; historic failure state is unchanged.
+
+SOURCE != ARTIFACT != EXECUTION != EVIDENCE != CLAIM.
+Implementation without a completed manual 555 run remains NOT_RUN.
+Rollback and corrections are append-only successors.
