@@ -3,6 +3,17 @@ name: RAFCODEPHI Producer — termux-packages to app
 on:
   push:
     branches: [main]
+    # The 210-minute producer is triggered only by its inputs, not every
+    # unrelated docs/audit commit. Full manual rebuild remains available.
+    paths:
+      - '.github/workflows/rafcodephi-auto-handoff.yml'
+      - 'scripts/**'
+      - 'packages/**'
+      - 'core/**'
+      - 'configs/**'
+      - 'build-package.sh'
+      - 'build-all.sh'
+      - 'Dockerfile*'
   pull_request:
     branches: [main]
     paths:
@@ -21,8 +32,10 @@ permissions:
   contents: read
 
 concurrency:
-  group: rafcodephi-producer-${{ github.ref }}
-  cancel-in-progress: true
+  # PR previews can be superseded. An immutable main producer must finish
+  # to preserve its exact-SHA ZIPRAF/ABI evidence before a newer run starts.
+  group: rafcodephi-producer-${{ github.event_name }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
   contract:
