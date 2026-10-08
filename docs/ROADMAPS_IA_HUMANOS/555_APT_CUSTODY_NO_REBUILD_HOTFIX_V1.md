@@ -34,8 +34,10 @@ No direct recipe means **missing mapping**, not a corrupted package.
 
 ## 90 — Gates and stop rules
 1. Exact-HEAD source syntax + Python synthetic tests must PASS.
-2. Artifact-based custody replay should read original preserved source binaries from producer run. Run-specific source SHA must be correctly bound and the graph must reject missing or mismatched producer bytes. **Never rebuild merely to test a map.**
-3. Some GitHub Actions artifact reuse paths accept only allowed producer runs; the historical signed APT run is from a PR branch and may be rejected by current 555 policy. Do not lower trust merely for convenience. If needed, add a separately audited read-only historical-evidence lane without promotion.
+2. Artifact-based custody replay must read original preserved source binaries from producer run. Run-specific source SHA must be correctly bound and the graph must reject missing or mismatched producer bytes. **Never rebuild merely to test a map.**
+3. Added a separate narrowly allowlisted, manually opted-in read-only replay lane: `.github/workflows/555_20-30_custody_contract.yml` → `workflow_dispatch` → `replay_history=true`. It checks the exact historical run (37696663078), producer commit and GitHub artifact ID/digest before safe extraction. It uses the current audited verifier script against the original checked-out recipe SHA. It uploads only aggregate receipts, not another DEB archive; no heavy producer is invoked.
+   Important: merely adding the lane is IMPLEMENTED_UNTESTED_REPLAY. Until its manual run completes with exact-head readback, `CUSTODY_REPLAY_PASS_SCOPED` remains TOKEN_VAZIO.
+   The generic 555 artifact-run lane still keeps its distinct main/workflow_dispatch whitelist.
 4. APT package indexing, GPG chain, installation, real-device runtime and release remain distinct gates. Publishing requires explicitly authorized production keys and verified runtime.
 5. Retain old execution logs, SHA-256 references, and a rollback-able PR; never mutate historical receipts.
 
