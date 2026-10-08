@@ -327,7 +327,9 @@ jobs:
     name: D3 invariant — both architectures must pass
     runs-on: ubuntu-24.04
     needs: [d3-real]
-    if: always()
+    # Draft PR has no D3 runtime proof; do not create a fake failed receipt
+    # from an intentionally skipped matrix. Ready PR/main still fail closed.
+    if: ${{ always() && (github.event_name != 'pull_request' || !github.event.pull_request.draft) }}
     steps:
       - name: Fail closed unless ARM and AArch64 D3 matrix is green
         shell: bash
