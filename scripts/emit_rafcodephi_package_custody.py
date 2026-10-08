@@ -91,7 +91,11 @@ def dynamic_static_producer(root: Path, output_pkg: str, debs: dict[str, Path]) 
     if any(token not in rule_source for token in required):
         raise SystemExit("static subpackage generator contract changed; provenance BLOCKED")
     recipe_source = recipe.read_text(encoding="utf-8")
-    if re.search(r"(?m)^\\s*TERMUX_PKG_NO_STATICSPLIT\\s*=\\s*['\\\"]?true['\\\"]?\\s*(?:#.*)?$", recipe_source):
+    if any(
+        line.split("=", 1)[1].split("#", 1)[0].strip().strip("'\\\"") == "true"
+        for line in recipe_source.splitlines()
+        if line.lstrip().startswith("TERMUX_PKG_NO_STATICSPLIT=")
+    ):
         return None
 
     pkg_deb, parent_deb = debs[output_pkg], debs[parent]
@@ -100,8 +104,8 @@ def dynamic_static_producer(root: Path, output_pkg: str, debs: dict[str, Path]) 
     depends = deb_field(pkg_deb, "Depends")
     description = deb_field(pkg_deb, "Description").splitlines()[0]
     parent_dependency = re.compile(
-        r"(?:^|,\\s*)" + re.escape(parent) + r"\\s*\\(=\\s*" +
-        re.escape(parent_version) + r"\\)(?:\\s*,|\\s*$)"
+        r"(?:^|,\s*)" + re.escape(parent) + r"\s*\(=\s*" +
+        re.escape(parent_version) + r"\)(?:\s*,|\s*$)"
     )
     if (
         pkg_version != parent_version
