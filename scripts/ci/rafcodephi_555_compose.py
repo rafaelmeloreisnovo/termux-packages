@@ -139,6 +139,98 @@ def compose(origin: str, operation: str, output_mode: str, root: Path, out: Path
     return report
 
 
+def workflow_contract_self_test() -> None:
+    """Apt re-use must parse Bash variables in shell, not GitHub expressions."""
+    workflow = Path(__file__).resolve().parents[2] / ".github/workflows/555-artifact-manifold.yml"
+    source = workflow.read_text(encoding="utf-8")
+    for required in (
+        'if [[ "$ORIGIN" == source-contract ]]; then',
+        '[[ "$RUN_ID" =~ ^[1-9][0-9]*$ ]]',
+        '[[ "$ARTIFACT_NAME" =~ ^[A-Za-z0-9._,-]{1,160}$ ]]',
+        '[[ "$producer_sha" =~ ^[a-f0-9]{40}$ ]]',
+        'if [[ "$ORIGIN" == artifact-run ]]; then root=inbound; fi',
+        "'.github/workflows/rafcodephi-publish-dev-apt.yml'",
+    ):
+        if required not in source:
+            raise AssertionError(f"555_WORKFLOW_CONTRACT_MISSING:{required}")
+    if 'if ${{' in source or '${{  "    with tempfile.TemporaryDirectory() as tmp:
+        base = Path(tmp)
+        checkout = base / "repo"
+        for name in ROOT_FILES:
+            p = checkout / name
+            p.parent.mkdir(parents=True, exist_ok=True)
+            p.write_text("source\n", encoding="utf-8")
+        out = base / "out"
+        sha = "a" * 40
+        one = compose("source-contract", "inventory", "receipt", checkout, out,
+                      0, "", sha, "")
+        assert one["custody"] == "CHECKOUT_EXACT_SHA" and not one["compiled_in_this_run"]
+        inbound = base / "inbound"
+        payload = inbound / "artifacts" / "example.bin"
+        payload.parent.mkdir(parents=True)
+        payload.write_bytes(b"immutable")
+        log = inbound / "build" / "reports" / "sample-bootstrap.log"
+        log.parent.mkdir(parents=True)
+        log.write_text("old apt blocker still active\n", encoding="utf-8")
+        handoff = log.parent / "rafcodephi-auto-handoff.json"
+        handoff.write_text(json.dumps({
+            "producer_commit": "b" * 40, "producer_run_id": 555,
+            "sha256": {"artifacts/example.bin": digest(payload)}
+        }), encoding="utf-8")
+        two = compose("artifact-run", "triage", "zipraf", inbound, out,
+                      555, "b" * 40, sha, "test-artifact")
+        assert two["custody"] == "HANDOFF_SHA256_VERIFIED"
+        assert two["triage"]["analysis"]["primary_candidate"] == "APT_GUARD"
+        assert (out / "555-references.zip").is_file()
+        try:
+            compose("artifact-run", "inventory", "receipt", inbound, out,
+                    556, "b" * 40, sha, "test-artifact")
+        except ValueError as exc:
+            assert "mismatch" in str(exc)
+        else:
+            raise AssertionError("mismatched run was accepted")
+    workflow_contract_self_test()
+    print("RAFCODEPHI_555_SELF_TEST=PASS")
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--self-test", action="store_true")
+    parser.add_argument("--origin", default="source-contract")
+    parser.add_argument("--operation", default="inventory")
+    parser.add_argument("--output-mode", default="receipt")
+    parser.add_argument("--input-root", type=Path, default=Path("."))
+    parser.add_argument("--out", type=Path, default=Path("_555"))
+    parser.add_argument("--producer-run-id", type=int, default=0)
+    parser.add_argument("--producer-sha", default="")
+    parser.add_argument("--current-sha", default="")
+    parser.add_argument("--artifact-name", default="")
+    a = parser.parse_args()
+    if a.self_test:
+        self_test()
+        return 0
+    try:
+        r = compose(a.origin, a.operation, a.output_mode, a.input_root, a.out,
+                    a.producer_run_id, a.producer_sha, a.current_sha, a.artifact_name)
+    except (ValueError, OSError, json.JSONDecodeError) as error:
+        a.out.mkdir(parents=True, exist_ok=True)
+        (a.out / "555-blocked.json").write_text(json.dumps({
+            "schema": "rafcodephi.555-artifact-manifold/v1",
+            "state": "BLOCKED", "reason": str(error), "claim_allowed": False
+        }, indent=2) + "\n", encoding="utf-8")
+        print("RAFCODEPHI_555=BLOCKED " + str(error))
+        return 1
+    print("RAFCODEPHI_555=" + r["status"])
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
+ in source:
+        raise AssertionError("555_BASH_VARIABLES_IN_GITHUB_EXPRESSION")
+    print("RAFCODEPHI_555_WORKFLOW_CONTRACT=PASS")
+
+
 def self_test() -> None:
     with tempfile.TemporaryDirectory() as tmp:
         base = Path(tmp)
