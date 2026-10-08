@@ -139,7 +139,28 @@ def compose(origin: str, operation: str, output_mode: str, root: Path, out: Path
     return report
 
 
+def workflow_contract_self_test() -> None:
+    """Apt re-use must parse Bash variables in shell, not GitHub expressions."""
+    workflow = Path(__file__).resolve().parents[2] / ".github/workflows/555-artifact-manifold.yml"
+    source = workflow.read_text(encoding="utf-8")
+    for required in (
+        'if [[ "$ORIGIN" == source-contract ]]; then',
+        '[[ "$RUN_ID" =~ ^[1-9][0-9]*$ ]]',
+        '[[ "$ARTIFACT_NAME" =~ ^[A-Za-z0-9._,-]{1,160}$ ]]',
+        '[[ "$producer_sha" =~ ^[a-f0-9]{40}$ ]]',
+        'if [[ "$ORIGIN" == artifact-run ]]; then root=inbound; fi',
+        "'.github/workflows/rafcodephi-publish-dev-apt.yml'",
+    ):
+        if required not in source:
+            raise AssertionError(f"555_WORKFLOW_CONTRACT_MISSING:{required}")
+    expression_prefix = "$" + "{{"
+    if ("if " + expression_prefix) in source or (expression_prefix + '  "') in source:
+        raise AssertionError("555_BASH_VARIABLES_IN_GITHUB_EXPRESSION")
+    print("RAFCODEPHI_555_WORKFLOW_CONTRACT=PASS")
+
+
 def self_test() -> None:
+
     with tempfile.TemporaryDirectory() as tmp:
         base = Path(tmp)
         checkout = base / "repo"
@@ -176,6 +197,7 @@ def self_test() -> None:
             assert "mismatch" in str(exc)
         else:
             raise AssertionError("mismatched run was accepted")
+    workflow_contract_self_test()
     print("RAFCODEPHI_555_SELF_TEST=PASS")
 
 

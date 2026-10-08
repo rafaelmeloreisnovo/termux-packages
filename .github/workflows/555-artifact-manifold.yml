@@ -1,5 +1,5 @@
-name: RAFCODEPHI 555 Artifact Manifold
-run-name: 555_${{ inputs.origin }}_${{ inputs.operation }}_${{ inputs.output_mode }}
+name: '555_20-30 | APT Diagnose and Artifact Reuse'
+run-name: 555_20-30_${{ inputs.origin }}_${{ inputs.operation }}_${{ inputs.output_mode }}
 
 on:
   workflow_dispatch:
