@@ -101,3 +101,40 @@ R3:
 F_ok = existing sourcebuild/artifact/triage components can be reused.
 F_gap = no run-backed success, cross-run trust, persistent signed repo or Android execution proven here.
 F_next = validate the isolated opt-in manual dispatch on exact producer evidence.
+
+## P0 successor: manual YAML predicates and archived signed-APT observation
+
+Historical signed-APT failed run `37696663078` (head SHA `77625363a031a081edd1db93d3f7a48e9bfff7f9`)
+belongs to `rafcodephi-publish-dev-apt.yml` from a same-repository `pull_request`.
+The original 555 guard only accepted `workflow_dispatch` from `main` and contained
+five Bash predicates accidentally expressed as GitHub `${{ ... }}` expansions.
+They block manual use despite source-contract CI passing.
+
+The successor P0 fix:
+- restores shell `[[ ... ]]` comparisons inside `run: |`;
+- permits prior `rafcodephi-publish-dev-apt.yml` producer runs **for inspection only**;
+- continues to require same `repository.full_name` and `head_repository.full_name`;
+- permits `workflow_dispatch` only from `main`;
+- for `pull_request`, requires `expected_producer_sha` to equal the provider-returned
+  40-character HEAD SHA; mismatched or missing SHA is BLOCKED;
+- retains `claim_allowed=false`, no release mutation, no producer rebuild;
+- adds synthetic positive and negative guard tests to the fast workflow syntax job.
+
+Example inputs for **historical inspection** after approval/merge:
+```text
+origin=artifact-run
+operation=triage
+output_mode=receipt
+producer_run_id=37696663078
+artifact_name=rafcodephi-dualarch-signed-apt-b1d029649351232649f4b1a03eab2084d0fbc4b6
+expected_producer_sha=77625363a031a081edd1db93d3f7a48e9bfff7f9
+```
+The signed-APT artifact may have no `.log`, so `triage` must be selected only
+if that exact downloaded artifact includes a log; otherwise use `inventory`
+or inspect the GitHub job log without downloading the large source archive.
+A provider artifact SHA-256 refers to the upload ZIP, not automatically every
+internal `.deb`; exact-byte replay remains a distinct evidence gate.
+No `main` promotion or Android physical claim is implied.
+
+Rollback: revert the isolated P0 workflow update and its contract test; retain the
+historical source-run and GitHub artifact IDs unchanged.
