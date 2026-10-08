@@ -68,6 +68,50 @@ def recipe_source_contract(text: str) -> dict:
     }
 
 
+
+def dynamic_static_producer(root: Path, output_pkg: str, debs: dict[str, Path]) -> str | None:
+    """Resolve a generated -static subpackage only with verified control fields.
+
+    Termux creates these subpackage descriptors in TERMUX_PKG_TMPDIR, outside
+    packages/*/*.subpackage.sh; suffix similarity alone is NOT sufficient.
+    """
+    if not output_pkg.endswith("-static"):
+        return None
+    parent = output_pkg[:-len("-static")]
+    recipe = root / "packages" / parent / "build.sh"
+    rule = root / "scripts/build/termux_create_debian_subpackages.sh"
+    if parent not in debs or not recipe.is_file() or not rule.is_file():
+        return None
+    rule_source = rule.read_text(encoding="utf-8")
+    required = (
+        '${TERMUX_PKG_NAME}-static.subpackage.sh',
+        'TERMUX_PKG_NO_STATICSPLIT',
+        'Static libraries for ${TERMUX_PKG_NAME}',
+    )
+    if any(token not in rule_source for token in required):
+        raise SystemExit("static subpackage generator contract changed; provenance BLOCKED")
+    recipe_source = recipe.read_text(encoding="utf-8")
+    if re.search(r"(?m)^\\s*TERMUX_PKG_NO_STATICSPLIT\\s*=\\s*['\\\"]?true['\\\"]?\\s*(?:#.*)?$", recipe_source):
+        return None
+
+    pkg_deb, parent_deb = debs[output_pkg], debs[parent]
+    pkg_version = deb_field(pkg_deb, "Version")
+    parent_version = deb_field(parent_deb, "Version")
+    depends = deb_field(pkg_deb, "Depends")
+    description = deb_field(pkg_deb, "Description").splitlines()[0]
+    parent_dependency = re.compile(
+        r"(?:^|,\\s*)" + re.escape(parent) + r"\\s*\\(=\\s*" +
+        re.escape(parent_version) + r"\\)(?:\\s*,|\\s*$)"
+    )
+    if (
+        pkg_version != parent_version
+        or description != f"Static libraries for {parent}"
+        or not parent_dependency.search(depends)
+    ):
+        return None
+    return parent
+
+
 def main() -> int:
     ap = argparse.ArgumentParser()
     source_group = ap.add_mutually_exclusive_group(required=True)
@@ -106,6 +150,9 @@ def main() -> int:
                 candidates.append(direct.parent.name)
             for subpackage in packages_root.glob(f"*/{output_pkg}.subpackage.sh"):
                 candidates.append(subpackage.parent.name)
+            dynamic_parent = dynamic_static_producer(root, output_pkg, deb_by_package)
+            if dynamic_parent is not None:
+                candidates.append(dynamic_parent)
             candidates = sorted(set(candidates))
             if len(candidates) != 1:
                 raise SystemExit(
@@ -132,6 +179,13 @@ def main() -> int:
             "deb_bytes": deb.stat().st_size,
             "deb_sha256": sha256_file(deb),
             "producer_recipe": f"packages/{recipe_pkg}/build.sh",
+            "recipe_resolution": (
+                "AUTO_DERIVED_STATIC_SPLIT_VERIFIED"
+                if output_pkg.endswith("-static")
+                and recipe_pkg == output_pkg[:-len("-static")]
+                and args.auto_map
+                else ("AUTO_DISCOVERED" if args.auto_map else "EXPLICIT_MAP")
+            ),
             "recipe_git_blob": git_blob(root, recipe),
             "recipe_sha256": sha256_file(recipe),
             "license_expression_declared": recipe_literal(recipe_text, "TERMUX_PKG_LICENSE"),
