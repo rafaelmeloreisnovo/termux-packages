@@ -34,6 +34,11 @@ on:
         required: true
         type: string
         default: "0"
+      permit_preview:
+        description: "Permitir observacao de artefatos de PR do mesmo repositorio (sem promocao)"
+        required: true
+        type: boolean
+        default: false
       artifact_name:
         description: "Nome exato do artifact da run (vazio em source-contract)"
         required: false
@@ -90,10 +95,11 @@ jobs:
           OPERATION: ${{ inputs.operation }}
           RUN_ID: ${{ inputs.producer_run_id }}
           ARTIFACT_NAME: ${{ inputs.artifact_name }}
+          PERMIT_PREVIEW: ${{ inputs.permit_preview }}
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
-          if ${{  "$ORIGIN" == source-contract  }}; then
+          if [[ "$ORIGIN" == "source-contract" ]]; then
             test "$RUN_ID" = 0
             test -z "$ARTIFACT_NAME"
             test "$OPERATION" = inventory
@@ -101,23 +107,27 @@ jobs:
             exit 0
           fi
           test "$ORIGIN" = artifact-run
-          ${{  "$RUN_ID" =~ ^[1-9][0-9]*$  }}
-          ${{  "$ARTIFACT_NAME" =~ ^[A-Za-z0-9._,-]{1,160}$  }}
+          [[ "$RUN_ID" =~ ^[1-9][0-9]*$ ]]
+          [[ "$ARTIFACT_NAME" =~ ^[A-Za-z0-9._,-]{1,160}$ ]]
           metadata="$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$RUN_ID")"
           printf '%s' "$metadata" | jq -e --arg repo "$GITHUB_REPOSITORY" '
             .repository.full_name == $repo
             and .head_repository.full_name == $repo
-            and .head_branch == "main"
-            and .event == "workflow_dispatch"
             and (.conclusion == "success" or .conclusion == "failure")
           ' >/dev/null
+          if [[ "$PERMIT_PREVIEW" == "true" ]]; then
+            printf '%s' "$metadata" | jq -e '.event == "pull_request" or (.event == "workflow_dispatch" and .head_branch == "main")' >/dev/null
+          else
+            printf '%s' "$metadata" | jq -e '.event == "workflow_dispatch" and .head_branch == "main"' >/dev/null
+          fi
+          # PR-derived evidence is observation-only, never source promotion.
           workflow_path="$(printf '%s' "$metadata" | jq -r '.path // ""')"
           case "$workflow_path" in
-            *'.github/workflows/rafcodephi-auto-handoff.yml'*|*'.github/workflows/rafcodephi-real-bootstrap.yml'*) ;;
+            *'.github/workflows/rafcodephi-auto-handoff.yml'*|*'.github/workflows/rafcodephi-real-bootstrap.yml'*|*'.github/workflows/rafcodephi-publish-dev-apt.yml'*) ;;
             *) echo 'BLOCKED: producer workflow not allowlisted' >&2; exit 1 ;;
           esac
           producer_sha="$(printf '%s' "$metadata" | jq -r '.head_sha')"
-          ${{  "$producer_sha" =~ ^[a-f0-9]{40}$  }}
+          [[ "$producer_sha" =~ ^[a-f0-9]{40}$ ]]
           echo "producer_sha=$producer_sha" >> "$GITHUB_OUTPUT"
           echo "REUSE_VERIFIED_RUN=$RUN_ID sha=$producer_sha"
 
@@ -143,7 +153,7 @@ jobs:
         run: |
           set -euo pipefail
           root=.
-          if ${{  "$ORIGIN" == artifact-run  }}; then root=inbound; fi
+          if [[ "$ORIGIN" == artifact-run ]]; then root=inbound; fi
           python3 scripts/ci/rafcodephi_555_compose.py \
             --origin "$ORIGIN" \
             --operation "$OPERATION" \
