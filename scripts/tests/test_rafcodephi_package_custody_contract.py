@@ -36,6 +36,24 @@ def verify_generated_static_mapping() -> None:
         require(module.resolve_auto_recipe(root, "attr-static")
                 == ("attr", "GENERATED_STATIC_SUBPACKAGE"),
                 "GENERATED_STATIC_PARENT_UNRESOLVED")
+        # Negative cases: explicit opt-out and unrelated producer script.
+        recipe.write_text("TERMUX_PKG_NO_STATICSPLIT=true\n", encoding="utf-8")
+        try:
+            module.resolve_auto_recipe(root, "attr-static")
+        except ValueError:
+            pass
+        else:
+            raise SystemExit("STATIC_SPLIT_OPT_OUT_NOT_BLOCKED")
+        recipe.write_text("TERMUX_PKG_VERSION=2.5.2\n", encoding="utf-8")
+        original_generator = generator.read_text(encoding="utf-8")
+        generator.write_text("not a canonical static producer\n", encoding="utf-8")
+        try:
+            module.resolve_auto_recipe(root, "attr-static")
+        except ValueError:
+            pass
+        else:
+            raise SystemExit("GENERATOR_CONTRACT_MISSING_NOT_BLOCKED")
+        generator.write_text(original_generator, encoding="utf-8")
         explicit = root / "packages/other/attr-static.subpackage.sh"
         explicit.parent.mkdir(parents=True)
         explicit.write_text("TERMUX_SUBPKG_DESCRIPTION=test\\n", encoding="utf-8")
@@ -94,6 +112,16 @@ def main() -> int:
             "CUSTODY_SIDECAR_RELATIVE_PATH_REGRESSION")
     require('"source_commit": os.environ["GITHUB_SHA"]' in signed_apt,
             "CUSTODY_SOURCE_SHA_LITERAL_REGRESSION")
+    workflow_555 = (ROOT / ".github/workflows/555-artifact-manifold.yml").read_text(encoding="utf-8")
+    require('if ${{' not in workflow_555, "555_BASH_PREDICATE_INTERPOLATION_REGRESSION")
+    for token in (
+        'if [[ "$ORIGIN" == source-contract ]]; then',
+        'if [[ "$ORIGIN" == artifact-run ]]; then root=inbound; fi',
+        '[[ "$RUN_ID" =~ ^[1-9][0-9]*$ ]]',
+        '[[ "$ARTIFACT_NAME" =~ ^[A-Za-z0-9._,-]{1,160}$ ]]',
+        '[[ "$producer_sha" =~ ^[a-f0-9]{40}$ ]]',
+    ):
+        require(token in workflow_555, "555_PREDICATE_MISSING:" + token)
     require('"claim_allowed": False' in script, "CLAIM_BOUNDARY_MISSING")
     print("RAFCODEPHI_PACKAGE_CUSTODY_CONTRACT=PASS per_deb=true recipe_blob=true sha256=true fail_closed=true")
     return 0
