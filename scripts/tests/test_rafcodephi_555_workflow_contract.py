@@ -30,7 +30,8 @@ def mock_record(event="workflow_dispatch", branch="main", repo=REPO,
         "head_sha": "a" * 40,
     }
 
-def validate(shell_script: str, event: dict, permit_preview: bool, expected: bool) -> None:
+def validate(shell_script: str, event: dict, permit_preview: bool, expected: bool,
+             producer_sha_input: str = "") -> None:
     with tempfile.TemporaryDirectory(prefix="rafcodephi-555-gate-") as base:
         root = Path(base)
         metadata = root / "run.json"
@@ -46,6 +47,7 @@ def validate(shell_script: str, event: dict, permit_preview: bool, expected: boo
             "RUN_ID": "37696663078",
             "ARTIFACT_NAME": "rafcodephi-dualarch-source-build-b1d029649351232649f4b1a03eab2084d0fbc4b6",
             "PERMIT_PREVIEW": "true" if permit_preview else "false",
+            "EXPECTED_SHA": producer_sha_input,
         })
         stub = 'gh() { cat "$FAKE_METADATA"; }\n'
         run = subprocess.run(
@@ -64,6 +66,7 @@ def main() -> int:
     workflow = model["on"] if "on" in model else model.get(True)
     opts = workflow["workflow_dispatch"]["inputs"]
     require(opts["permit_preview"]["default"] is False, "preview_must_opt_in")
+    require("expected_producer_sha" in opts, "preview_sha_input_missing")
     compose_steps = jobs["compose"]["steps"]
     script = next(s["run"] for s in compose_steps if s.get("id") == "resolve")
     all_run_scripts = "\n".join(s.get("run", "") for s in compose_steps)
@@ -76,6 +79,7 @@ def main() -> int:
     require("rafcodephi-publish-dev-apt.yml" in script, "signed_apt_workflow_not_allowlisted")
     require('.head_repository.full_name == $repo' in script, "untrusted_repo_guard_missing")
     require("PERMIT_PREVIEW" in script and "pull_request" in script, "preview_scope_missing")
+    require('[[ "$EXPECTED_SHA" == "$producer_sha" ]]' in script, "preview_head_sha_guard_missing")
     require(not any(x in all_run_scripts for x in (
         "./scripts/build-rafcodephi-real-bootstrap.sh",
         "bash ./scripts/build-rafcodephi-live-bootstrap.sh",
@@ -89,12 +93,19 @@ def main() -> int:
             require(syntax.returncode == 0, "bash_syntax:" + s.get("name", "unknown") + ":" + syntax.stderr[-150:])
     validate(script, mock_record(), False, True)
     validate(script, mock_record(event="pull_request", branch="hotfix/apt"), False, False)
-    validate(script, mock_record(event="pull_request", branch="hotfix/apt"), True, True)
-    validate(script, mock_record(event="pull_request", branch="hotfix/apt", head_repo="other/fork"), True, False)
-    validate(script, mock_record(event="pull_request", branch="hotfix/apt", repo="other/repo"), True, False)
-    validate(script, mock_record(event="pull_request", branch="hotfix/apt", conclusion=None), True, False)
+    validate(script, mock_record(event="pull_request", branch="hotfix/apt"), True, True,
+             producer_sha_input="a" * 40)
+    validate(script, mock_record(event="pull_request", branch="hotfix/apt"), True, False)
+    validate(script, mock_record(event="pull_request", branch="hotfix/apt"), True, False,
+             producer_sha_input="b" * 40)
+    validate(script, mock_record(event="pull_request", branch="hotfix/apt", head_repo="other/fork"), True, False,
+             producer_sha_input="a" * 40)
+    validate(script, mock_record(event="pull_request", branch="hotfix/apt", repo="other/repo"), True, False,
+             producer_sha_input="a" * 40)
+    validate(script, mock_record(event="pull_request", branch="hotfix/apt", conclusion=None), True, False,
+             producer_sha_input="a" * 40)
     validate(script, mock_record(path=".github/workflows/unknown.yml"), True, False)
-    print("RAFCODEPHI_555_WORKFLOW_CONTRACT=PASS cases=7 build=NOT_RUN")
+    print("RAFCODEPHI_555_WORKFLOW_CONTRACT=PASS cases=9 build=NOT_RUN")
     return 0
 
 if __name__ == "__main__":
