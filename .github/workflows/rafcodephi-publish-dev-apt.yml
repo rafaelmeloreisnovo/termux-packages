@@ -230,11 +230,11 @@ jobs:
               --commit "$GITHUB_SHA" \
               --arch "$arch" \
               --profile bootstrap
-            sha256sum -c "build/reports/rafcodephi-package-custody-$arch.json.sha256"
+            (cd build/reports && sha256sum -c "rafcodephi-package-custody-$arch.json.sha256")
           done
 
           python3 - <<'PY' > build/reports/rafcodephi-package-custody-dualarch.json
-          import hashlib, json
+          import hashlib, json, os
           from pathlib import Path
           records = {}
           for arch in ("arm", "aarch64"):
@@ -248,7 +248,7 @@ jobs:
           canonical = json.dumps(records, sort_keys=True, separators=(",", ":")).encode()
           print(json.dumps({
               "schema": "rafcodephi.package-custody-dualarch/v1",
-              "source_commit": "${GITHUB_SHA}",
+              "source_commit": os.environ["GITHUB_SHA"],
               "architectures": records,
               "root_sha256": hashlib.sha256(canonical).hexdigest(),
               "claim_allowed": False,
