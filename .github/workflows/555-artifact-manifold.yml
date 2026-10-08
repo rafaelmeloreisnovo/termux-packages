@@ -44,6 +44,7 @@ on:
       - '.github/workflows/555-artifact-manifold.yml'
       - 'scripts/ci/rafcodephi_555_compose.py'
       - 'scripts/ci/rafcodephi_failure_triage.py'
+      - 'scripts/tests/test_rafcodephi_555_workflow_contract.py'
       - 'docs/ROADMAPS_IA_HUMANOS/555_ARTIFACT_MANIFOLD_V1.md'
 
 permissions:
@@ -71,6 +72,7 @@ jobs:
           python3 -m py_compile scripts/ci/rafcodephi_555_compose.py
           python3 scripts/ci/rafcodephi_failure_triage.py --self-test
           python3 scripts/ci/rafcodephi_555_compose.py --self-test
+          python3 scripts/tests/test_rafcodephi_555_workflow_contract.py
 
   compose:
     if: ${{ github.event_name == 'workflow_dispatch' }}
