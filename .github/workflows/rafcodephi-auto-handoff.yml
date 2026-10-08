@@ -8,6 +8,8 @@ on:
     paths:
       - '.github/workflows/rafcodephi-auto-handoff.yml'
       - 'scripts/ci/rafcodephi_producer_zipraf.py'
+      - 'scripts/ci/rafcodephi_parallel_batches.py'
+      - 'scripts/tests/test_rafcodephi_zipraf_pipeline_contract.py'
       - 'scripts/build-rafcodephi-real-bootstrap.sh'
       - 'scripts/apply-rafcodephi-build-properties.py'
       - 'scripts/validate-rafcodephi-build-properties.sh'
@@ -42,6 +44,7 @@ jobs:
           python3 scripts/ci/rafcodephi_failure_triage.py --self-test
           python3 scripts/tests/test_rafcodephi_package_custody_contract.py
           python3 scripts/ci/rafcodephi_producer_zipraf.py --self-test
+          python3 scripts/ci/rafcodephi_parallel_batches.py --self-test
           python3 scripts/tests/test_rafcodephi_zipraf_pipeline_contract.py
           test -x scripts/run-docker.sh
           test -f scripts/run-rafcodephi-bootstrap-docker.sh
@@ -249,10 +252,101 @@ jobs:
           PY
           sha256sum build/reports/rafcodephi-auto-artifact-binding.json > build/reports/rafcodephi-auto-artifact-binding.json.sha256
 
-  handoff:
-    name: Dispatch only after producer + artifact custody PASS
+  verify-batch:
+    name: Verify producer batch / ${{ matrix.arch }}
     if: github.event_name != 'pull_request'
     needs: [contract, produce]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      max-parallel: 2
+      matrix:
+        arch: [arm, aarch64]
+    steps:
+      - name: Checkout verifier at exact producer SHA
+        uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+          fetch-depth: 1
+
+      - name: Download exact immutable producer artifact
+        uses: actions/download-artifact@v8
+        with:
+          name: rafcodephi-termux-packages-${{ github.sha }}
+          path: inbound
+
+      - name: Verify one architecture without rebuilding
+        shell: bash
+        env:
+          ARCH: ${{ matrix.arch }}
+          ARTIFACT_ID: ${{ needs.produce.outputs.artifact_id }}
+          ARTIFACT_DIGEST: ${{ needs.produce.outputs.artifact_digest }}
+        run: |
+          set -euo pipefail
+          python3 scripts/ci/rafcodephi_parallel_batches.py \
+            --mode verify --arch "$ARCH" --inbound inbound \
+            --source-sha "$GITHUB_SHA" --run-id "$GITHUB_RUN_ID" \
+            --artifact-id "$ARTIFACT_ID" --artifact-digest "$ARTIFACT_DIGEST" \
+            --output "batch-receipts/batch-$ARCH.json"
+          cat "batch-receipts/batch-$ARCH.json" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload immutable per-arch proof
+        uses: actions/upload-artifact@v7
+        with:
+          name: rafcodephi-batch-${{ github.run_id }}-${{ matrix.arch }}
+          path: batch-receipts/batch-${{ matrix.arch }}.json
+          if-no-files-found: error
+          retention-days: 30
+
+  join-batches:
+    name: Fan-in / both producer batches must PASS
+    if: github.event_name != 'pull_request'
+    needs: [contract, produce, verify-batch]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - name: Checkout exact verifier
+        uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+          fetch-depth: 1
+
+      - name: Download ARM and AArch64 batch receipts
+        uses: actions/download-artifact@v8
+        with:
+          pattern: rafcodephi-batch-${{ github.run_id }}-*
+          merge-multiple: true
+          path: batch-receipts
+
+      - name: Enforce BOTH independent hash-bound batch receipts
+        shell: bash
+        env:
+          ARTIFACT_ID: ${{ needs.produce.outputs.artifact_id }}
+          ARTIFACT_DIGEST: ${{ needs.produce.outputs.artifact_digest }}
+        run: |
+          set -euo pipefail
+          python3 scripts/ci/rafcodephi_parallel_batches.py \
+            --mode join --receipts batch-receipts \
+            --source-sha "$GITHUB_SHA" --run-id "$GITHUB_RUN_ID" \
+            --artifact-id "$ARTIFACT_ID" --artifact-digest "$ARTIFACT_DIGEST" \
+            --output batch-receipts/batch-join.json
+          sha256sum batch-receipts/batch-*.json > batch-receipts/SHA256SUMS.txt
+          (cd batch-receipts && sha256sum -c SHA256SUMS.txt)
+          cat batch-receipts/batch-join.json >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload fan-in receipt, independent of APK
+        uses: actions/upload-artifact@v7
+        with:
+          name: rafcodephi-batch-join-${{ github.run_id }}
+          path: batch-receipts/
+          if-no-files-found: error
+          retention-days: 30
+
+  handoff:
+    name: Dispatch only after both ABI receipts + custody PASS
+    if: github.event_name != 'pull_request'
+    needs: [contract, produce, join-batches]
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     env:
