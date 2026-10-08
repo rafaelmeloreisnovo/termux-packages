@@ -85,7 +85,8 @@ jobs:
     timeout-minutes: 45
     env:
       GH_TOKEN: ${{ github.token }}
-      PRODUCER_SHA: 77625363a031a081edd1db93d3f7a48e9bfff7f9
+      PRODUCER_HEAD_SHA: 77625363a031a081edd1db93d3f7a48e9bfff7f9
+      PRODUCER_BUILD_SHA: b1d029649351232649f4b1a03eab2084d0fbc4b6
       PRODUCER_RUN_ID: '37696663078'
       ARTIFACT_ID: '11521200291'
       ARTIFACT_NAME: rafcodephi-dualarch-source-build-b1d029649351232649f4b1a03eab2084d0fbc4b6
@@ -100,7 +101,7 @@ jobs:
         run: |
           set -euo pipefail
           gh api "repos/$GITHUB_REPOSITORY/actions/runs/$PRODUCER_RUN_ID" > run.json
-          jq -e --arg repo "$GITHUB_REPOSITORY" --arg sha "$PRODUCER_SHA" '
+          jq -e --arg repo "$GITHUB_REPOSITORY" --arg sha "$PRODUCER_HEAD_SHA" '
              .repository.full_name == $repo
              and .head_repository.full_name == $repo
              and .head_sha == $sha
@@ -109,7 +110,7 @@ jobs:
              and .path == ".github/workflows/rafcodephi-publish-dev-apt.yml"
           ' run.json >/dev/null
           gh api "repos/$GITHUB_REPOSITORY/actions/artifacts/$ARTIFACT_ID" > artifact.json
-          jq -e --arg sha "$PRODUCER_SHA" --arg digest "$ARTIFACT_DIGEST" \
+          jq -e --arg sha "$PRODUCER_HEAD_SHA" --arg digest "$ARTIFACT_DIGEST" \
             --arg name "$ARTIFACT_NAME" --argjson run "$PRODUCER_RUN_ID" '
             .expired == false and .name == $name
             and .digest == $digest
@@ -119,7 +120,7 @@ jobs:
       - name: Checkout exact historical producer source for recipe git blob identity
         uses: actions/checkout@v6
         with:
-          ref: 77625363a031a081edd1db93d3f7a48e9bfff7f9
+          ref: b1d029649351232649f4b1a03eab2084d0fbc4b6
           path: preserved-source
           fetch-depth: 1
           persist-credentials: false
@@ -135,7 +136,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          test "$(git -C preserved-source rev-parse HEAD)" = "$PRODUCER_SHA"
+          test "$(git -C preserved-source rev-parse HEAD)" = "$PRODUCER_BUILD_SHA"
           test -s inbound/build/reports/rafcodephi-dualarch-source-built-debs.tar
           (cd inbound && sha256sum -c build/reports/rafcodephi-dualarch-source-built-debs.tar.sha256)
           mkdir -p preserved
@@ -171,7 +172,7 @@ jobs:
               --repo-root preserved-source \
               --deb-dir "preserved/debs/$arch" \
               --out "replay/receipts/rafcodephi-package-custody-$arch.json" \
-              --commit "$PRODUCER_SHA" \
+              --commit "$PRODUCER_BUILD_SHA" \
               --arch "$arch" \
               --profile bootstrap
             (cd replay/receipts && sha256sum -c "rafcodephi-package-custody-$arch.json.sha256")
@@ -183,7 +184,7 @@ jobs:
           for arch in ("arm", "aarch64"):
               path = Path(f"replay/receipts/rafcodephi-package-custody-{arch}.json")
               obj = json.loads(path.read_text(encoding="utf-8"))
-              if obj["source_commit"] != os.environ["PRODUCER_SHA"]:
+              if obj["source_commit"] != os.environ["PRODUCER_BUILD_SHA"]:
                   raise SystemExit("SOURCE_SHA_MISMATCH")
               rows[arch] = {
                   "manifest_sha256": hashlib.sha256(path.read_bytes()).hexdigest(),
@@ -195,7 +196,8 @@ jobs:
               "schema": "rafcodephi.555-historical-custody-replay/v1",
               "state": "CUSTODY_REPLAY_PASS_SCOPED",
               "producer_run_id": int(os.environ["PRODUCER_RUN_ID"]),
-              "producer_source_sha": os.environ["PRODUCER_SHA"],
+              "producer_run_head_sha": os.environ["PRODUCER_HEAD_SHA"],
+              "producer_build_checkout_sha": os.environ["PRODUCER_BUILD_SHA"],
               "verifier_sha": os.environ["GITHUB_SHA"],
               "artifact_id": int(os.environ["ARTIFACT_ID"]),
               "artifact_name": os.environ["ARTIFACT_NAME"],
