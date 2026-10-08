@@ -102,6 +102,13 @@ def exercise_live_apt_guard(live: str) -> None:
 def main() -> int:
     text = WORKFLOW.read_text(encoding="utf-8")
     live = LIVE.read_text(encoding="utf-8")
+    require('(cd build/reports && sha256sum -c "rafcodephi-package-custody-$arch.json.sha256")' in text,
+            "CUSTODY_SIDECAR_VERIFY_CWD_INCORRECT")
+    require('"source_commit": os.environ["GITHUB_SHA"]' in text,
+            "DUALARCH_SOURCE_COMMIT_NOT_BOUND")
+    require('"source_commit": "${GITHUB_SHA}"' not in text,
+            "DUALARCH_SOURCE_COMMIT_LITERAL_INTERPOLATION")
+
     generator = GENERATOR.read_text(encoding="utf-8")
 
     required = (
