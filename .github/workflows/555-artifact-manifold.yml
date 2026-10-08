@@ -39,6 +39,11 @@ on:
         required: true
         type: boolean
         default: false
+      expected_producer_sha:
+        description: "SHA exato do commit produtor; obrigatorio para observacao de PR"
+        required: false
+        type: string
+        default: ""
       artifact_name:
         description: "Nome exato do artifact da run (vazio em source-contract)"
         required: false
@@ -96,12 +101,14 @@ jobs:
           RUN_ID: ${{ inputs.producer_run_id }}
           ARTIFACT_NAME: ${{ inputs.artifact_name }}
           PERMIT_PREVIEW: ${{ inputs.permit_preview }}
+          EXPECTED_SHA: ${{ inputs.expected_producer_sha }}
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
           if [[ "$ORIGIN" == "source-contract" ]]; then
             test "$RUN_ID" = 0
             test -z "$ARTIFACT_NAME"
+            test -z "$EXPECTED_SHA"
             test "$OPERATION" = inventory
             echo 'producer_sha=' >> "$GITHUB_OUTPUT"
             exit 0
@@ -128,6 +135,13 @@ jobs:
           esac
           producer_sha="$(printf '%s' "$metadata" | jq -r '.head_sha')"
           [[ "$producer_sha" =~ ^[a-f0-9]{40}$ ]]
+          event_type="$(printf '%s' "$metadata" | jq -r '.event')"
+          if [[ "$event_type" == "pull_request" || -n "$EXPECTED_SHA" ]]; then
+            [[ "$EXPECTED_SHA" == "$producer_sha" ]] || {
+              echo "BLOCKED: historical preview requires exact producer HEAD SHA" >&2
+              exit 1
+            }
+          fi
           echo "producer_sha=$producer_sha" >> "$GITHUB_OUTPUT"
           echo "REUSE_VERIFIED_RUN=$RUN_ID sha=$producer_sha"
 
