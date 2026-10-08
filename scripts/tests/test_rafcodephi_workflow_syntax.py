@@ -32,7 +32,7 @@ def bash_syntax_check(path: Path, job_name: str, step_index: int, step: dict, de
 
     # Do not hide invalid GitHub-expression wrappers around shell variables.
     # These are evaluated by Actions as expressions, not as Bash predicates.
-    if re.search(r"\$\{\{\s*['\\\"]?\$", script):
+    if re.search(r"\$\{\{\s*\\\"?\$", script):
         name = step.get("name", "unnamed")
         fail(f"bash_expression_interpolation path={path.relative_to(ROOT)} job={job_name} step={step_index} name={name}")
 
