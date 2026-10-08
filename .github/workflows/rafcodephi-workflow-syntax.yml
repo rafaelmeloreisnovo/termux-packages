@@ -36,4 +36,10 @@ jobs:
 
       - name: Parse all workflows and embedded Bash
         shell: bash
-        run: python3 scripts/tests/test_rafcodephi_workflow_syntax.py
+        run: |
+          set -euo pipefail
+          python3 scripts/tests/test_rafcodephi_workflow_syntax.py
+          if test -f scripts/ci/rafcodephi_555_compose.py; then
+            python3 -m py_compile scripts/ci/rafcodephi_555_compose.py
+            python3 scripts/ci/rafcodephi_555_compose.py --self-test
+          fi
