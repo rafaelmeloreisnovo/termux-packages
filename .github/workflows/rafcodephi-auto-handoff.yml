@@ -32,10 +32,10 @@ permissions:
   contents: read
 
 concurrency:
-  # PR previews can be superseded. An immutable main producer must finish
-  # to preserve its exact-SHA ZIPRAF/ABI evidence before a newer run starts.
-  group: rafcodephi-producer-${{ github.event_name }}-${{ github.ref }}
-  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+  # New commits invalidate pending contract runs. Explicit producer executions
+  # are immutable manual proof jobs and must not be auto-cancelled.
+  group: rafcodephi-producer-${{ github.event_name }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' || github.event_name == 'push' }}
 
 jobs:
   contract:
@@ -69,7 +69,9 @@ jobs:
       artifact_id: ${{ steps.producer_artifact.outputs.artifact-id }}
       artifact_digest: ${{ steps.producer_artifact.outputs.artifact-digest }}
       handoff_receipt_sha256: ${{ steps.producer_receipt.outputs.sha256 }}
-    if: github.event_name != 'pull_request'
+    # A 210-minute ARM+ARM64 producer runs only on an explicit invocation.
+    # Push and PR continue to run the quick source-contract job.
+    if: github.event_name == 'workflow_dispatch'
     needs: contract
     runs-on: ubuntu-24.04
     timeout-minutes: 210
@@ -267,7 +269,9 @@ jobs:
 
   verify-batch:
     name: Verify producer batch / ${{ matrix.arch }}
-    if: github.event_name != 'pull_request'
+    # A 210-minute ARM+ARM64 producer runs only on an explicit invocation.
+    # Push and PR continue to run the quick source-contract job.
+    if: github.event_name == 'workflow_dispatch'
     needs: [contract, produce]
     runs-on: ubuntu-24.04
     timeout-minutes: 20
@@ -314,7 +318,9 @@ jobs:
 
   join-batches:
     name: Fan-in / both producer batches must PASS
-    if: github.event_name != 'pull_request'
+    # A 210-minute ARM+ARM64 producer runs only on an explicit invocation.
+    # Push and PR continue to run the quick source-contract job.
+    if: github.event_name == 'workflow_dispatch'
     needs: [contract, produce, verify-batch]
     runs-on: ubuntu-24.04
     timeout-minutes: 10
@@ -358,7 +364,9 @@ jobs:
 
   handoff:
     name: Dispatch only after both ABI receipts + custody PASS
-    if: github.event_name != 'pull_request'
+    # A 210-minute ARM+ARM64 producer runs only on an explicit invocation.
+    # Push and PR continue to run the quick source-contract job.
+    if: github.event_name == 'workflow_dispatch'
     needs: [contract, produce, join-batches]
     runs-on: ubuntu-24.04
     timeout-minutes: 10

@@ -38,11 +38,38 @@ permissions:
   contents: read
 
 concurrency:
-  group: rafcodephi-signed-apt-${{ github.ref }}
-  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+  group: rafcodephi-signed-apt-${{ github.event_name }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' || github.event_name == 'push' }}
 
 jobs:
+  # Cheap contract always runs on PR/push before any manual multi-hour build.
+  signed-apt-contract:
+    name: Signed APT source-contract preflight (NOT DEB)
+    if: ${{ github.event_name != 'workflow_dispatch' }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - name: Checkout exact candidate
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 1
+          persist-credentials: false
+      - name: Validate signed APT source and custody contracts
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 scripts/tests/test_rafcodephi_publish_dev_apt_workflow_contract.py
+          python3 scripts/ci/rafcodephi_failure_triage.py --self-test
+          python3 scripts/tests/test_rafcodephi_package_custody_contract.py
+          python3 scripts/tests/test_rafcodephi_bootstrap_symlink_repair.py
+          echo 'SIGNED_APT_CONTRACT=PASS_SOURCE_ONLY'
+          echo 'DUAL_ARCH_DEB=NOT_RUN'
+          echo 'SIGNED_REPOSITORY=NOT_RUN'
+          echo 'CLAIM_ALLOWED=false'
+
   dual-arch-repository:
+    # The 240-minute signed APT proof is an explicit delivery command.
+    if: ${{ github.event_name == 'workflow_dispatch' }}
     runs-on: ubuntu-24.04
     timeout-minutes: 240
     env:

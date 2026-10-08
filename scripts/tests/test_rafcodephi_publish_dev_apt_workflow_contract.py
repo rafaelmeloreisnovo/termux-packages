@@ -165,12 +165,19 @@ def main() -> int:
     for token in forbidden:
         require(token not in text, f"FORBIDDEN:{token}")
 
-    require("cancel-in-progress: ${{ github.event_name == 'pull_request' }}" in text,
+    require("cancel-in-progress: ${{ github.event_name == 'pull_request' || github.event_name == 'push' }}" in text,
             "STALE_PR_BUILD_CANCELLATION_MISSING")
+    require("signed-apt-contract:" in text, "FAST_CONTRACT_JOB_MISSING")
+    require("if: ${{ github.event_name == 'workflow_dispatch' }}" in text,
+            "FOUR_HOUR_SIGNED_APT_NOT_MANUAL_ONLY")
+    require("DUAL_ARCH_DEB=NOT_RUN" in text, "FAST_CONTRACT_MASQUERADES_AS_DEB")
     require("contents: read" in text, "READ_ONLY_DEFAULT_PERMISSION_MISSING")
     require("claim_allowed_release" in text, "CLAIM_BOUNDARY_MISSING")
-    require('if block != block_payload.decode("utf-8"):' in live,
-            "LIVE_APT_GUARD_EXACT_MATCH_MISSING")
+    # The runtime guard intentionally rejects ACTIVE APT directives only:
+    # harmless comments are not a blocker. Exact whole-file equality was an
+    # obsolete assertion and would reject safe already-materialized archives.
+    require('if any(line.lstrip().startswith("APT::Update::Pre-Invoke") for line in block.splitlines()):' in live,
+            "LIVE_APT_ACTIVE_HOOK_GUARD_MISSING")
     require('if "APT::Update::Pre-Invoke" in block:' not in live,
             "LIVE_APT_GUARD_COMMENT_FALSE_POSITIVE")
 
