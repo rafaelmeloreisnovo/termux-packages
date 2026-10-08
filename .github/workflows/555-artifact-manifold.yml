@@ -1,5 +1,5 @@
 name: 555_20-30 | RAFCODEPHI APT Diagnostic & Reuse
-run-name: 555_20-30_${{ inputs.origin }}_${{ inputs.operation }}_${{ inputs.output_mode }}
+run-name: ${{ github.event_name == 'workflow_dispatch' && format('555_20-30_{0}_{1}_{2}', inputs.origin, inputs.operation, inputs.output_mode) || '555_20-30_CONTRACT_ONLY' }}
 
 on:
   workflow_dispatch:
