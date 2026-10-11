@@ -115,13 +115,18 @@ def main() -> int:
     workflow_555 = (ROOT / ".github/workflows/555-artifact-manifold.yml").read_text(encoding="utf-8")
     require('if ${{' not in workflow_555, "555_BASH_PREDICATE_INTERPOLATION_REGRESSION")
     for token in (
-        'if [[ "$ORIGIN" == source-contract ]]; then',
-        'if [[ "$ORIGIN" == artifact-run ]]; then root=inbound; fi',
         '[[ "$RUN_ID" =~ ^[1-9][0-9]*$ ]]',
         '[[ "$ARTIFACT_NAME" =~ ^[A-Za-z0-9._,-]{1,160}$ ]]',
         '[[ "$producer_sha" =~ ^[a-f0-9]{40}$ ]]',
     ):
         require(token in workflow_555, "555_PREDICATE_MISSING:" + token)
+    for label, variants in (
+        ("source-contract", ('if [[ "$ORIGIN" == source-contract ]]; then',
+                             'if [[ "$ORIGIN" == "source-contract" ]]; then')),
+        ("artifact-run", ('if [[ "$ORIGIN" == artifact-run ]]; then root=inbound; fi',
+                          'if [[ "$ORIGIN" == "artifact-run" ]]; then root=inbound; fi')),
+    ):
+        require(any(v in workflow_555 for v in variants), "555_PREDICATE_MISSING:" + label)
     require('"claim_allowed": False' in script, "CLAIM_BOUNDARY_MISSING")
     print("RAFCODEPHI_PACKAGE_CUSTODY_CONTRACT=PASS per_deb=true recipe_blob=true sha256=true fail_closed=true")
     return 0

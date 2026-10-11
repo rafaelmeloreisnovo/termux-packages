@@ -144,15 +144,21 @@ def workflow_contract_self_test() -> None:
     workflow = Path(__file__).resolve().parents[2] / ".github/workflows/555-artifact-manifold.yml"
     source = workflow.read_text(encoding="utf-8")
     for required in (
-        'if [[ "$ORIGIN" == source-contract ]]; then',
         '[[ "$RUN_ID" =~ ^[1-9][0-9]*$ ]]',
         '[[ "$ARTIFACT_NAME" =~ ^[A-Za-z0-9._,-]{1,160}$ ]]',
         '[[ "$producer_sha" =~ ^[a-f0-9]{40}$ ]]',
-        'if [[ "$ORIGIN" == artifact-run ]]; then root=inbound; fi',
         "'.github/workflows/rafcodephi-publish-dev-apt.yml'",
     ):
         if required not in source:
             raise AssertionError(f"555_WORKFLOW_CONTRACT_MISSING:{required}")
+    for label, variants in (
+        ("SOURCE_GUARD", ('if [[ "$ORIGIN" == source-contract ]]; then',
+                          'if [[ "$ORIGIN" == "source-contract" ]]; then')),
+        ("ARTIFACT_GUARD", ('if [[ "$ORIGIN" == artifact-run ]]; then root=inbound; fi',
+                            'if [[ "$ORIGIN" == "artifact-run" ]]; then root=inbound; fi')),
+    ):
+        if not any(v in source for v in variants):
+            raise AssertionError("555_WORKFLOW_CONTRACT_MISSING:" + label)
     expression_prefix = "$" + "{{"
     if ("if " + expression_prefix) in source or (expression_prefix + '  "') in source:
         raise AssertionError("555_BASH_VARIABLES_IN_GITHUB_EXPRESSION")

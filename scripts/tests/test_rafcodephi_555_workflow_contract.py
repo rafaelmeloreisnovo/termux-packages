@@ -25,7 +25,8 @@ def verify_case(script: str, tmp: Path, name: str, *,
                 origin: str, operation: str, run_id: str,
                 artifact_name: str, expected_sha: str,
                 event: str, path: str, head_repo: str,
-                head_branch: str, expect_pass: bool) -> None:
+                head_branch: str, expect_pass: bool,
+                preview: str = "false") -> None:
     metadata = {
         "repository": {"full_name": "rafaelmeloreisnovo/termux-packages"},
         "head_repository": {"full_name": head_repo},
@@ -50,6 +51,7 @@ def verify_case(script: str, tmp: Path, name: str, *,
         "GITHUB_OUTPUT": str(output),
         "GH_META_FILE": str(source),
         "GH_TOKEN": "synthetic-test-only",
+        "PERMIT_PREVIEW": preview,
         "PATH": str(tmp) + os.pathsep + env["PATH"],
     })
     result = subprocess.run(["bash", "-e"], input=script, capture_output=True,
@@ -68,17 +70,24 @@ def main() -> int:
     doc = yaml.safe_load(raw)
     inputs = doc["on" if "on" in doc else True]["workflow_dispatch"]["inputs"]
     must("expected_producer_sha" in inputs, "EXPECTED_SHA_INPUT_MISSING")
+    must("permit_preview" in inputs and inputs["permit_preview"]["default"] is False,
+         "PREVIEW_DEFAULT_FALSE_MISSING")
     steps = doc["jobs"]["compose"]["steps"]
     matches = [step for step in steps if step.get("name") == "Verify options and producer authority"]
     must(len(matches) == 1, "GUARD_STEP_AMBIGUOUS")
+    must("PERMIT_PREVIEW" in matches[0].get("env", {}),
+         "PREVIEW_RUNTIME_BINDING_MISSING")
     script = matches[0]["run"]
     must("rafcodephi-publish-dev-apt.yml" in script, "SIGNED_APT_WORKFLOW_NOT_ALLOWED")
     must("head_repository.full_name == $repo" in script, "SAME_REPO_BOUNDARY_MISSING")
     must('[[ "$EXPECTED_SHA" == "$producer_sha" ]]' in script, "PR_HEAD_SHA_FALSIFIER_MISSING")
     must('if [[ "$ORIGIN" == "source-contract" ]]; then' in script,
          "SOURCE_CONTRACT_BASH_GUARD_MISSING")
-    must('if [[ "$ORIGIN" == "artifact-run" ]]' in doc["jobs"]["compose"]["steps"][3]["run"],
-         "ARTIFACT_INPUT_BASH_GUARD_MISSING")
+    inventory_script = doc["jobs"]["compose"]["steps"][3]["run"]
+    must(any(guard in inventory_script for guard in (
+        'if [[ "$ORIGIN" == artifact-run ]]',
+        'if [[ "$ORIGIN" == "artifact-run" ]]',
+    )), "ARTIFACT_INPUT_BASH_GUARD_MISSING")
     must(subprocess.run(["bash", "-n"], input=script, text=True, capture_output=True,
                         check=False).returncode == 0, "BASH_PARSE_FAILED")
 
@@ -96,9 +105,13 @@ def main() -> int:
             "path": ".github/workflows/rafcodephi-publish-dev-apt.yml",
             "head_repo": "rafaelmeloreisnovo/termux-packages",
             "head_branch": "hotfix/rafcodephi-apt-blocker-false-positive-20261007",
-            "expect_pass": True,
+            "preview": "true", "expect_pass": True,
         }
         verify_case(script, tmp, "historical-pr-exact-head", **normal)
+        verify_case(script, tmp, "pr-preview-denied",
+                    **{**normal, "preview": "false", "expect_pass": False})
+        verify_case(script, tmp, "pr-preview-empty",
+                    **{**normal, "preview": "", "expect_pass": False})
         verify_case(script, tmp, "pr-wrong-sha",
                     **{**normal, "expected_sha": "8" * 40, "expect_pass": False})
         verify_case(script, tmp, "pr-foreign-head",
