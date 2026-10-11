@@ -44,6 +44,11 @@ on:
         required: false
         type: string
         default: ""
+      permit_preview:
+        description: "Manual opt-in for same-repo PR artifact observation only, never release"
+        required: false
+        type: boolean
+        default: false
   pull_request:
     paths:
       - '.github/workflows/555-artifact-manifold.yml'
@@ -96,6 +101,7 @@ jobs:
           RUN_ID: ${{ inputs.producer_run_id }}
           ARTIFACT_NAME: ${{ inputs.artifact_name }}
           EXPECTED_SHA: ${{ inputs.expected_producer_sha }}
+          PERMIT_PREVIEW: ${{ inputs.permit_preview && 'true' || 'false' }}
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
@@ -118,7 +124,7 @@ jobs:
             and ((.event == "workflow_dispatch" and .head_branch == "main")
               or (.event == "pull_request" and .head_branch != null))
           ' >/dev/null
-          if [[ "$PERMIT_PREVIEW" == "true" ]]; then
+          if [[ "${PERMIT_PREVIEW:-false}" == "true" ]]; then
             printf '%s' "$metadata" | jq -e '.event == "pull_request" or (.event == "workflow_dispatch" and .head_branch == "main")' >/dev/null
           else
             printf '%s' "$metadata" | jq -e '.event == "workflow_dispatch" and .head_branch == "main"' >/dev/null
