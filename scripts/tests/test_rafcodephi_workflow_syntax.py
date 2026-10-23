@@ -15,6 +15,42 @@ ROOT = Path(__file__).resolve().parents[2]
 WORKFLOWS = ROOT / ".github" / "workflows"
 GITHUB_EXPRESSION = re.compile(r"\$\{\{.*?\}\}", re.DOTALL)
 
+GITHUB_EVENTS = frozenset({
+    "branch_protection_rule",
+    "check_run",
+    "check_suite",
+    "create",
+    "delete",
+    "deployment",
+    "deployment_status",
+    "discussion",
+    "discussion_comment",
+    "fork",
+    "gollum",
+    "issue_comment",
+    "issues",
+    "label",
+    "merge_group",
+    "milestone",
+    "page_build",
+    "public",
+    "pull_request",
+    "pull_request_review",
+    "pull_request_review_comment",
+    "pull_request_target",
+    "push",
+    "registry_package",
+    "release",
+    "repository_dispatch",
+    "repository_vulnerability_alert",
+    "schedule",
+    "status",
+    "watch",
+    "workflow_call",
+    "workflow_dispatch",
+    "workflow_run",
+})
+
 
 def fail(message: str) -> None:
     raise SystemExit(f"RAFCODEPHI_WORKFLOW_SYNTAX=BLOCKED {message}")
@@ -52,12 +88,33 @@ def bash_syntax_check(path: Path, job_name: str, step_index: int, step: dict, de
 
 def validate_workflow(path: Path) -> int:
     try:
-        documents = list(yaml.safe_load_all(path.read_text(encoding="utf-8")))
+        source = path.read_text(encoding="utf-8")
+        documents = list(yaml.safe_load_all(source))
+        # GitHub uses YAML 1.2 boolean semantics. PyYAML SafeLoader treats
+        # literal "on" as True (YAML 1.1), so check trigger keys via BaseLoader.
+        trigger_docs = list(yaml.load_all(source, Loader=yaml.BaseLoader))
     except yaml.YAMLError as error:
         fail(f"yaml_parse path={path.relative_to(ROOT)}: {error}")
 
     if len(documents) != 1 or not isinstance(documents[0], dict):
         fail(f"single_document_required path={path.relative_to(ROOT)} documents={len(documents)}")
+    if len(trigger_docs) != 1 or not isinstance(trigger_docs[0], dict):
+        fail(f"single_trigger_document_required path={path.relative_to(ROOT)}")
+
+    triggers = trigger_docs[0].get("on")
+    if isinstance(triggers, dict):
+        events = list(triggers)
+    elif isinstance(triggers, str):
+        events = [triggers]
+    elif isinstance(triggers, list):
+        events = triggers
+    else:
+        events = []
+    if not events:
+        fail(f"github_triggers_missing path={path.relative_to(ROOT)}")
+    for event in events:
+        if not isinstance(event, str) or event not in GITHUB_EVENTS:
+            fail(f"github_trigger_unknown path={path.relative_to(ROOT)} event={event!r}")
 
     workflow = documents[0]
     jobs = workflow.get("jobs")
