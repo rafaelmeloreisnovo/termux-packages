@@ -61,6 +61,8 @@ def inspect_deb(path: Path) -> list[str]:
                     raise ValueError("unsafe deb tar member name")
                 if name.startswith("data/data/com.termux/"):
                     risks.append(name)
+                if item.size > 384 * 1024 * 1024:
+                    raise ValueError("oversized deb tar member")
                 if item.issym() or item.islnk():
                     if LEGACY in item.linkname.encode():
                         risks.append(name + " -> " + item.linkname)
@@ -71,9 +73,9 @@ def inspect_deb(path: Path) -> list[str]:
                     raise ValueError("unreadable deb tar member")
                 with source:
                     binary, legacy = scan_entry(source, item.size)
-                runtime_path = ("/bin/" in name or "/lib/" in name or
-                                "/libexec/" in name or "/etc/apt/" in name)
-                if legacy and (binary or runtime_path):
+                documentary = ("/share/doc/" in name or "/share/man/" in name
+                               or "/share/licenses/" in name)
+                if legacy and (binary or not documentary):
                     risks.append(name)
         code = proc.wait()
         stderr = proc.stderr.read().decode("utf-8", "replace") if proc.stderr else ""
