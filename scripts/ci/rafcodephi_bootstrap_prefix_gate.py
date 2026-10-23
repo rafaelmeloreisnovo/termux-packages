@@ -72,6 +72,8 @@ def gate(zip_path: Path, arch: str) -> dict:
         names = set()
         total = 0
         for member in archive.infolist():
+            if member.is_dir() and member.filename in (".", "./"):
+                continue
             name = clean_name(member.filename)
             if member.is_dir():
                 continue
