@@ -440,9 +440,15 @@ PY
         exit 1
     fi
 
-    out="$OUT_DIR/rafcodephi-bootstrap-${arch}.zip"
-    cp "$zip_path" "$out"
-    bytes="$(wc -c < "$out" | tr -d ' ')"
+    # P0: audit EVERY relevant binary/script in the exact sealed source ZIP,
+    # not just the handful of entry points above. The read-only gate never
+    # rewrites ELF and cannot turn a build receipt into runtime proof.
+    prefix_gate_receipt="$OUT_DIR/rafcodephi-bootstrap-${arch}-prefix-gate.json"
+    python3 "$ROOT/scripts/ci/rafcodephi_bootstrap_prefix_gate.py" \
+        --zip "$zip_path" --arch "$arch" --receipt "$prefix_gate_receipt"
+    prefix_gate_sha256="$(sha256sum "$prefix_gate_receipt" | awk '{print $1}')"
+    printf 'prefix_gate_receipt_%s=%s\nprefix_gate_receipt_sha256_%s=%s\nprefix_gate_state_%s=PASS_SCOPED\n' \
+        "$arch" "$prefix_gate_receipt" "$arch" "$prefix_gate_sha256" "$arch" >> "$manifest"
 
     deb_dir="$RAFCODEPHI_BOOTSTRAP_PACKAGE_EVIDENCE_DIR/$arch"
     test -s "$deb_dir/SHA256SUMS" || { echo "$arch missing preserved DEB SHA256SUMS" >&2; exit 1; }
@@ -453,6 +459,20 @@ PY
     deb_count="$(find "$deb_dir" -maxdepth 1 -type f -name '*.deb' | wc -l | tr -d ' ')"
     deb_set_sha256="$(sha256sum "$deb_dir/SHA256SUMS" | awk '{print $1}')"
     (( deb_count > 0 )) || { echo "$arch preserved DEB set is empty" >&2; exit 1; }
+
+    # The ZIP and its future APT package set are distinct proofs.
+    # Source-built DEBs must have exact SHA custody and zero binary legacy paths.
+    deb_gate_receipt="$OUT_DIR/rafcodephi-deb-set-${arch}-prefix-gate.json"
+    python3 "$ROOT/scripts/ci/rafcodephi_deb_set_gate.py" \
+        --deb-dir "$deb_dir" --arch "$arch" --receipt "$deb_gate_receipt"
+    deb_gate_sha256="$(sha256sum "$deb_gate_receipt" | awk '{print $1}')"
+    printf 'deb_gate_receipt_%s=%s\ndeb_gate_receipt_sha256_%s=%s\ndeb_gate_state_%s=PASS_SCOPED\n' \
+        "$arch" "$deb_gate_receipt" "$arch" "$deb_gate_sha256" "$arch" >> "$manifest"
+
+    # Do not export a candidate ZIP before BOTH package and archive gates pass.
+    out="$OUT_DIR/rafcodephi-bootstrap-${arch}.zip"
+    cp "$zip_path" "$out"
+    bytes="$(wc -c < "$out" | tr -d ' ')"
 
     printf 'artifact_%s=%s\nbytes_%s=%s\ndeb_evidence_%s=%s\ndeb_count_%s=%s\ndeb_set_sha256_%s=%s\n' \
         "$arch" "$out" "$arch" "$bytes" "$arch" "$deb_dir" "$arch" "$deb_count" "$arch" "$deb_set_sha256" >> "$manifest"
