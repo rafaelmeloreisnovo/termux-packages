@@ -19,6 +19,8 @@ on:
       - 'scripts/repair_rafcodephi_bootstrap_symlinks.py'
       - 'scripts/ci/rafcodephi_bootstrap_prefix_gate.py'
       - 'scripts/tests/test_rafcodephi_prefix_gate.py'
+      - 'scripts/ci/rafcodephi_deb_set_gate.py'
+      - 'scripts/tests/test_rafcodephi_deb_set_gate.py'
       - 'scripts/build-rafcodephi-freestanding-probes.sh'
       - 'scripts/rafcodephi-freestanding/**'
       - 'scripts/apply-rafcodephi-build-properties.py'
@@ -97,6 +99,7 @@ jobs:
           python3 scripts/tests/test_rafcodephi_real_bootstrap_workflow_contract.py
           python3 scripts/tests/test_rafcodephi_bootstrap_symlink_repair.py
           python3 scripts/tests/test_rafcodephi_prefix_gate.py
+          python3 scripts/tests/test_rafcodephi_deb_set_gate.py
           bash -n scripts/build-rafcodephi-real-bootstrap.sh
 
       - name: Materialize RAFCODEPHI package prefix on host checkout
@@ -162,6 +165,8 @@ jobs:
           for arch in $(echo '${{ steps.arch.outputs.architectures }}' | tr ',' ' '); do
             grep -Fx "prefix_gate_state_${arch}=PASS_SCOPED" "$manifest"
             test -s "artifacts/rafcodephi-bootstrap/rafcodephi-bootstrap-${arch}-prefix-gate.json"
+            grep -Fx "deb_gate_state_${arch}=PASS_SCOPED" "$manifest"
+            test -s "artifacts/rafcodephi-bootstrap/rafcodephi-deb-set-${arch}-prefix-gate.json"
           done
           grep -Fx 'claim_allowed_device_runtime=false' "$manifest"
           grep -Fx 'device_runtime_proof=TOKEN_VAZIO' "$manifest"
