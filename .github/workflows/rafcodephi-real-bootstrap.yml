@@ -17,6 +17,8 @@ on:
     paths:
       - 'scripts/build-rafcodephi-real-bootstrap.sh'
       - 'scripts/repair_rafcodephi_bootstrap_symlinks.py'
+      - 'scripts/ci/rafcodephi_bootstrap_prefix_gate.py'
+      - 'scripts/tests/test_rafcodephi_prefix_gate.py'
       - 'scripts/build-rafcodephi-freestanding-probes.sh'
       - 'scripts/rafcodephi-freestanding/**'
       - 'scripts/apply-rafcodephi-build-properties.py'
@@ -94,6 +96,8 @@ jobs:
           python3 scripts/ci/rafcodephi_failure_triage.py --self-test
           python3 scripts/tests/test_rafcodephi_real_bootstrap_workflow_contract.py
           python3 scripts/tests/test_rafcodephi_bootstrap_symlink_repair.py
+          python3 scripts/tests/test_rafcodephi_prefix_gate.py
+          bash -n scripts/build-rafcodephi-real-bootstrap.sh
 
       - name: Materialize RAFCODEPHI package prefix on host checkout
         shell: bash
@@ -155,6 +159,10 @@ jobs:
           grep -Fx 'api_access_control=SIGNATURE_PERMISSION_NO_SHARED_UID' "$manifest"
           grep -Fx 'termux_api_cli=EMBEDDED' "$manifest"
           grep -Fx 'apt_update_guard=RAFCODEPHI_PACKAGE_REPOSITORY_NOT_PUBLISHED' "$manifest"
+          for arch in $(echo '${{ steps.arch.outputs.architectures }}' | tr ',' ' '); do
+            grep -Fx "prefix_gate_state_${arch}=PASS_SCOPED" "$manifest"
+            test -s "artifacts/rafcodephi-bootstrap/rafcodephi-bootstrap-${arch}-prefix-gate.json"
+          done
           grep -Fx 'claim_allowed_device_runtime=false' "$manifest"
           grep -Fx 'device_runtime_proof=TOKEN_VAZIO' "$manifest"
           ! grep -q '^sha256_' "$manifest"
