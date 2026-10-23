@@ -23,6 +23,10 @@ def main() -> int:
             "FREESTANDING_PREFIX_REGRESSION_TEST_NOT_ROUTED")
     require("scripts/ci/rafcodephi_bootstrap_prefix_gate.py" in text,
             "COMPLETE_BOOTSTRAP_PREFIX_GATE_NOT_IN_SCOPE")
+    require("scripts/ci/rafcodephi_deb_set_gate.py" in text,
+            "DEB_INVENTORY_GATE_NOT_IN_SCOPE")
+    require("scripts/tests/test_rafcodephi_deb_set_gate.py" in text,
+            "DEB_GATE_FALSIFIERS_NOT_RUN")
     require('prefix_gate_state_${arch}=PASS_SCOPED' in text,
             "CROSS_ARCH_PREFIX_RECEIPT_NOT_VERIFIED")
     require("rafcodephi-real-bootstrap.log" in text, "BUILD_LOG_CAPTURE_MISSING")
@@ -67,6 +71,12 @@ def main() -> int:
             "HASH_BOUND_PREFIX_AUDIT_RECEIPT_MISSING")
     require('prefix_gate_state_%s=PASS_SCOPED' in builder,
             "SOURCE_BUILD_SUCCESS_SCOPE_INCORRECT")
+    require("rafcodephi_deb_set_gate.py" in builder,
+            "SOURCE_DEB_SET_GATE_NOT_CALLED")
+    require('deb_gate_receipt_sha256_%s' in builder,
+            "HASH_BOUND_DEB_GATE_RECEIPT_MISSING")
+    require('deb_gate_state_%s=PASS_SCOPED' in builder,
+            "SOURCE_DEB_CLAIM_SCOPE_INVALID")
     require("repair_rafcodephi_bootstrap_symlinks.py" in builder,
             "DEB_EVIDENCE_SYMLINK_REPAIR_NOT_CALLED")
     require('--deb-dir "$RAFCODEPHI_BOOTSTRAP_PACKAGE_EVIDENCE_DIR/$arch"' in builder,
