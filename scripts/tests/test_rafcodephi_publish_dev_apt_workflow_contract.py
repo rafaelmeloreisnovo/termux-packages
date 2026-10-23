@@ -206,6 +206,18 @@ def main() -> int:
     require("DUAL_ARCH_DEB=NOT_RUN" in text, "FAST_CONTRACT_MASQUERADES_AS_DEB")
     require("contents: read" in text, "READ_ONLY_DEFAULT_PERMISSION_MISSING")
     require("claim_allowed_release" in text, "CLAIM_BOUNDARY_MISSING")
+    require("scripts/tests/test_rafcodephi_prefix_gate.py" in text,
+            "FREESTANDING_PREFIX_TEST_MISSING")
+    require("scripts/tests/test_rafcodephi_deb_set_gate.py" in text,
+            "SOURCE_DEB_NEGATIVE_GATE_MISSING")
+    require("rafcodephi-deb-set-$arch-prefix-gate.json" in text,
+            "SIGNED_REPOSITORY_DEB_GATE_REQUIRED")
+    require("rafcodephi-bootstrap-$arch-prefix-gate.json" in text,
+            "SIGNED_REPOSITORY_ZIP_GATE_REQUIRED")
+    require("rafcodephi-live-prefix-$arch.json" in text,
+            "LIVE_RESEALED_ZIP_MUST_BE_REAUDITED")
+    require('grep -Fx "${field}_receipt_sha256_${arch}=$report_sha"' in text,
+            "SOURCE_GATE_RECEIPTS_NOT_HASH_BOUND")
     # The runtime guard intentionally rejects ACTIVE APT directives only:
     # harmless comments are not a blocker. Exact whole-file equality was an
     # obsolete assertion and would reject safe already-materialized archives.
