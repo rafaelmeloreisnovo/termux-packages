@@ -36,6 +36,7 @@ def clean_name(name: str) -> str:
     normalized = name.removeprefix("./")
     parts = PurePosixPath(normalized).parts
     if (not normalized or normalized.startswith("/") or "\\" in normalized
+            or normalized.rstrip("/") != PurePosixPath(normalized).as_posix()
             or any(p in ("", ".", "..") for p in parts)
             or "/../" in normalized or "//" in normalized):
         raise ValueError("unsafe ZIP member name")
@@ -83,6 +84,10 @@ def gate(zip_path: Path, arch: str) -> dict:
         missing = sorted(set(MANDATORY) - names)
         if missing:
             raise ValueError("required entries missing: " + ", ".join(missing))
+        for marker_name in ("BOOTSTRAP_INFO", "BOOTSTRAP_PROFILE.json",
+                            "SYMLINKS.txt"):
+            if archive.getinfo(marker_name).file_size > 64 * 1024:
+                raise ValueError("unbounded bootstrap metadata")
         info = archive.read("BOOTSTRAP_INFO").decode("utf-8")
         profile = json.loads(archive.read("BOOTSTRAP_PROFILE.json"))
         for marker in ("RAFCODEPHI_BOOTSTRAP_PROFILE=real-pkg",
@@ -110,10 +115,12 @@ def gate(zip_path: Path, arch: str) -> dict:
             result["entries_checked"] += 1
             if binary:
                 result["binary_entries_checked"] += 1
-            executable_or_config = name.startswith(
-                ("bin/", "lib/", "libexec/", "etc/apt/", "etc/profile")
+            # Historical documents may quote the old path, but runtime data
+            # must never carry it into the installed prefix.
+            documentary = name.startswith(
+                ("share/doc/", "share/man/", "share/licenses/")
             )
-            if legacy_found and (binary or executable_or_config):
+            if legacy_found and (binary or not documentary):
                 result["legacy_prefix_entries"].append(name)
         if result["legacy_prefix_entries"]:
             result["reason"] = "SOURCE_REBUILD_REQUIRED_LEGACY_PREFIX"
@@ -131,7 +138,7 @@ def main() -> int:
     args = parser.parse_args()
     try:
         report = gate(args.zip, args.arch)
-    except (OSError, ValueError, KeyError, zipfile.BadZipFile,
+    except (OSError, ValueError, KeyError, RuntimeError, zipfile.BadZipFile,
             UnicodeDecodeError, json.JSONDecodeError) as err:
         report = {
             "schema": SCHEMA, "state": "BLOCKED",
