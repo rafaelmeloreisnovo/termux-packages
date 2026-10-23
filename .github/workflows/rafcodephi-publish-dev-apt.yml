@@ -14,6 +14,10 @@ on:
       - 'scripts/generate-bootstraps.sh'
       - 'scripts/build-rafcodephi-real-bootstrap.sh'
       - 'scripts/repair_rafcodephi_bootstrap_symlinks.py'
+      - 'scripts/ci/rafcodephi_bootstrap_prefix_gate.py'
+      - 'scripts/ci/rafcodephi_deb_set_gate.py'
+      - 'scripts/tests/test_rafcodephi_prefix_gate.py'
+      - 'scripts/tests/test_rafcodephi_deb_set_gate.py'
       - 'scripts/build-rafcodephi-live-bootstrap.sh'
       - 'scripts/emit_rafcodephi_package_custody.py'
       - 'scripts/tests/test_rafcodephi_publish_dev_apt_workflow_contract.py'
@@ -27,6 +31,10 @@ on:
       - 'scripts/generate-bootstraps.sh'
       - 'scripts/build-rafcodephi-real-bootstrap.sh'
       - 'scripts/repair_rafcodephi_bootstrap_symlinks.py'
+      - 'scripts/ci/rafcodephi_bootstrap_prefix_gate.py'
+      - 'scripts/ci/rafcodephi_deb_set_gate.py'
+      - 'scripts/tests/test_rafcodephi_prefix_gate.py'
+      - 'scripts/tests/test_rafcodephi_deb_set_gate.py'
       - 'scripts/build-rafcodephi-live-bootstrap.sh'
       - 'scripts/emit_rafcodephi_package_custody.py'
       - 'scripts/tests/test_rafcodephi_publish_dev_apt_workflow_contract.py'
@@ -62,6 +70,8 @@ jobs:
           python3 scripts/ci/rafcodephi_failure_triage.py --self-test
           python3 scripts/tests/test_rafcodephi_package_custody_contract.py
           python3 scripts/tests/test_rafcodephi_bootstrap_symlink_repair.py
+          python3 scripts/tests/test_rafcodephi_prefix_gate.py
+          python3 scripts/tests/test_rafcodephi_deb_set_gate.py
           echo 'SIGNED_APT_CONTRACT=PASS_SOURCE_ONLY'
           echo 'DUAL_ARCH_DEB=NOT_RUN'
           echo 'SIGNED_REPOSITORY=NOT_RUN'
@@ -196,6 +206,25 @@ jobs:
               cd "$debdir"
               sha256sum -c SHA256SUMS
             )
+            # Signed release cannot hide a skipped producer ZIP/DEB safety gate.
+            manifest=artifacts/rafcodephi-bootstrap/RAFCODEPHI_REAL_BOOTSTRAP_MANIFEST.txt
+            for gate_type in prefix deb; do
+              case "$gate_type" in
+                prefix)
+                  report="artifacts/rafcodephi-bootstrap/rafcodephi-bootstrap-$arch-prefix-gate.json"
+                  field=prefix_gate
+                  ;;
+                deb)
+                  report="artifacts/rafcodephi-bootstrap/rafcodephi-deb-set-$arch-prefix-gate.json"
+                  field=deb_gate
+                  ;;
+              esac
+              test -s "$report"
+              grep -Fx "${field}_state_${arch}=PASS_SCOPED" "$manifest"
+              report_sha="$(sha256sum "$report" | awk '{print $1}')"
+              grep -Fx "${field}_receipt_sha256_${arch}=$report_sha" "$manifest"
+              python3 -c 'import json,sys; d=json.load(open(sys.argv[1],encoding="utf-8")); sys.exit(0 if d.get("state")=="PASS_SCOPED" and d.get("arch")==sys.argv[2] and d.get("claim_allowed") is False and d.get("device_runtime")=="TOKEN_VAZIO" else "BLOCKED: invalid gate receipt")' "$report" "$arch"
+            done
             unzip -p "$zip" etc/apt/sources.list.d/termux.sources > "build/reports/termux-$arch.sources"
             grep -Fx 'Enabled: yes' "build/reports/termux-$arch.sources"
             grep -Fx "URIs: $RAFCODEPHI_APT_REPOSITORY_URL" "build/reports/termux-$arch.sources"
