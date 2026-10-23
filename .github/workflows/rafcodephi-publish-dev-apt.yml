@@ -225,6 +225,14 @@ jobs:
               grep -Fx "${field}_receipt_sha256_${arch}=$report_sha" "$manifest"
               python3 -c 'import json,sys; d=json.load(open(sys.argv[1],encoding="utf-8")); sys.exit(0 if d.get("state")=="PASS_SCOPED" and d.get("arch")==sys.argv[2] and d.get("claim_allowed") is False and d.get("device_runtime")=="TOKEN_VAZIO" else "BLOCKED: invalid gate receipt")' "$report" "$arch"
             done
+            # The live signer injects a key and changes the exact ZIP bytes.
+            # Rescan that final artifact too; raw source proof is not inherited.
+            python3 scripts/ci/rafcodephi_bootstrap_prefix_gate.py \
+              --zip "$zip" --arch "$arch" \
+              --receipt "build/reports/rafcodephi-live-prefix-$arch.json"
+            sha256sum "$zip" > "build/reports/rafcodephi-live-bootstrap-$arch.sha256"
+            sha256sum "build/reports/rafcodephi-live-prefix-$arch.json" \
+              > "build/reports/rafcodephi-live-prefix-$arch.json.sha256"
             unzip -p "$zip" etc/apt/sources.list.d/termux.sources > "build/reports/termux-$arch.sources"
             grep -Fx 'Enabled: yes' "build/reports/termux-$arch.sources"
             grep -Fx "URIs: $RAFCODEPHI_APT_REPOSITORY_URL" "build/reports/termux-$arch.sources"
