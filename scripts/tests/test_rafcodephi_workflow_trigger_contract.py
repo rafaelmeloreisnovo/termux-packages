@@ -24,15 +24,15 @@ JOB = """jobs:
 """
 
 CASES = [
-    ("map_trigger", "on:\\n  pull_request:\\n", True, None),
-    ("scalar_trigger", "on: workflow_dispatch\\n", True, None),
-    ("list_trigger", "on: [push, pull_request]\\n", True, None),
+    ("map_trigger", "on:\n  pull_request:\n", True, None),
+    ("scalar_trigger", "on: workflow_dispatch\n", True, None),
+    ("list_trigger", "on: [push, pull_request]\n", True, None),
     ("missing_trigger", "", False, "github_triggers_missing"),
-    ("empty_trigger_map", "on: {}\\n", False, "github_triggers_missing"),
-    ("empty_trigger_list", "on: []\\n", False, "github_triggers_missing"),
-    ("unknown_trigger", "on: puch\\n", False, "github_trigger_unknown"),
-    ("boolean_off_trigger", "on: off\\n", False, "github_trigger_unknown"),
-    ("null_trigger", "on:\\n", False, "github_triggers_missing"),
+    ("empty_trigger_map", "on: {}\n", False, "github_triggers_missing"),
+    ("empty_trigger_list", "on: []\n", False, "github_triggers_missing"),
+    ("unknown_trigger", "on: puch\n", False, "github_trigger_unknown"),
+    ("boolean_off_trigger", "on: off\n", False, "github_trigger_unknown"),
+    ("null_trigger", "on:\n", False, "github_triggers_missing"),
 ]
 
 
@@ -40,7 +40,7 @@ def main() -> int:
     with tempfile.TemporaryDirectory(prefix=".rafcodephi-triggers-", dir=ROOT) as temp:
         path = Path(temp) / "fixture.yml"
         for case, trigger, accepted, reason in CASES:
-            path.write_text("name: Trigger fixture\\n" + trigger + JOB, encoding="utf-8")
+            path.write_text("name: Trigger fixture\n" + trigger + JOB, encoding="utf-8")
             try:
                 result = module.validate_workflow(path)
             except SystemExit as error:
