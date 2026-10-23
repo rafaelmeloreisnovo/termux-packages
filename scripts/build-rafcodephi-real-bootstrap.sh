@@ -440,6 +440,16 @@ PY
         exit 1
     fi
 
+    # P0: audit EVERY relevant binary/script in the exact sealed source ZIP,
+    # not just the handful of entry points above. The read-only gate never
+    # rewrites ELF and cannot turn a build receipt into runtime proof.
+    prefix_gate_receipt="$OUT_DIR/rafcodephi-bootstrap-${arch}-prefix-gate.json"
+    python3 "$ROOT/scripts/ci/rafcodephi_bootstrap_prefix_gate.py" \
+        --zip "$zip_path" --arch "$arch" --receipt "$prefix_gate_receipt"
+    prefix_gate_sha256="$(sha256sum "$prefix_gate_receipt" | awk '{print $1}')"
+    printf 'prefix_gate_receipt_%s=%s\nprefix_gate_receipt_sha256_%s=%s\nprefix_gate_state_%s=PASS_SCOPED\n' \
+        "$arch" "$prefix_gate_receipt" "$arch" "$prefix_gate_sha256" "$arch" >> "$manifest"
+
     out="$OUT_DIR/rafcodephi-bootstrap-${arch}.zip"
     cp "$zip_path" "$out"
     bytes="$(wc -c < "$out" | tr -d ' ')"
