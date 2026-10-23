@@ -24,6 +24,28 @@ fi
     exit 2
 }
 
+# Validate the untrusted URL before any costly source build or ZIP mutation.
+# The URL is written into a deb822 APT source field; reject newlines/whitespace,
+# userinfo and alternate schemes rather than producing an injectable source.
+python3 - "$REPOSITORY_URL" <<'PY'
+import sys
+from urllib.parse import urlsplit
+
+url = sys.argv[1]
+if any(ord(char) <= 32 or ord(char) == 127 or char == "\\" for char in url):
+    raise SystemExit("RAFCODEPHI_APT_URL=BLOCKED invalid whitespace/control")
+try:
+    parsed = urlsplit(url)
+    port = parsed.port
+except ValueError as exc:
+    raise SystemExit("RAFCODEPHI_APT_URL=BLOCKED malformed authority") from exc
+if (parsed.scheme != "https" or not parsed.netloc or not parsed.hostname
+        or parsed.username is not None or parsed.password is not None
+        or parsed.query or parsed.fragment or port == 0):
+    raise SystemExit("RAFCODEPHI_APT_URL=BLOCKED unsafe APT repository URL")
+print("RAFCODEPHI_APT_URL=PASS")
+PY
+
 # Do not depend on the executable bit surviving checkout/container bind mounts.
 bash "$ROOT/scripts/build-rafcodephi-real-bootstrap.sh" "$@"
 OUT_DIR="${RAFCODEPHI_BOOTSTRAP_OUT_DIR:-$ROOT/artifacts/rafcodephi-bootstrap}"
@@ -70,7 +92,12 @@ for path in sorted(out_dir.glob("rafcodephi-bootstrap-*.zip")):
         continue
     tmp = path.with_suffix(path.suffix + ".live.tmp")
     with zipfile.ZipFile(path, "r") as source, zipfile.ZipFile(tmp, "w", compression=zipfile.ZIP_DEFLATED, compresslevel=9) as target:
-        names = set(source.namelist())
+        members = source.namelist()
+        if len(members) != len(set(members)):
+            raise SystemExit(f"{path.name}: duplicate ZIP entries before live reseal")
+        if key_path in members:
+            raise SystemExit(f"{path.name}: key already present before live reseal")
+        names = set(members)
         required = {source_path, block_path, "BOOTSTRAP_PROFILE.json", "BOOTSTRAP_INFO"}
         missing = required - names
         if missing:
