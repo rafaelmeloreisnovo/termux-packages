@@ -19,6 +19,12 @@ def main() -> int:
     require("scripts/apply-rafcodephi-build-properties.py" in text, "CANONICAL_PROPERTIES_OVERLAY_MISSING")
     require("scripts/validate-rafcodephi-build-properties.sh" in text, "PROPERTIES_VALIDATION_MISSING")
     require("path.write_text" not in text, "INLINE_PROPERTIES_MUTATION_PRESENT")
+    require("scripts/tests/test_rafcodephi_prefix_gate.py" in text,
+            "FREESTANDING_PREFIX_REGRESSION_TEST_NOT_ROUTED")
+    require("scripts/ci/rafcodephi_bootstrap_prefix_gate.py" in text,
+            "COMPLETE_BOOTSTRAP_PREFIX_GATE_NOT_IN_SCOPE")
+    require('prefix_gate_state_${arch}=PASS_SCOPED' in text,
+            "CROSS_ARCH_PREFIX_RECEIPT_NOT_VERIFIED")
     require("rafcodephi-real-bootstrap.log" in text, "BUILD_LOG_CAPTURE_MISSING")
     require("rafcodephi-real-bootstrap-status.json" in text, "BUILD_STATUS_RECEIPT_MISSING")
     require("build_status=\"${PIPESTATUS[0]}\"" in text, "DOCKER_EXIT_STATUS_LOST")
@@ -55,6 +61,12 @@ def main() -> int:
     require("termux-api-broadcast←(\\./)?libexec/termux-api" in builder,
             "TERMUX_API_SYMLINK_OPTIONAL_DOT_SLASH_GATE_MISSING")
     repair = (ROOT / "scripts/repair_rafcodephi_bootstrap_symlinks.py").read_text(encoding="utf-8")
+    require("rafcodephi_bootstrap_prefix_gate.py" in builder,
+            "FULL_PAYLOAD_BINARY_PREFIX_GATE_MISSING")
+    require('prefix_gate_receipt_sha256_%s' in builder,
+            "HASH_BOUND_PREFIX_AUDIT_RECEIPT_MISSING")
+    require('prefix_gate_state_%s=PASS_SCOPED' in builder,
+            "SOURCE_BUILD_SUCCESS_SCOPE_INCORRECT")
     require("repair_rafcodephi_bootstrap_symlinks.py" in builder,
             "DEB_EVIDENCE_SYMLINK_REPAIR_NOT_CALLED")
     require('--deb-dir "$RAFCODEPHI_BOOTSTRAP_PACKAGE_EVIDENCE_DIR/$arch"' in builder,
