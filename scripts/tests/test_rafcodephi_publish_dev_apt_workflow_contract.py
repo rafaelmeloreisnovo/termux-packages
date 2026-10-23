@@ -13,6 +13,31 @@ def require(cond: bool, token: str) -> None:
 
 
 
+def exercise_live_url_guard(live: str) -> None:
+    """Run the actual pre-build URL guard against injection and unsafe schemes."""
+    import subprocess
+    import sys
+
+    marker = """python3 - "$REPOSITORY_URL" <<'PY'\n"""
+    require(live.count(marker) == 1, "LIVE_URL_GUARD_UNRESOLVED")
+    guard = live.split(marker, 1)[1].split("\nPY\n", 1)[0]
+    for url, allowed in (
+        ("https://example.invalid/signed-apt", True),
+        ("https://", False),
+        ("http://example.invalid", False),
+        ("https://example.invalid/path\nTrusted: yes", False),
+        ("https://user:pass@example.invalid", False),
+        ("https://example.invalid/path?query=1", False),
+        ("https://example.invalid/#fragment", False),
+        ("https://example.invalid:99999/apt", False),
+    ):
+        proc = subprocess.run([sys.executable, "-", url], input=guard,
+                              capture_output=True, text=True, check=False)
+        require((proc.returncode == 0) == allowed,
+                f"LIVE_URL_GUARD_UNEXPECTED:{url!r}:{proc.stderr[-180:]}")
+    print("RAFCODEPHI_LIVE_URL_GUARD=PASS negative_cases=7")
+
+
 def exercise_live_apt_guard(live: str) -> None:
     """Execute the exact inline live sealer against tiny synthetic ARM/ARM64 ZIPs.
 
@@ -39,7 +64,7 @@ def exercise_live_apt_guard(live: str) -> None:
         root = Path(temp)
         key = root / "archive-key.gpg"
         key.write_bytes(b"synthetic-public-key-for-fixture")
-        for case, script in (("inactive-comment", sealer), ("active-directive", active)):
+        for case, script in (("inactive-comment", sealer), ("active-directive", active), ("duplicate-entry", sealer)):
             out = root / case
             out.mkdir()
             for arch in ("arm", "aarch64"):
@@ -60,6 +85,8 @@ def exercise_live_apt_guard(live: str) -> None:
                         }),
                     )
                     zf.writestr("BOOTSTRAP_INFO", "RAFCODEPHI_CLAIM_ALLOWED=0\n")
+                    if case == "duplicate-entry":
+                        zf.writestr("BOOTSTRAP_INFO", "INJECTED_DUPLICATE=1\n")
             (out / "RAFCODEPHI_REAL_BOOTSTRAP_MANIFEST.txt").write_text(
                 "schema=rafcodephi.real-bootstrap-sourcebuild/v1\n",
                 encoding="utf-8",
@@ -90,11 +117,16 @@ def exercise_live_apt_guard(live: str) -> None:
                             in zf.read("etc/apt/sources.list.d/termux.sources").decode(),
                             f"SIGNED_BY_MISSING:{arch}",
                         )
-            else:
+            elif case == "active-directive":
                 require(
                     proc.returncode != 0
                     and "old apt blocker still active" in proc.stderr,
                     f"APT_ACTIVE_BLOCKER_NOT_REJECTED:{proc.returncode}:{proc.stderr[-250:]}",
+                )
+            else:
+                require(
+                    proc.returncode != 0 and "duplicate ZIP entries" in proc.stderr,
+                    f"APT_DUPLICATE_ENTRY_NOT_REJECTED:{proc.returncode}:{proc.stderr[-250:]}",
                 )
     print("RAFCODEPHI_LIVE_APT_GUARD_FIXTURE=PASS arm=true aarch64=true falsifier=true")
 
@@ -150,6 +182,7 @@ def main() -> int:
     for token in live_required:
         require(token in live, f"LIVE_BOOTSTRAP_MISSING:{token}")
 
+    exercise_live_url_guard(live)
     exercise_live_apt_guard(live)
 
     require("RAFCODEPHI_BOOTSTRAP_PACKAGE_EVIDENCE_DIR" in generator,
