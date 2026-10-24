@@ -13,6 +13,10 @@ import re
 from pathlib import Path
 
 RULES = (
+    # Environment root causes take priority over downstream wrapper failures.
+    ("NDK_MISSING", re.compile(r"ERROR:\s*NDK \([^)]*\) not pointing at a directory!", re.I)),
+    ("NDK_VERSION_MISMATCH", re.compile(r"Wrong NDK version - we need", re.I)),
+    ("NDK_UNSUPPORTED", re.compile(r"ERROR:\s*unknown NDK version", re.I)),
     ("LEGACY_PREFIX", re.compile(r"embeds forbidden legacy prefix")),
     ("RECEIVER_ROUTE", re.compile(r"client does not target the RAFCODEPHI API receiver|removed service stub route")),
     ("SYMLINK", re.compile(r"compatibility symlink is missing|missing real bootstrap archive target|symlink evidence repair.*(?:BLOCKED|FAIL)", re.I)),
@@ -72,6 +76,18 @@ def self_test() -> None:
         p.write_text("rafcodephi-bootstrap-aarch64.zip: old apt blocker still active\n", encoding="utf-8")
         r = scan(p)
         assert r["primary_candidate"] == "APT_GUARD", r
+        p.write_text(
+            "ERROR: NDK (/home/builder/lib/android-ndk-r29) not pointing at a directory!\\n"
+            "RAFCODEPHI_BOOTSTRAP_DOCKER=BLOCKED build_exit=1 copy_exit=0\\n",
+            encoding="utf-8",
+        )
+        r = scan(p)
+        assert r["primary_candidate"] == "NDK_MISSING", r
+        assert r["counts"]["PRODUCER_GATE"] == 1, r
+        p.write_text("Wrong NDK version - we need 29\\n", encoding="utf-8")
+        assert scan(p)["primary_candidate"] == "NDK_VERSION_MISMATCH"
+        p.write_text("ERROR: unknown NDK version 999\\n", encoding="utf-8")
+        assert scan(p)["primary_candidate"] == "NDK_UNSUPPORTED"
     print("RAFCODEPHI_FAILURE_TRIAGE_SELF_TEST=PASS")
 
 
