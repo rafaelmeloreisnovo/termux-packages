@@ -204,6 +204,11 @@ jobs:
             --out build/reports/rafcodephi-real-bootstrap-triage.json \
             --markdown build/reports/rafcodephi-real-bootstrap-triage.md
           cat build/reports/rafcodephi-real-bootstrap-triage.md >> "$GITHUB_STEP_SUMMARY"
+          # Preserve the exact first failing prerequisite even when the
+          # generic predecessor classifier has not learned this new token.
+          if grep -Fq 'RAFCODEPHI_NDK_PREFLIGHT=BLOCKED reason=NDK_MISSING' "$input_log"; then
+            echo 'Observed builder prerequisite: **NDK_MISSING** (not a successful build).' >> "$GITHUB_STEP_SUMMARY"
+          fi
 
       - name: Upload real bootstrap artifacts
         if: always()
