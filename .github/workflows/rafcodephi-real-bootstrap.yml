@@ -108,6 +108,7 @@ jobs:
           python3 scripts/tests/test_rafcodephi_prefix_gate.py
           python3 scripts/tests/test_rafcodephi_deb_set_gate.py
           bash -n scripts/build-rafcodephi-real-bootstrap.sh
+          bash -n scripts/ci/rafcodephi_ndk_preflight.sh
 
       - name: Materialize RAFCODEPHI package prefix on host checkout
         shell: bash
