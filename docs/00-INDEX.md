@@ -251,3 +251,8 @@ For questions about navigation or structure, consult [`NAVIGATION.md`](./NAVIGAT
 - Workflow: `.github/workflows/rafcodephi-webhook-intake.yml`.
 - Boundary: signed external request -> read-only approved-source build -> manual
   review receipt. Live relay/Android/runtime claims require separate evidence.
+
+
+## 2026-10-24 — prefix sentinel hotfix
+
+[NULL denial + exact-source CI receipt](assurance/RAFCODEPHI_PREFIX_NULL_HOTFIX_20261024.md): bounded local evidence; Android runtime remains unverified.

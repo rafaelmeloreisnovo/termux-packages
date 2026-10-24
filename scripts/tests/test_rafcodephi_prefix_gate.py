@@ -5,6 +5,7 @@ from __future__ import annotations
 import ctypes
 import importlib.util
 import json
+import random
 from pathlib import Path
 import subprocess
 import tempfile
@@ -112,6 +113,8 @@ class PrefixGateTests(unittest.TestCase):
             fn = ffi.rafcodephi_legacy_prefix_in_span
             fn.argtypes = (ctypes.c_void_p, ctypes.c_size_t)
             fn.restype = ctypes.c_uint
+            for n in (0, 1, len(gate.LEGACY), ctypes.c_size_t(-1).value):
+                self.assertEqual(fn(None, n), 2, ("NULL", n))
             for buf, expected in (
                 (b"/data/data/com.termux/files/usr", 1),
                 (b"/data/data/com.termux.rafacodephi/files/usr", 0),
@@ -120,6 +123,22 @@ class PrefixGateTests(unittest.TestCase):
             ):
                 value = ctypes.create_string_buffer(buf)
                 self.assertEqual(fn(value, len(buf)), expected, buf)
+            # Compare with an independent bytes search, including all prefix
+            # truncations, offsets, and partial matches at the end of a span.
+            rng = random.Random(144000)
+            cases = [gate.LEGACY[:n] for n in range(len(gate.LEGACY) + 1)]
+            cases += [b"x" * n + gate.LEGACY + b"y" * (64 - n)
+                      for n in range(65)]
+            for _ in range(512):
+                buf = bytes(rng.randrange(256) for _ in range(rng.randrange(128)))
+                if rng.randrange(2):
+                    pos = rng.randrange(len(buf) + 1)
+                    buf = buf[:pos] + gate.LEGACY + buf[pos:]
+                cases.append(buf)
+            for buf in cases:
+                value = ctypes.create_string_buffer(buf)
+                for n in (0, len(buf) // 2, len(buf)):
+                    self.assertEqual(fn(value, n), int(gate.LEGACY in buf[:n]))
 
 
 if __name__ == "__main__":
