@@ -32,3 +32,22 @@ F_ok=local input falsifier closed, prior tested contracts preserved;
 F_gap=CI cross objects, signed repository/bootstrap/APK/device chain, human review;
 F_next=exact-head CI then real source-built artifacts and physical device receipt.
 claim_allowed=false; release_allowed=false.
+
+## Successor S2 — remote feedback and syntax classification
+
+At candidate `6074ed7a0eef5caa301674b2c1d6dd959ee51b82`, GitHub run
+40140576934 / job121011272666 completed SUCCESS: exact-source action, 10 ZIP/DEB
+tests, ASan/UBSan and both ARM objects with zero undefined symbols.
+Runner-reported SHA256 ARM32=c8f22621947704a603ce82249cc8dc2d2256ba7b38d71645e7b703e05f81e9fa;
+ARM64=a2f8172dc93a5fe4f9e611d083004d8e20b89a1a95dcfe39e6292aae4af4c59c.
+These hashes are read from CI logs, not independently downloaded object hashes.
+
+Separate syntax run40140576904 failed an existing negative fixture: BaseLoader
+turns bare `on:` into empty string, classified UNKNOWN rather than MISSING.
+Reproduced locally against unchanged baseline validator. S2 maps only empty string
+to missing events, preserving rejection. Existing fixture now passes, plus quoted
+empty fixture (3 positive/7 negative). Local all-workflow Bash/YAML scan PASS;
+555 workflow contract and composer selftest PASS. No trigger allowlist weakened.
+Prefix CI path filter now includes these validator/fixture files for successor replay.
+S2 remote checks pending; earlier CI PASS is retained only for its original SHA.
+Rollback S2: return to candidate6074ed7 (syntax gap returns); full rollback remains base.

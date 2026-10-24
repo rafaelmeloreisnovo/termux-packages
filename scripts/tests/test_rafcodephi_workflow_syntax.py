@@ -105,7 +105,8 @@ def validate_workflow(path: Path) -> int:
     if isinstance(triggers, dict):
         events = list(triggers)
     elif isinstance(triggers, str):
-        events = [triggers]
+        # BaseLoader represents an empty YAML value as "", not None.
+        events = [triggers] if triggers else []
     elif isinstance(triggers, list):
         events = triggers
     else:

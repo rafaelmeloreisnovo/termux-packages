@@ -8,6 +8,8 @@ on:
       - 'scripts/ci/rafcodephi_deb_set_gate.py'
       - 'scripts/tests/test_rafcodephi_prefix*'
       - 'scripts/tests/test_rafcodephi_deb_set_gate.py'
+      - 'scripts/tests/test_rafcodephi_workflow_syntax.py'
+      - 'scripts/tests/test_rafcodephi_workflow_trigger_contract.py'
       - '.github/workflows/rafcodephi-prefix-gate.yml'
   push:
     branches: [main]
@@ -17,6 +19,8 @@ on:
       - 'scripts/ci/rafcodephi_deb_set_gate.py'
       - 'scripts/tests/test_rafcodephi_prefix*'
       - 'scripts/tests/test_rafcodephi_deb_set_gate.py'
+      - 'scripts/tests/test_rafcodephi_workflow_syntax.py'
+      - 'scripts/tests/test_rafcodephi_workflow_trigger_contract.py'
       - '.github/workflows/rafcodephi-prefix-gate.yml'
   workflow_dispatch:
 permissions:
