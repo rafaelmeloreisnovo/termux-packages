@@ -6,6 +6,7 @@ on:
       - 'scripts/rafcodephi-freestanding/rafcodephi_prefix_gate_core.c'
       - 'scripts/ci/rafcodephi_bootstrap_prefix_gate.py'
       - 'scripts/ci/rafcodephi_deb_set_gate.py'
+      - 'scripts/ci/rafcodephi_failure_triage.py'
       - 'scripts/tests/test_rafcodephi_prefix*'
       - 'scripts/tests/test_rafcodephi_deb_set_gate.py'
       - 'scripts/tests/test_rafcodephi_workflow_syntax.py'
@@ -17,6 +18,7 @@ on:
       - 'scripts/rafcodephi-freestanding/rafcodephi_prefix_gate_core.c'
       - 'scripts/ci/rafcodephi_bootstrap_prefix_gate.py'
       - 'scripts/ci/rafcodephi_deb_set_gate.py'
+      - 'scripts/ci/rafcodephi_failure_triage.py'
       - 'scripts/tests/test_rafcodephi_prefix*'
       - 'scripts/tests/test_rafcodephi_deb_set_gate.py'
       - 'scripts/tests/test_rafcodephi_workflow_syntax.py'
@@ -42,6 +44,8 @@ jobs:
         run: |
           python3 scripts/tests/test_rafcodephi_prefix_gate.py
           python3 scripts/tests/test_rafcodephi_deb_set_gate.py
+      - name: Fingerprint builder prerequisite failures (host-only)
+        run: python3 scripts/ci/rafcodephi_failure_triage.py --self-test
       - name: Sanitized host boundary cases
         run: |
           cc -std=c17 -O1 -g -Wall -Wextra -Werror -fsanitize=address,undefined \
