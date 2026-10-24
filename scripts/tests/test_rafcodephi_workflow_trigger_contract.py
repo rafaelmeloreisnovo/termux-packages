@@ -33,6 +33,7 @@ CASES = [
     ("unknown_trigger", "on: puch\n", False, "github_trigger_unknown"),
     ("boolean_off_trigger", "on: off\n", False, "github_trigger_unknown"),
     ("null_trigger", "on:\n", False, "github_triggers_missing"),
+    ("quoted_empty_trigger", "on: ''\n", False, "github_triggers_missing"),
 ]
 
 
@@ -51,7 +52,7 @@ def main() -> int:
                     raise AssertionError(f"{case}: unexpected ACCEPTED={result}")
     print(
         "RAFCODEPHI_TRIGGER_CONTRACT=PASS "
-        "positive=3 negative=6 missing=blocked yaml11_on_safe=true "
+        "positive=3 negative=7 missing=blocked yaml11_on_safe=true "
         "android_runtime=NOT_RUN claim_allowed=false"
     )
     return 0

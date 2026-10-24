@@ -1,0 +1,67 @@
+name: RAFCODEPHI prefix sentinel regression
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'scripts/rafcodephi-freestanding/rafcodephi_prefix_gate_core.c'
+      - 'scripts/ci/rafcodephi_bootstrap_prefix_gate.py'
+      - 'scripts/ci/rafcodephi_deb_set_gate.py'
+      - 'scripts/tests/test_rafcodephi_prefix*'
+      - 'scripts/tests/test_rafcodephi_deb_set_gate.py'
+      - 'scripts/tests/test_rafcodephi_workflow_syntax.py'
+      - 'scripts/tests/test_rafcodephi_workflow_trigger_contract.py'
+      - '.github/workflows/rafcodephi-prefix-gate.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'scripts/rafcodephi-freestanding/rafcodephi_prefix_gate_core.c'
+      - 'scripts/ci/rafcodephi_bootstrap_prefix_gate.py'
+      - 'scripts/ci/rafcodephi_deb_set_gate.py'
+      - 'scripts/tests/test_rafcodephi_prefix*'
+      - 'scripts/tests/test_rafcodephi_deb_set_gate.py'
+      - 'scripts/tests/test_rafcodephi_workflow_syntax.py'
+      - 'scripts/tests/test_rafcodephi_workflow_trigger_contract.py'
+      - '.github/workflows/rafcodephi-prefix-gate.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  prefix-gate:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          persist-credentials: false
+      - name: Bind tests to exact source
+        uses: rafaelmeloreisnovo/actions/rafcode/verify-source@7c03495ebe1d28a11ea419799c4f61427250244f
+        with:
+          expected-sha: ${{ github.event.pull_request.head.sha || github.sha }}
+      - name: ZIP and DEB prefix falsifiers
+        run: |
+          python3 scripts/tests/test_rafcodephi_prefix_gate.py
+          python3 scripts/tests/test_rafcodephi_deb_set_gate.py
+      - name: Sanitized host boundary cases
+        run: |
+          cc -std=c17 -O1 -g -Wall -Wextra -Werror -fsanitize=address,undefined \
+            scripts/tests/test_rafcodephi_prefix_core.c \
+            scripts/rafcodephi-freestanding/rafcodephi_prefix_gate_core.c \
+            -o "$RUNNER_TEMP/prefix-core-test"
+          "$RUNNER_TEMP/prefix-core-test"
+      - name: ARM32 and ARM64 freestanding object audit
+        shell: bash
+        run: |
+          set -euo pipefail
+          nm_tool=$(command -v llvm-nm || command -v nm)
+          for target in armv7a-linux-androideabi21 aarch64-linux-android21; do
+            obj="$RUNNER_TEMP/prefix-${target}.o"
+            clang --target="$target" -std=c17 -O2 -Wall -Wextra -Werror \
+              -ffreestanding -fno-builtin -fno-stack-protector \
+              -c scripts/rafcodephi-freestanding/rafcodephi_prefix_gate_core.c -o "$obj"
+            undefined=$("$nm_tool" -u "$obj")
+            test -z "$undefined"
+            sha256sum "$obj"
+            file "$obj"
+          done
+          echo 'ARM_OBJECTS=PASS_SCOPED PHYSICAL_ARM=NOT_RUN claim_allowed=false'
