@@ -77,16 +77,16 @@ def self_test() -> None:
         r = scan(p)
         assert r["primary_candidate"] == "APT_GUARD", r
         p.write_text(
-            "ERROR: NDK (/home/builder/lib/android-ndk-r29) not pointing at a directory!\\n"
-            "RAFCODEPHI_BOOTSTRAP_DOCKER=BLOCKED build_exit=1 copy_exit=0\\n",
+            "ERROR: NDK (/home/builder/lib/android-ndk-r29) not pointing at a directory!\n"
+            "RAFCODEPHI_BOOTSTRAP_DOCKER=BLOCKED build_exit=1 copy_exit=0\n",
             encoding="utf-8",
         )
         r = scan(p)
         assert r["primary_candidate"] == "NDK_MISSING", r
         assert r["counts"]["PRODUCER_GATE"] == 1, r
-        p.write_text("Wrong NDK version - we need 29\\n", encoding="utf-8")
+        p.write_text("Wrong NDK version - we need 29\n", encoding="utf-8")
         assert scan(p)["primary_candidate"] == "NDK_VERSION_MISMATCH"
-        p.write_text("ERROR: unknown NDK version 999\\n", encoding="utf-8")
+        p.write_text("ERROR: unknown NDK version 999\n", encoding="utf-8")
         assert scan(p)["primary_candidate"] == "NDK_UNSUPPORTED"
     print("RAFCODEPHI_FAILURE_TRIAGE_SELF_TEST=PASS")
 
