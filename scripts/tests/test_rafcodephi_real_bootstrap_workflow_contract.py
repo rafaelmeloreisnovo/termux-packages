@@ -16,6 +16,14 @@ def require(condition: bool, token: str) -> None:
 
 def main() -> int:
     text = WORKFLOW.read_text(encoding="utf-8")
+    require("rafaelmeloreisnovo/actions/rafcode/verify-source@7ae0fca1090fa3b94f7f86c4c3951bb52189e213" in text,
+            "STRICT_SOURCE_GATE_PIN_MISSING")
+    require("Verify exact source incl. untracked/ignored inputs before build mutations" in text,
+            "IGNORED_INPUT_GATE_NOT_ROUTED")
+    require(text.index("Checkout exact producer SHA") <
+            text.index("Verify exact source incl. untracked/ignored inputs before build mutations") <
+            text.index("Build freestanding 16-lane probes"),
+            "SOURCE_GATE_AFTER_BUILD_MUTATION")
     require("scripts/apply-rafcodephi-build-properties.py" in text, "CANONICAL_PROPERTIES_OVERLAY_MISSING")
     require("scripts/validate-rafcodephi-build-properties.sh" in text, "PROPERTIES_VALIDATION_MISSING")
     require("path.write_text" not in text, "INLINE_PROPERTIES_MUTATION_PRESENT")
