@@ -34,6 +34,24 @@ jobs:
           python3 scripts/tests/test_rafcodephi_real_bootstrap_workflow_contract.py
           python3 -m py_compile scripts/tests/test_rafcodephi_real_bootstrap_workflow_contract.py
           bash -n scripts/ci/rafcodephi_ndk_preflight.sh scripts/build-rafcodephi-real-bootstrap.sh
+      - name: Checkout pinned verifier source for adversarial regression tests
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          repository: rafaelmeloreisnovo/actions
+          ref: 7ae0fca1090fa3b94f7f86c4c3951bb52189e213
+          path: _actions-source-audit
+          sparse-checkout: |
+            rafcode/verify-source
+          persist-credentials: false
+      - name: Verify producer exact SHA and execute negative tests
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git -C _actions-source-audit rev-parse HEAD)" = '7ae0fca1090fa3b94f7f86c4c3951bb52189e213'
+          bash -n _actions-source-audit/rafcode/verify-source/verify.sh
+          python3 -m py_compile _actions-source-audit/rafcode/verify-source/test_verify.py
+          python3 _actions-source-audit/rafcode/verify-source/test_verify.py
+          echo 'SCOPE=PINNED_SOURCE_PRODUCER_NEGATIVE_TESTS_ONLY' >> "$GITHUB_STEP_SUMMARY"
       - name: Scope boundary
         run: |
           {
