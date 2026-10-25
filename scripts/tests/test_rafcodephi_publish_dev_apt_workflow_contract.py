@@ -200,6 +200,17 @@ def main() -> int:
 
     require("cancel-in-progress: ${{ github.event_name == 'pull_request' || github.event_name == 'push' }}" in text,
             "STALE_PR_BUILD_CANCELLATION_MISSING")
+    helper = (ROOT / "scripts/ci/rafcodephi_prepare_ndk29.sh").read_text(encoding="utf-8")
+    require('ndk_root="$HOME/.termux-build"' in helper,
+            "NDK_CACHE_MUST_USE_APPARMOR_WRITABLE_HOME")
+    require('source scripts/build/termux_download.sh' in helper,
+            "SHA_VERIFIED_UPSTREAM_DOWNLOAD_ADAPTER_MISSING")
+    require('android-ndk-r29-linux.zip' in helper and 'ndk_sha' in helper,
+            "NDK29_PINNED_ARCHIVE_MISSING")
+    require('NDK=/home/builder/.termux-build/android-ndk-r29' in text,
+            "BUILD_NDK_MISMATCHES_PREPARED_TOOLCHAIN")
+    require('package-builder@sha256:09cdbb34' in text,
+            "BUILDER_IMAGE_DIGEST_NOT_PINNED")
     require("signed-apt-contract:" in text, "FAST_CONTRACT_JOB_MISSING")
     # Author-owned PR runs a non-publishing verification; fork PRs cannot
     # spend the long builder budget and no PR receives production signing keys.

@@ -1,21 +1,10 @@
 #!/usr/bin/env bash
-# CI-only NDK prerequisite; builder container, never the Android runtime.
-# Google NDK archive digest is defined in upstream scripts/setup-android-sdk.sh.
+# CI-only verified NDK29 prerequisite in isolated Termux package builder.
+# The canonical restricted AppArmor policy denies writes under source and lib.
+# Place NDK in the image's normal writable ~/.termux-build toolchain area.
 set -euo pipefail
 cd /home/builder/termux-packages
-# The image owns /home/builder/lib (not writable by the builder user).
-# Keep SHA-verified NDK29 in the already writable checked-out workspace.
-mkdir -p build-tools
-[[ -w build-tools ]] || {
-  echo 'RAFCODEPHI_NDK29=BLOCKED reason=builder_workspace_not_writable' >&2
-  exit 2
-}
-export NDK="$PWD/build-tools/android-ndk-r29"
 source scripts/properties.sh
-[[ "$NDK" == "$PWD/build-tools/android-ndk-r29" ]] || {
-  echo 'RAFCODEPHI_NDK29=BLOCKED reason=ndk_location_overridden' >&2
-  exit 2
-}
 [[ "${TERMUX_NDK_VERSION:-}" == 29 ]] || {
   echo 'RAFCODEPHI_NDK29=BLOCKED reason=unexpected_ndk_version' >&2
   exit 2
@@ -25,9 +14,20 @@ grep -Eq "^[[:space:]]*ANDROID_NDK_SHA256=${ndk_sha}$" scripts/setup-android-sdk
   echo 'RAFCODEPHI_NDK29=BLOCKED reason=unreviewed_source_archive_sha' >&2
   exit 2
 }
+ndk_root="$HOME/.termux-build"
+mkdir -p "$ndk_root"
+[[ -w "$ndk_root" ]] || {
+  echo 'RAFCODEPHI_NDK29=BLOCKED reason=restricted_toolchain_cache_not_writable' >&2
+  exit 2
+}
+export NDK="$ndk_root/android-ndk-r29"
 if [[ ! -d "$NDK" ]]; then
-  echo 'RAFCODEPHI_NDK29=PROVISIONING via_verified_upstream_installer=true'
-  bash scripts/setup-android-sdk.sh
+  : "${TERMUX_PKG_TMPDIR:=/tmp}"
+  source scripts/build/termux_download.sh
+  cd "$ndk_root"
+  echo 'RAFCODEPHI_NDK29=PROVISIONING sha256_pinned=true apparmor_unchanged=true'
+  termux_download 'https://dl.google.com/android/repository/android-ndk-r29-linux.zip' 'ndk-r29-linux.zip' "$ndk_sha"
+  unzip -q ndk-r29-linux.zip
 fi
 [[ -r "$NDK/source.properties" ]] || {
   echo 'RAFCODEPHI_NDK29=BLOCKED reason=missing_metadata' >&2
@@ -41,4 +41,4 @@ grep -Eq '^[[:space:]]*Pkg\.Revision[[:space:]]*=[[:space:]]*29\.' "$NDK/source.
   echo 'RAFCODEPHI_NDK29=BLOCKED reason=missing_clang' >&2
   exit 5
 }
-printf 'RAFCODEPHI_NDK29=PASS_SCOPED builder_only=true physical_android=NOT_RUN claim_allowed=false\n'
+printf 'RAFCODEPHI_NDK29=PASS_SCOPED verified_sha256=true apparmor_unchanged=true device=NOT_RUN claim_allowed=false\n'

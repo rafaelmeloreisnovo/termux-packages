@@ -182,12 +182,13 @@ jobs:
           bash scripts/validate-rafcodephi-build-properties.sh
           grep -Fx 'TERMUX_APP__PACKAGE_NAME="com.termux.rafacodephi"' scripts/properties.sh
 
+      # Restricted AppArmor denies writing checkout/lib: NDK lives in
+      # /home/builder/.termux-build and remains SHA-256 verified.
       - name: Provision/verify NDK29 in canonical isolated builder (SHA-bound)
         shell: bash
         run: |
           set -euo pipefail
           mkdir -p build/reports
-          mkdir -p build-tools
           bash scripts/run-docker.sh bash scripts/ci/rafcodephi_prepare_ndk29.sh \
             2>&1 | tee build/reports/rafcodephi-ndk29-prepare.log
 
@@ -198,7 +199,7 @@ jobs:
           mkdir -p build/reports
           set +e
           bash scripts/run-rafcodephi-bootstrap-docker.sh env \
-            NDK=/home/builder/termux-packages/build-tools/android-ndk-r29 \
+            NDK=/home/builder/.termux-build/android-ndk-r29 \
             RAFCODEPHI_APT_REPOSITORY_URL="$RAFCODEPHI_APT_REPOSITORY_URL" \
             RAFCODEPHI_APT_TRUST_MODE="$RAFCODEPHI_APT_TRUST_MODE" \
             RAFCODEPHI_APT_PUBLIC_KEY_FILE=/home/builder/termux-packages/build/signing/rafcodephi-archive-key.gpg \
