@@ -1,5 +1,8 @@
 # RAFAELIA — Reconciliação documental de termux-packages — 2026-10-25
 
+> **Censo completo da raiz:** [arquivos soltos e todos os diretórios de primeiro nível](RAFAELIA_ROOT_CENSUS_20261025.md) — contagem por pasta, SHA Git e locais sem índice. Este mapa complementa o inventário recursivo `tools/` ou `scripts/`; não autoriza exclusões.
+
+
 > **DRAFT / HOLD · Não promove claims, releases, versões nem direitos.** Documento adicional, não substitui predecessores. A única verdade do inventário de arquivos aqui é a árvore Git no HEAD exato descrito abaixo; o conteúdo operacional exige revisão específica.
 
 ## Corte e escopo
