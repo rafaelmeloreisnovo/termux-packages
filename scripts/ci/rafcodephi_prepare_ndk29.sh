@@ -3,7 +3,19 @@
 # Google NDK archive digest is defined in upstream scripts/setup-android-sdk.sh.
 set -euo pipefail
 cd /home/builder/termux-packages
+# The image owns /home/builder/lib (not writable by the builder user).
+# Keep SHA-verified NDK29 in the already writable checked-out workspace.
+mkdir -p build-tools
+[[ -w build-tools ]] || {
+  echo 'RAFCODEPHI_NDK29=BLOCKED reason=builder_workspace_not_writable' >&2
+  exit 2
+}
+export NDK="$PWD/build-tools/android-ndk-r29"
 source scripts/properties.sh
+[[ "$NDK" == "$PWD/build-tools/android-ndk-r29" ]] || {
+  echo 'RAFCODEPHI_NDK29=BLOCKED reason=ndk_location_overridden' >&2
+  exit 2
+}
 [[ "${TERMUX_NDK_VERSION:-}" == 29 ]] || {
   echo 'RAFCODEPHI_NDK29=BLOCKED reason=unexpected_ndk_version' >&2
   exit 2

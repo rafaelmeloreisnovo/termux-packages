@@ -98,6 +98,7 @@ jobs:
       RAFCODEPHI_APT_REPOSITORY_URL: ${{ github.ref_name == 'main' && 'https://raw.githubusercontent.com/rafaelmeloreisnovo/termux-packages/rafcodephi-apt/repo' || 'https://raw.githubusercontent.com/rafaelmeloreisnovo/termux-packages/rafcodephi-apt-preview/repo' }}
       RAFCODEPHI_APT_PUBLISH_BRANCH: ${{ github.ref_name == 'main' && 'rafcodephi-apt' || 'rafcodephi-apt-preview' }}
       RAFCODEPHI_APT_TRUST_MODE: signed-by
+      TERMUX_BUILDER_IMAGE_NAME: ghcr.io/termux-play-store/package-builder@sha256:09cdbb34db05274dfcdf0e52430de2980e3e58aa34fa122a05c014bf67e24124
 
     steps:
       - name: Checkout exact candidate
@@ -186,6 +187,7 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p build/reports
+          mkdir -p build-tools
           bash scripts/run-docker.sh bash scripts/ci/rafcodephi_prepare_ndk29.sh \
             2>&1 | tee build/reports/rafcodephi-ndk29-prepare.log
 
@@ -196,6 +198,7 @@ jobs:
           mkdir -p build/reports
           set +e
           bash scripts/run-rafcodephi-bootstrap-docker.sh env \
+            NDK=/home/builder/termux-packages/build-tools/android-ndk-r29 \
             RAFCODEPHI_APT_REPOSITORY_URL="$RAFCODEPHI_APT_REPOSITORY_URL" \
             RAFCODEPHI_APT_TRUST_MODE="$RAFCODEPHI_APT_TRUST_MODE" \
             RAFCODEPHI_APT_PUBLIC_KEY_FILE=/home/builder/termux-packages/build/signing/rafcodephi-archive-key.gpg \
