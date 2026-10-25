@@ -43,6 +43,24 @@ jobs:
           python3 -m py_compile scripts/tests/test_rafcodephi_proot_patch.py
           python3 scripts/tests/test_rafcodephi_proot_patch.py
           echo 'PROOT_PATCH_SCOPE=SOURCE_DIAGNOSTIC_STRINGS_ONLY' >> "$GITHUB_STEP_SUMMARY"
+      - name: Verify patch applies to exact upstream proot source archive
+        shell: bash
+        run: |
+          set -euo pipefail
+          work="$(mktemp -d)"
+          trap 'rm -rf "$work"' EXIT
+          curl --fail --location --retry 2 --max-time 120 \
+            'https://github.com/termux/proot/archive/v5.1.107.80.zip' \
+            -o "$work/proot.zip"
+          printf '%s  %s\n' 'd237b21b6d84a3acb00507f96251dcf2bbfbee9ffc66ab6258a3f86ef7874186' "$work/proot.zip" | sha256sum -c -
+          unzip -q "$work/proot.zip" -d "$work"
+          source_file="$work/proot-5.1.107.80/src/cli/cli.c"
+          test -f "$source_file"
+          grep -Fq '/data/data/com.termux/' "$source_file"
+          (cd "$work/proot-5.1.107.80" && patch --batch --forward -p1 -i "$GITHUB_WORKSPACE/packages/proot/src-cli-cli.c.patch")
+          ! grep -Fq '/data/data/com.termux/' "$source_file"
+          grep -Fq 'app-private directory' "$source_file"
+          echo 'UPSTREAM_PROOT_TAG_SHA256_AND_PATCH=PASS_SCOPED' >> "$GITHUB_STEP_SUMMARY"
       - name: Checkout pinned verifier source for adversarial regression tests
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
