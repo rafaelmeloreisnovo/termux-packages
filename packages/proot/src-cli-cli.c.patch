@@ -1,0 +1,7 @@
+--- a/src/cli/cli.c
++++ b/src/cli/cli.c
+@@ -134,2 +134,2 @@
+-"It seems that termux-exec is active and is prepending /data/data/com.termux/... to executable paths\n"
+-"If this is path is not available inside proot, please \"unset LD_PRELOAD\"");
++"It seems that termux-exec is active and is prepending an app-private directory to executable paths\n"
++"If this path is not available inside proot, please \"unset LD_PRELOAD\"");
