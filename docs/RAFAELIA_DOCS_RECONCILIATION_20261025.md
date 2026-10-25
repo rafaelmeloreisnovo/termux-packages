@@ -67,3 +67,10 @@ Estados: `OBSERVED_SOURCE`, `DOCUMENTED`, `TESTED_SCOPED`, `RUNTIME_PROVEN`, `TO
 - **F_gap**: auditoria semântica total, teste de build/ABI/hardware, checagem exaustiva de links históricos, inventário jurídico e proteção de merge ainda NÃO realizados.
 - **F_next**: link-checker negativo (alvo faltante), manifesto canônico por arquivo, revisão de licenças e prioridade P0 das pastas operacionais.
 - **Rollback**: reverter somente commits de documentação do PR; preservar todos os predecessores.
+
+## Sucessor S2 — índice funcional e controle de drift (2026-10-25)
+
+- [Índice da área sem documentação local](../scripts/ci/README.md): funções verificadas na fonte, limites e evidências ainda necessárias.
+- [Validador somente leitura](../scripts/ci/doc_ref_integrity_gate.py), [testes isolados](../scripts/ci/test_doc_ref_integrity_gate.py) e [workflow de CI](../.github/workflows/rafaelia-docs-integrity-v1.yml).
+- Saída JSON por HEAD: links Markdown locais sob escopo explícito + quantidade de arquivos e diretórios raiz sem índice local. O número de pastas sem índice **não prova que sejam órfãs**; URLs externos, HTML e âncoras ainda requerem verificação própria.
+- Revisão humana e enforcement do provedor pendentes; nenhum resultado autoriza merge ou claim. `claim_allowed=false`; `PROMOTION=HOLD`.
