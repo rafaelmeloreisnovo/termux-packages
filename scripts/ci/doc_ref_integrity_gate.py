@@ -96,6 +96,20 @@ def classify_target(root: Path, source: str, target: str, tracked: set[str]):
     return "MISSING_TRACKED_TARGET", path
 
 
+def root_inventory(paths: set[str]) -> dict:
+    """Inventory tracked root directories, without declaring them abandoned."""
+    root_files = sum(1 for p in paths if "/" not in p)
+    dirs = sorted({p.split("/", 1)[0] for p in paths if "/" in p})
+    index_names = ("README.md", "README.rst", "INDEX.md", "index.md", "FILES_MAP.md")
+    missing = [d for d in dirs if not any(d + "/" + name in paths for name in index_names)]
+    return {
+        "tracked_files": len(paths), "root_files": root_files, "root_dirs": len(dirs),
+        "missing_direct_index_count": len(missing),
+        "missing_direct_index_sample": missing[:30],
+        "precision": "DIRECT_INDEX_HEURISTIC_NOT_ORPHAN_PROOF"
+    }
+
+
 def audit(root: Path, documents: list[str], all_docs: bool = False) -> dict:
     root = root.resolve()
     paths = tracked_paths(root)
@@ -128,6 +142,7 @@ def audit(root: Path, documents: list[str], all_docs: bool = False) -> dict:
                 findings.append({"file": doc, "line": line_no, "status": status, "target": resolved})
     return {
         "schema": SCHEMA, "source_head": head, "scope": "INLINE_MARKDOWN_FILE_LINKS_ONLY",
+        "inventory": root_inventory(paths),
         "files_checked": checked, "links_seen": total, "unverified_or_skipped": skipped,
         "errors_total": len(findings), "findings": findings[:40],
         "findings_truncated": len(findings) > 40, "claim_allowed": False,
