@@ -22,6 +22,7 @@ on:
       - 'scripts/emit_rafcodephi_package_custody.py'
       - 'scripts/tests/test_rafcodephi_publish_dev_apt_workflow_contract.py'
       - 'scripts/tests/test_rafcodephi_signed_apt_fixture.sh'
+      - 'scripts/ci/rafcodephi_prepare_ndk29.sh'
       - 'scripts/tests/test_rafcodephi_bootstrap_symlink_repair.py'
       - '.github/workflows/rafcodephi-publish-dev-apt.yml'
   push:
@@ -39,6 +40,7 @@ on:
       - 'scripts/emit_rafcodephi_package_custody.py'
       - 'scripts/tests/test_rafcodephi_publish_dev_apt_workflow_contract.py'
       - 'scripts/tests/test_rafcodephi_signed_apt_fixture.sh'
+      - 'scripts/ci/rafcodephi_prepare_ndk29.sh'
       - 'scripts/tests/test_rafcodephi_bootstrap_symlink_repair.py'
       - '.github/workflows/rafcodephi-publish-dev-apt.yml'
 
@@ -71,6 +73,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          bash -n scripts/ci/rafcodephi_prepare_ndk29.sh
           python3 scripts/tests/test_rafcodephi_publish_dev_apt_workflow_contract.py
           python3 scripts/ci/rafcodephi_failure_triage.py --self-test
           python3 scripts/tests/test_rafcodephi_package_custody_contract.py
@@ -110,6 +113,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          bash -n scripts/ci/rafcodephi_prepare_ndk29.sh
           python3 scripts/tests/test_rafcodephi_publish_dev_apt_workflow_contract.py
           python3 scripts/ci/rafcodephi_failure_triage.py --self-test
           python3 scripts/tests/test_rafcodephi_package_custody_contract.py
@@ -173,6 +177,14 @@ jobs:
             --receipt build/reports/rafcodephi-signed-apt-properties.json
           bash scripts/validate-rafcodephi-build-properties.sh
           grep -Fx 'TERMUX_APP__PACKAGE_NAME="com.termux.rafacodephi"' scripts/properties.sh
+
+      - name: Provision/verify NDK29 in canonical isolated builder (SHA-bound)
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p build/reports
+          bash scripts/run-docker.sh bash scripts/ci/rafcodephi_prepare_ndk29.sh \
+            2>&1 | tee build/reports/rafcodephi-ndk29-prepare.log
 
       - name: Build ARM and ARM64 source closure + signed bootstrap pair
         shell: bash
