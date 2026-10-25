@@ -182,6 +182,8 @@ jobs:
           bash scripts/validate-rafcodephi-build-properties.sh
           grep -Fx 'TERMUX_APP__PACKAGE_NAME="com.termux.rafacodephi"' scripts/properties.sh
 
+      # Restricted AppArmor denies writing checkout/lib: NDK lives in
+      # /home/builder/.termux-build and remains SHA-256 verified.
       - name: Provision/verify NDK29 in canonical isolated builder (SHA-bound)
         shell: bash
         run: |
