@@ -1,0 +1,45 @@
+# Candidate-only host contract. No NDK install, Docker, APT deployment or merge.
+name: HOLD bootstrap source contract (isolated)
+on:
+  push:
+    branches:
+      - 'hold/apt-source-gate-20261024'
+    paths:
+      - '.github/workflows/hold-source-apt-contract-20261025.yml'
+      - '.github/workflows/rafcodephi-real-bootstrap.yml'
+      - 'scripts/tests/test_rafcodephi_real_bootstrap_workflow_contract.py'
+permissions:
+  contents: read
+concurrency:
+  group: hold-packages-source-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  host-contract:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - name: Checkout exact producer SHA
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - name: Bind strict first-party verifier to exact SHA
+        uses: rafaelmeloreisnovo/actions/rafcode/verify-source@7ae0fca1090fa3b94f7f86c4c3951bb52189e213
+        with:
+          expected-sha: ${{ github.sha }}
+      - name: Test bootstrap source workflow contracts
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 scripts/tests/test_rafcodephi_real_bootstrap_workflow_contract.py
+          python3 -m py_compile scripts/tests/test_rafcodephi_real_bootstrap_workflow_contract.py
+          bash -n scripts/ci/rafcodephi_ndk_preflight.sh scripts/build-rafcodephi-real-bootstrap.sh
+      - name: Scope boundary
+        run: |
+          {
+            echo "SOURCE_COMMIT=${GITHUB_SHA}"
+            echo "SCOPE=HOST_BOOTSTRAP_CONTRACT_ONLY"
+            echo "NDK_BUILD=NOT_RUN"
+            echo "APT_DEVICE=NOT_RUN"
+            echo "CLAIM_ALLOWED=false"
+          } >> "$GITHUB_STEP_SUMMARY"
