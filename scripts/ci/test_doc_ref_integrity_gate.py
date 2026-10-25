@@ -41,7 +41,8 @@ class GateTests(unittest.TestCase):
         inv = self.run_gate()["inventory"]
         self.assertEqual(inv["root_files"], 1)
         self.assertEqual(inv["root_dirs"], 2)
-        self.assertEqual(inv["missing_direct_index_count"], 1)
+        self.assertEqual(inv["missing_direct_index_count"], 2)
+        self.assertIn("docs", inv["missing_direct_index_sample"])
         self.assertIn("free", inv["missing_direct_index_sample"])
 
     def test_valid(self):
