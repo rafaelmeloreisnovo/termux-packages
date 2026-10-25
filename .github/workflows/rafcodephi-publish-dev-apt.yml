@@ -87,8 +87,9 @@ jobs:
           echo 'CLAIM_ALLOWED=false'
 
   dual-arch-repository:
-    # The 240-minute signed APT proof is an explicit delivery command.
-    if: ${{ github.event_name == 'workflow_dispatch' }}
+    # Explicit dispatch OR a same-repository PR proof without publication.
+    # Fork PRs are excluded from the expensive build; publisher stays manual.
+    if: ${{ github.event_name == 'workflow_dispatch' || (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository) }}
     runs-on: ubuntu-24.04
     timeout-minutes: 240
     env:
@@ -124,8 +125,8 @@ jobs:
       - name: Prepare APT signing identity
         shell: bash
         env:
-          PROD_KEY_B64: ${{ secrets.RAFCODEPHI_APT_SIGNING_KEY_B64 }}
-          PROD_FINGERPRINT: ${{ secrets.RAFCODEPHI_APT_SIGNING_FINGERPRINT }}
+          PROD_KEY_B64: ${{ github.event_name == 'workflow_dispatch' && inputs.publish == true && secrets.RAFCODEPHI_APT_SIGNING_KEY_B64 || '' }}
+          PROD_FINGERPRINT: ${{ github.event_name == 'workflow_dispatch' && inputs.publish == true && secrets.RAFCODEPHI_APT_SIGNING_FINGERPRINT || '' }}
         run: |
           set -euo pipefail
           mkdir -p build/signing
