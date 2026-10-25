@@ -22,10 +22,10 @@ jobs:
         run: python3 -m unittest discover -s scripts/ci -p 'test_doc_ref_integrity_gate.py' -v
       - name: Current navigation documents (blocking, scoped)
         run: |
-          python3 scripts/ci/doc_ref_integrity_gate.py \
+          python3 scripts/ci/doc_ref_integrity_gate.py --root . \
             --file README.md \
             --file docs/00-INDEX.md \
             --file docs/RAFAELIA_DOCS_RECONCILIATION_20261025.md \
             --file docs/RAFAELIA_ROOT_CENSUS_20261025.md
       - name: Historical Markdown audit (nonblocking inventory)
-        run: python3 scripts/ci/doc_ref_integrity_gate.py --all --audit-only
+        run: python3 scripts/ci/doc_ref_integrity_gate.py --root . --all --audit-only
