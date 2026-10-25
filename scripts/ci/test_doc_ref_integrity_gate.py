@@ -35,6 +35,15 @@ class GateTests(unittest.TestCase):
     def run_gate(self):
         return docgate.audit(self.root, ["README.md"])
 
+    def test_root_inventory_counts_direct_unindexed_dirs(self):
+        self.put("free/a.c", "int x;")
+        self.commit()
+        inv = self.run_gate()["inventory"]
+        self.assertEqual(inv["root_files"], 1)
+        self.assertEqual(inv["root_dirs"], 2)
+        self.assertEqual(inv["missing_direct_index_count"], 1)
+        self.assertIn("free", inv["missing_direct_index_sample"])
+
     def test_valid(self):
         self.assertEqual(self.run_gate()["result"], "PASS_SCOPED")
 
