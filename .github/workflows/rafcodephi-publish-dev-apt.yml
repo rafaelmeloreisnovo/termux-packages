@@ -58,10 +58,15 @@ jobs:
     timeout-minutes: 10
     steps:
       - name: Checkout exact candidate
-        uses: actions/checkout@v6
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
           fetch-depth: 1
           persist-credentials: false
+      - name: Verify exact source with owned RAFAELIA Action
+        uses: rafaelmeloreisnovo/actions/rafcode/verify-source@7c03495ebe1d28a11ea419799c4f61427250244f
+        with:
+          expected-sha: ${{ github.event.pull_request.head.sha || github.sha }}
       - name: Validate signed APT source and custody contracts
         shell: bash
         run: |
@@ -91,11 +96,16 @@ jobs:
 
     steps:
       - name: Checkout exact candidate
-        uses: actions/checkout@v6
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
           fetch-depth: 0
           persist-credentials: false
 
+      - name: Verify exact source with owned RAFAELIA Action
+        uses: rafaelmeloreisnovo/actions/rafcode/verify-source@7c03495ebe1d28a11ea419799c4f61427250244f
+        with:
+          expected-sha: ${{ github.event.pull_request.head.sha || github.sha }}
       - name: Validate signed APT workflow contract
         shell: bash
         run: |
