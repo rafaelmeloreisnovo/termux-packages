@@ -16,6 +16,7 @@ on:
     branches: [main]
     paths:
       - 'scripts/build-rafcodephi-real-bootstrap.sh'
+      - 'scripts/ci/rafcodephi_ndk_preflight.sh'
       - 'scripts/repair_rafcodephi_bootstrap_symlinks.py'
       - 'scripts/ci/rafcodephi_bootstrap_prefix_gate.py'
       - 'scripts/tests/test_rafcodephi_prefix_gate.py'
@@ -52,10 +53,16 @@ jobs:
       RAFCODEPHI_FRICTION_LANES: '16'
 
     steps:
-      - name: Checkout
+      - name: Checkout exact producer SHA
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
           persist-credentials: false
+
+      - name: Verify immutable tracked source before build mutations
+        uses: rafaelmeloreisnovo/actions/rafcode/verify-source@7c03495ebe1d28a11ea419799c4f61427250244f
+        with:
+          expected-sha: ${{ github.event.pull_request.head.sha || github.sha }}
 
       - name: Select architecture set
         id: arch
@@ -101,6 +108,7 @@ jobs:
           python3 scripts/tests/test_rafcodephi_prefix_gate.py
           python3 scripts/tests/test_rafcodephi_deb_set_gate.py
           bash -n scripts/build-rafcodephi-real-bootstrap.sh
+          bash -n scripts/ci/rafcodephi_ndk_preflight.sh
 
       - name: Materialize RAFCODEPHI package prefix on host checkout
         shell: bash
@@ -114,6 +122,15 @@ jobs:
           resolved="$(bash -c 'set -euo pipefail; source scripts/properties.sh; printf "%s|%s" "$TERMUX_APP__PACKAGE_NAME" "$TERMUX__PREFIX"')"
           test "$resolved" = 'com.termux.rafacodephi|/data/data/com.termux.rafacodephi/files/usr'
           echo "Resolved build identity: $resolved"
+
+      - name: Fail fast on canonical builder NDK prerequisites (no install)
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p build/reports
+          bash -n scripts/ci/rafcodephi_ndk_preflight.sh
+          bash scripts/run-docker.sh bash scripts/ci/rafcodephi_ndk_preflight.sh \
+            2>&1 | tee build/reports/rafcodephi-ndk-preflight.log
 
       - name: Build source packages and real bootstrap in Termux builder
         shell: bash
@@ -178,11 +195,20 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          input_log=build/reports/rafcodephi-real-bootstrap.log
+          if [[ ! -s "$input_log" && -s build/reports/rafcodephi-ndk-preflight.log ]]; then
+            input_log=build/reports/rafcodephi-ndk-preflight.log
+          fi
           python3 scripts/ci/rafcodephi_failure_triage.py \
-            --log build/reports/rafcodephi-real-bootstrap.log \
+            --log "$input_log" \
             --out build/reports/rafcodephi-real-bootstrap-triage.json \
             --markdown build/reports/rafcodephi-real-bootstrap-triage.md
           cat build/reports/rafcodephi-real-bootstrap-triage.md >> "$GITHUB_STEP_SUMMARY"
+          # Preserve the exact first failing prerequisite even when the
+          # generic predecessor classifier has not learned this new token.
+          if grep -Fq 'RAFCODEPHI_NDK_PREFLIGHT=BLOCKED reason=NDK_MISSING' "$input_log"; then
+            echo 'Observed builder prerequisite: **NDK_MISSING** (not a successful build).' >> "$GITHUB_STEP_SUMMARY"
+          fi
 
       - name: Upload real bootstrap artifacts
         if: always()
@@ -193,6 +219,7 @@ jobs:
             artifacts/rafcodephi-bootstrap/
             artifacts/rafcodephi-freestanding/
             build/reports/rafcodephi-real-bootstrap-properties.json
+            build/reports/rafcodephi-ndk-preflight.log
             build/reports/rafcodephi-real-bootstrap.log
             build/reports/rafcodephi-real-bootstrap-status.json
             build/reports/rafcodephi-real-bootstrap-triage.json
