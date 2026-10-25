@@ -201,8 +201,19 @@ def main() -> int:
     require("cancel-in-progress: ${{ github.event_name == 'pull_request' || github.event_name == 'push' }}" in text,
             "STALE_PR_BUILD_CANCELLATION_MISSING")
     require("signed-apt-contract:" in text, "FAST_CONTRACT_JOB_MISSING")
-    require("if: ${{ github.event_name == 'workflow_dispatch' }}" in text,
-            "FOUR_HOUR_SIGNED_APT_NOT_MANUAL_ONLY")
+    # Author-owned PR runs a non-publishing verification; fork PRs cannot
+    # spend the long builder budget and no PR receives production signing keys.
+    require("github.event.pull_request.head.repo.full_name == github.repository" in text,
+            "PR_FULL_BUILD_NOT_SCOPED_TO_OWN_REPO")
+    require("github.event_name == 'workflow_dispatch' || (github.event_name == 'pull_request'" in text,
+            "PR_NONPUBLISHING_BUILD_ROUTE_MISSING")
+    for secret in ("RAFCODEPHI_APT_SIGNING_KEY_B64", "RAFCODEPHI_APT_SIGNING_FINGERPRINT"):
+        require(("inputs.publish == true && secrets." + secret) in text,
+                "PRODUCTION_KEY_EXPOSED_DURING_PR:" + secret)
+    require("if: github.event_name == 'workflow_dispatch' && inputs.publish == true" in text,
+            "PUBLISH_MUST_REMAIN_MANUAL_EXPLICIT")
+    require("production publication must be dispatched from main" in text,
+            "PRODUCTION_REF_GUARD_REMOVED")
     require("DUAL_ARCH_DEB=NOT_RUN" in text, "FAST_CONTRACT_MASQUERADES_AS_DEB")
     require("contents: read" in text, "READ_ONLY_DEFAULT_PERMISSION_MISSING")
     require("claim_allowed_release" in text, "CLAIM_BOUNDARY_MISSING")

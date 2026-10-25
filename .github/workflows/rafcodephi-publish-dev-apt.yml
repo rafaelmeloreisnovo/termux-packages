@@ -22,6 +22,7 @@ on:
       - 'scripts/emit_rafcodephi_package_custody.py'
       - 'scripts/tests/test_rafcodephi_publish_dev_apt_workflow_contract.py'
       - 'scripts/tests/test_rafcodephi_signed_apt_fixture.sh'
+      - 'scripts/ci/rafcodephi_prepare_ndk29.sh'
       - 'scripts/tests/test_rafcodephi_bootstrap_symlink_repair.py'
       - '.github/workflows/rafcodephi-publish-dev-apt.yml'
   push:
@@ -39,6 +40,7 @@ on:
       - 'scripts/emit_rafcodephi_package_custody.py'
       - 'scripts/tests/test_rafcodephi_publish_dev_apt_workflow_contract.py'
       - 'scripts/tests/test_rafcodephi_signed_apt_fixture.sh'
+      - 'scripts/ci/rafcodephi_prepare_ndk29.sh'
       - 'scripts/tests/test_rafcodephi_bootstrap_symlink_repair.py'
       - '.github/workflows/rafcodephi-publish-dev-apt.yml'
 
@@ -58,14 +60,21 @@ jobs:
     timeout-minutes: 10
     steps:
       - name: Checkout exact candidate
-        uses: actions/checkout@v6
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
           fetch-depth: 1
           persist-credentials: false
+      - name: Verify exact source with owned RAFAELIA Action
+        uses: rafaelmeloreisnovo/actions/rafcode/verify-source@7c03495ebe1d28a11ea419799c4f61427250244f
+        with:
+          expected-sha: ${{ github.event.pull_request.head.sha || github.sha }}
       - name: Validate signed APT source and custody contracts
         shell: bash
         run: |
           set -euo pipefail
+          bash -n scripts/ci/rafcodephi_prepare_ndk29.sh
+          grep -Eq '^[[:space:]]*ANDROID_NDK_SHA256=4abbbcdc842f3d4879206e9695d52709603e52dd68d3c1fff04b3b5e7a308ecf$' scripts/setup-android-sdk.sh
           python3 scripts/tests/test_rafcodephi_publish_dev_apt_workflow_contract.py
           python3 scripts/ci/rafcodephi_failure_triage.py --self-test
           python3 scripts/tests/test_rafcodephi_package_custody_contract.py
@@ -78,8 +87,9 @@ jobs:
           echo 'CLAIM_ALLOWED=false'
 
   dual-arch-repository:
-    # The 240-minute signed APT proof is an explicit delivery command.
-    if: ${{ github.event_name == 'workflow_dispatch' }}
+    # Explicit dispatch OR a same-repository PR proof without publication.
+    # Fork PRs are excluded from the expensive build; publisher stays manual.
+    if: ${{ github.event_name == 'workflow_dispatch' || (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository) }}
     runs-on: ubuntu-24.04
     timeout-minutes: 240
     env:
@@ -88,18 +98,26 @@ jobs:
       RAFCODEPHI_APT_REPOSITORY_URL: ${{ github.ref_name == 'main' && 'https://raw.githubusercontent.com/rafaelmeloreisnovo/termux-packages/rafcodephi-apt/repo' || 'https://raw.githubusercontent.com/rafaelmeloreisnovo/termux-packages/rafcodephi-apt-preview/repo' }}
       RAFCODEPHI_APT_PUBLISH_BRANCH: ${{ github.ref_name == 'main' && 'rafcodephi-apt' || 'rafcodephi-apt-preview' }}
       RAFCODEPHI_APT_TRUST_MODE: signed-by
+      TERMUX_BUILDER_IMAGE_NAME: ghcr.io/termux-play-store/package-builder@sha256:09cdbb34db05274dfcdf0e52430de2980e3e58aa34fa122a05c014bf67e24124
 
     steps:
       - name: Checkout exact candidate
-        uses: actions/checkout@v6
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
           fetch-depth: 0
           persist-credentials: false
 
+      - name: Verify exact source with owned RAFAELIA Action
+        uses: rafaelmeloreisnovo/actions/rafcode/verify-source@7c03495ebe1d28a11ea419799c4f61427250244f
+        with:
+          expected-sha: ${{ github.event.pull_request.head.sha || github.sha }}
       - name: Validate signed APT workflow contract
         shell: bash
         run: |
           set -euo pipefail
+          bash -n scripts/ci/rafcodephi_prepare_ndk29.sh
+          grep -Eq '^[[:space:]]*ANDROID_NDK_SHA256=4abbbcdc842f3d4879206e9695d52709603e52dd68d3c1fff04b3b5e7a308ecf$' scripts/setup-android-sdk.sh
           python3 scripts/tests/test_rafcodephi_publish_dev_apt_workflow_contract.py
           python3 scripts/ci/rafcodephi_failure_triage.py --self-test
           python3 scripts/tests/test_rafcodephi_package_custody_contract.py
@@ -108,8 +126,8 @@ jobs:
       - name: Prepare APT signing identity
         shell: bash
         env:
-          PROD_KEY_B64: ${{ secrets.RAFCODEPHI_APT_SIGNING_KEY_B64 }}
-          PROD_FINGERPRINT: ${{ secrets.RAFCODEPHI_APT_SIGNING_FINGERPRINT }}
+          PROD_KEY_B64: ${{ github.event_name == 'workflow_dispatch' && inputs.publish == true && secrets.RAFCODEPHI_APT_SIGNING_KEY_B64 || '' }}
+          PROD_FINGERPRINT: ${{ github.event_name == 'workflow_dispatch' && inputs.publish == true && secrets.RAFCODEPHI_APT_SIGNING_FINGERPRINT || '' }}
         run: |
           set -euo pipefail
           mkdir -p build/signing
@@ -164,6 +182,15 @@ jobs:
           bash scripts/validate-rafcodephi-build-properties.sh
           grep -Fx 'TERMUX_APP__PACKAGE_NAME="com.termux.rafacodephi"' scripts/properties.sh
 
+      - name: Provision/verify NDK29 in canonical isolated builder (SHA-bound)
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p build/reports
+          mkdir -p build-tools
+          bash scripts/run-docker.sh bash scripts/ci/rafcodephi_prepare_ndk29.sh \
+            2>&1 | tee build/reports/rafcodephi-ndk29-prepare.log
+
       - name: Build ARM and ARM64 source closure + signed bootstrap pair
         shell: bash
         run: |
@@ -171,6 +198,7 @@ jobs:
           mkdir -p build/reports
           set +e
           bash scripts/run-rafcodephi-bootstrap-docker.sh env \
+            NDK=/home/builder/termux-packages/build-tools/android-ndk-r29 \
             RAFCODEPHI_APT_REPOSITORY_URL="$RAFCODEPHI_APT_REPOSITORY_URL" \
             RAFCODEPHI_APT_TRUST_MODE="$RAFCODEPHI_APT_TRUST_MODE" \
             RAFCODEPHI_APT_PUBLIC_KEY_FILE=/home/builder/termux-packages/build/signing/rafcodephi-archive-key.gpg \
