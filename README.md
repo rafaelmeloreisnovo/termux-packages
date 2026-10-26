@@ -1,3 +1,5 @@
+> **Reconciliação documental 25/10/2026 — DRAFT/HOLD:** [Novo mapa de diretórios, aplicações, evidências e lacunas](docs/RAFAELIA_DOCS_RECONCILIATION_20261025.md). Os textos datados abaixo permanecem como predecessores; claims operacionais dependem do HEAD e de testes próprios.
+
 # Termux packages for the Google Play build of Termux
 
 This repository contains the packages used in the [Termux build on Google Play](https://play.google.com/store/apps/details?id=com.termux&hl=en).

@@ -1,3 +1,5 @@
+> **Sucessor de navegação — 2026-10-25 · DRAFT/HOLD:** [censo integral da raiz e lacunas por Git HEAD](RAFAELIA_DOCS_RECONCILIATION_20261025.md). Este índice segue preservado como fotografia histórica até verificação individual dos alvos e status.
+
 # 📚 Termux Packages Documentation Index
 
 **Last Updated:** 2026-08-17  
@@ -242,7 +244,7 @@
 
 **This index was generated** to provide complete, navigable, precise documentation with clear paths for both human readers and AI systems. Each section is marked with its purpose, dependencies, and recommended entry points.
 
-For questions about navigation or structure, consult [`NAVIGATION.md`](./NAVIGATION.md).
+For questions about navigation or structure, consult [`NAVIGATION.md`](./01-NAVIGATION.md).
 
 ## Append 2026-09-15: authenticated webhook intake
 
