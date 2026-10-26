@@ -1,0 +1,37 @@
+name: RAFCODE shared owned source and evidence receipt
+on:
+  pull_request:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  owned-source-receipt:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 8
+    steps:
+      - name: Fetch exact SHA with hosted Git
+        shell: bash
+        env:
+          RAF_HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: |
+          set -euo pipefail
+          git init -q .
+          git remote add origin "https://github.com/${GITHUB_REPOSITORY}.git"
+          git -c protocol.version=2 fetch -q --no-tags --depth=1 origin "$RAF_HEAD_SHA"
+          git checkout -q --detach FETCH_HEAD
+          test "$(git rev-parse HEAD)" = "$RAF_HEAD_SHA"
+      - name: Author-owned action — exact checkout
+        uses: rafaelmeloreisnovo/actions/rafcode/verify-source@47e0ad95703009bfaaa902f605fd3bf69aae4b48
+        with:
+          expected-sha: ${{ github.event.pull_request.head.sha || github.sha }}
+      - name: Author-owned action — run, artifact, falsifier SHA256 receipt
+        uses: rafaelmeloreisnovo/actions/rafcode/evidence-receipt@885b6f4c4356d5e1cea352653cbe69a4e141d198
+        with:
+          expected-source-sha: ${{ github.event.pull_request.head.sha || github.sha }}
+          artifact-path: README.md
+          falsifier-script: .github/rafcode/falsifier_source_integrity.sh
+          falsifier-id: SOURCE_DIGEST_NEGATIVE
+      - name: Explicit source-only claim boundary
+        shell: bash
+        run: |
+          echo 'RAFCODE_RECEIPT=PROVISIONAL_HOST_TEST; README_SHA256=VERIFIED; DOMAIN_TESTS=NOT_RUN_HERE; PHYSICAL=NOT_RUN; PROVIDER_RUN_AND_REVIEW=NOT_ATTESTED; CLAIM_ALLOWED=false; PROMOTION=HOLD' >> "$GITHUB_STEP_SUMMARY"
