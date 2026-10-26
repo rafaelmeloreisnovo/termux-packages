@@ -21,6 +21,8 @@ def main() -> int:
     require("path.write_text" not in text, "INLINE_PROPERTIES_MUTATION_PRESENT")
     require("scripts/tests/test_rafcodephi_prefix_gate.py" in text,
             "FREESTANDING_PREFIX_REGRESSION_TEST_NOT_ROUTED")
+    require("scripts/tests/test_rafcodephi_proot_prefix_patch.py" in text,
+            "PROOT_PREFIX_SOURCE_PATCH_TEST_NOT_ROUTED")
     require("scripts/ci/rafcodephi_bootstrap_prefix_gate.py" in text,
             "COMPLETE_BOOTSTRAP_PREFIX_GATE_NOT_IN_SCOPE")
     require("scripts/ci/rafcodephi_deb_set_gate.py" in text,
@@ -33,6 +35,14 @@ def main() -> int:
     require("rafcodephi-real-bootstrap-status.json" in text, "BUILD_STATUS_RECEIPT_MISSING")
     require("build_status=\"${PIPESTATUS[0]}\"" in text, "DOCKER_EXIT_STATUS_LOST")
     require("RAFCODEPHI_REAL_BOOTSTRAP_BUILD=BLOCKED" in text, "FAIL_CLOSED_STATUS_MISSING")
+    require("scripts/ci/rafcodephi_prepare_ndk29.sh" in text,
+            "NDK29_SHA_BOUND_PROVISIONER_MISSING")
+    require("rafcodephi-ndk29-prepare.log" in text,
+            "NDK29_PROVISIONING_RECEIPT_MISSING")
+    require(text.count("NDK=/home/builder/.termux-build/android-ndk-r29") >= 2,
+            "NDK29_NOT_BOUND_TO_PREFLIGHT_AND_BUILD")
+    require("package-builder@sha256:09cdbb34" in text,
+            "BUILDER_IMAGE_DIGEST_NOT_PINNED")
     require("- name: Upload real bootstrap artifacts\n        if: always()" in text,
             "FAILURE_ARTIFACT_NOT_ALWAYS_UPLOADED")
     builder = (ROOT / "scripts/build-rafcodephi-real-bootstrap.sh").read_text(encoding="utf-8")
