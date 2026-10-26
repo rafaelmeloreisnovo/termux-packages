@@ -17,7 +17,9 @@ RULES = (
     ("NDK_MISSING", re.compile(r"ERROR:\s*NDK \([^)]*\) not pointing at a directory!", re.I)),
     ("NDK_VERSION_MISMATCH", re.compile(r"Wrong NDK version - we need", re.I)),
     ("NDK_UNSUPPORTED", re.compile(r"ERROR:\s*unknown NDK version", re.I)),
-    ("LEGACY_PREFIX", re.compile(r"embeds forbidden legacy prefix")),
+    ("LEGACY_PREFIX", re.compile(
+        r"embeds forbidden legacy prefix|SOURCE_REBUILD_REQUIRED_LEGACY_PREFIX"
+    )),
     ("RECEIVER_ROUTE", re.compile(r"client does not target the RAFCODEPHI API receiver|removed service stub route")),
     ("SYMLINK", re.compile(r"compatibility symlink is missing|missing real bootstrap archive target|symlink evidence repair.*(?:BLOCKED|FAIL)", re.I)),
     ("APT_GUARD", re.compile(r"old apt blocker still active")),
@@ -72,6 +74,15 @@ def self_test() -> None:
         r = scan(p)
         assert r["primary_candidate"] == "LEGACY_PREFIX", r
         assert r["log_lines"] == 3, r
+        assert r["counts"]["PRODUCER_GATE"] == 1, r
+        p.write_text(
+            'RAFCODEPHI_PREFIX_GATE=BLOCKED '
+            'reason=SOURCE_REBUILD_REQUIRED_LEGACY_PREFIX receipt=arm.json\n'
+            'RAFCODEPHI_BOOTSTRAP_DOCKER=BLOCKED build_exit=1 copy_exit=0\n',
+            encoding="utf-8",
+        )
+        r = scan(p)
+        assert r["primary_candidate"] == "LEGACY_PREFIX", r
         assert r["counts"]["PRODUCER_GATE"] == 1, r
         p.write_text("rafcodephi-bootstrap-aarch64.zip: old apt blocker still active\n", encoding="utf-8")
         r = scan(p)

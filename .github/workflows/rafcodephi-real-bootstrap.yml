@@ -17,9 +17,11 @@ on:
     paths:
       - 'scripts/build-rafcodephi-real-bootstrap.sh'
       - 'scripts/ci/rafcodephi_ndk_preflight.sh'
+      - 'scripts/ci/rafcodephi_prepare_ndk29.sh'
       - 'scripts/repair_rafcodephi_bootstrap_symlinks.py'
       - 'scripts/ci/rafcodephi_bootstrap_prefix_gate.py'
       - 'scripts/tests/test_rafcodephi_prefix_gate.py'
+      - 'scripts/tests/test_rafcodephi_proot_prefix_patch.py'
       - 'scripts/ci/rafcodephi_deb_set_gate.py'
       - 'scripts/tests/test_rafcodephi_deb_set_gate.py'
       - 'scripts/build-rafcodephi-freestanding-probes.sh'
@@ -51,6 +53,7 @@ jobs:
       TERMUX_DOCKER_USE_SUDO: '1'
       RAFCODEPHI_PACKAGE_NAME: com.termux.rafacodephi
       RAFCODEPHI_FRICTION_LANES: '16'
+      TERMUX_BUILDER_IMAGE_NAME: ghcr.io/termux-play-store/package-builder@sha256:09cdbb34db05274dfcdf0e52430de2980e3e58aa34fa122a05c014bf67e24124
 
     steps:
       - name: Checkout exact producer SHA
@@ -106,9 +109,11 @@ jobs:
           python3 scripts/tests/test_rafcodephi_real_bootstrap_workflow_contract.py
           python3 scripts/tests/test_rafcodephi_bootstrap_symlink_repair.py
           python3 scripts/tests/test_rafcodephi_prefix_gate.py
+          python3 scripts/tests/test_rafcodephi_proot_prefix_patch.py
           python3 scripts/tests/test_rafcodephi_deb_set_gate.py
           bash -n scripts/build-rafcodephi-real-bootstrap.sh
           bash -n scripts/ci/rafcodephi_ndk_preflight.sh
+          bash -n scripts/ci/rafcodephi_prepare_ndk29.sh
 
       - name: Materialize RAFCODEPHI package prefix on host checkout
         shell: bash
@@ -123,13 +128,16 @@ jobs:
           test "$resolved" = 'com.termux.rafacodephi|/data/data/com.termux.rafacodephi/files/usr'
           echo "Resolved build identity: $resolved"
 
-      - name: Fail fast on canonical builder NDK prerequisites (no install)
+      - name: Provision and verify canonical builder NDK29 (SHA-bound)
         shell: bash
         run: |
           set -euo pipefail
           mkdir -p build/reports
-          bash -n scripts/ci/rafcodephi_ndk_preflight.sh
-          bash scripts/run-docker.sh bash scripts/ci/rafcodephi_ndk_preflight.sh \
+          bash scripts/run-docker.sh bash scripts/ci/rafcodephi_prepare_ndk29.sh \
+            2>&1 | tee build/reports/rafcodephi-ndk29-prepare.log
+          bash scripts/run-docker.sh env \
+            NDK=/home/builder/.termux-build/android-ndk-r29 \
+            bash scripts/ci/rafcodephi_ndk_preflight.sh \
             2>&1 | tee build/reports/rafcodephi-ndk-preflight.log
 
       - name: Build source packages and real bootstrap in Termux builder
@@ -139,7 +147,8 @@ jobs:
           mkdir -p build/reports
           chmod +x scripts/build-rafcodephi-real-bootstrap.sh scripts/run-docker.sh
           set +e
-          bash scripts/run-rafcodephi-bootstrap-docker.sh \
+          bash scripts/run-rafcodephi-bootstrap-docker.sh env \
+            NDK=/home/builder/.termux-build/android-ndk-r29 \
             ./scripts/build-rafcodephi-real-bootstrap.sh \
             --architectures '${{ steps.arch.outputs.architectures }}' \
             2>&1 | tee build/reports/rafcodephi-real-bootstrap.log
@@ -219,6 +228,7 @@ jobs:
             artifacts/rafcodephi-bootstrap/
             artifacts/rafcodephi-freestanding/
             build/reports/rafcodephi-real-bootstrap-properties.json
+            build/reports/rafcodephi-ndk29-prepare.log
             build/reports/rafcodephi-ndk-preflight.log
             build/reports/rafcodephi-real-bootstrap.log
             build/reports/rafcodephi-real-bootstrap-status.json

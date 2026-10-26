@@ -1,0 +1,12 @@
+diff --git a/src/cli/cli.c b/src/cli/cli.c
+--- a/src/cli/cli.c
++++ b/src/cli/cli.c
+@@ -131,7 +131,7 @@ static void print_execve_help(const Tracee *tracee, const char *argv0, int statu
+ 	/* termux-exec replaced execve with path with one that doesn't exist inside proot?  */
+ 	if (status == -ENOENT && getenv("LD_PRELOAD") != NULL && strstr(getenv("LD_PRELOAD"), "libtermux-exec.so") != NULL) {
+ 		note(tracee, INFO, USER,
+-"It seems that termux-exec is active and is prepending /data/data/com.termux/... to executable paths\n"
++"It seems that termux-exec is active and is prepending the host app data directory to executable paths\n"
+ "If this is path is not available inside proot, please \"unset LD_PRELOAD\"");
+ 		return;
+ 	}
