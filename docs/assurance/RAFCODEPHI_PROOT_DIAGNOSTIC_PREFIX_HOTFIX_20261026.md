@@ -31,6 +31,14 @@ The failure classifier now recognizes the exact
 wrapper failure. A fast contract checks that the patch changes exactly one
 removed and one added string and does not hard-code the successor package.
 
+The standalone real-bootstrap workflow now reuses the same SHA-256-bound NDK29
+provisioner and AppArmor-writable cache already exercised by the signed-APT
+workflow. It runs the independent read-only NDK preflight afterward, binds the
+verified NDK path into the build command, pins the observed builder image by
+digest and uploads both preparation and preflight logs. This closes the known
+YML split where one producer path provisioned NDK29 while the other could only
+fail on its absence.
+
 ## Gates and rollback
 
 Fast source tests can establish only `PASS_SOURCE_ONLY`. Acceptance requires a
