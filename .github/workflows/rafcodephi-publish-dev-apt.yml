@@ -17,6 +17,7 @@ on:
       - 'scripts/ci/rafcodephi_bootstrap_prefix_gate.py'
       - 'scripts/ci/rafcodephi_deb_set_gate.py'
       - 'scripts/tests/test_rafcodephi_prefix_gate.py'
+      - 'scripts/tests/test_rafcodephi_proot_prefix_patch.py'
       - 'scripts/tests/test_rafcodephi_deb_set_gate.py'
       - 'scripts/build-rafcodephi-live-bootstrap.sh'
       - 'scripts/emit_rafcodephi_package_custody.py'
@@ -35,6 +36,7 @@ on:
       - 'scripts/ci/rafcodephi_bootstrap_prefix_gate.py'
       - 'scripts/ci/rafcodephi_deb_set_gate.py'
       - 'scripts/tests/test_rafcodephi_prefix_gate.py'
+      - 'scripts/tests/test_rafcodephi_proot_prefix_patch.py'
       - 'scripts/tests/test_rafcodephi_deb_set_gate.py'
       - 'scripts/build-rafcodephi-live-bootstrap.sh'
       - 'scripts/emit_rafcodephi_package_custody.py'
@@ -80,6 +82,7 @@ jobs:
           python3 scripts/tests/test_rafcodephi_package_custody_contract.py
           python3 scripts/tests/test_rafcodephi_bootstrap_symlink_repair.py
           python3 scripts/tests/test_rafcodephi_prefix_gate.py
+          python3 scripts/tests/test_rafcodephi_proot_prefix_patch.py
           python3 scripts/tests/test_rafcodephi_deb_set_gate.py
           echo 'SIGNED_APT_CONTRACT=PASS_SOURCE_ONLY'
           echo 'DUAL_ARCH_DEB=NOT_RUN'
@@ -122,6 +125,7 @@ jobs:
           python3 scripts/ci/rafcodephi_failure_triage.py --self-test
           python3 scripts/tests/test_rafcodephi_package_custody_contract.py
           python3 scripts/tests/test_rafcodephi_bootstrap_symlink_repair.py
+          python3 scripts/tests/test_rafcodephi_proot_prefix_patch.py
 
       - name: Prepare APT signing identity
         shell: bash
