@@ -106,7 +106,7 @@ def aggregate(arm: Path, aarch64: Path, commit: str) -> dict:
         "schema": "rafcodephi.source-batches-custody/v1",
         "source_commit": commit, "state": "PASS_SCOPED",
         "architectures": records,
-        "merkle_candidate_sha256": hashlib.sha256(canonical).hexdigest(),
+        "records_root_sha256": hashlib.sha256(canonical).hexdigest(),
         "signed_apt_repository": "NOT_RUN",
         "publish": "BLOCKED", "device_runtime": "TOKEN_VAZIO",
         "claim_allowed": False,
