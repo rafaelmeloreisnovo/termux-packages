@@ -63,7 +63,7 @@ class DebSetGateTests(unittest.TestCase):
             deb = package(folder, b"\x7fELF\x00VALID")
             digest = hashlib.sha256(deb.read_bytes()).hexdigest()
             (folder / "SHA256SUMS").write_text(
-                f"{digest}  {deb.name}\\n{digest}  ./{deb.name}\n")
+                f"{digest}  {deb.name}\n{digest}  ./{deb.name}\n")
             with self.assertRaisesRegex(ValueError, "duplicate SHA256SUMS"):
                 gate.indexed_files(folder)
 
