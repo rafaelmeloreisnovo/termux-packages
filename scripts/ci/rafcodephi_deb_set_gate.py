@@ -32,8 +32,13 @@ def indexed_files(directory: Path) -> list[tuple[Path, str]]:
         match = re.fullmatch(r"([0-9a-f]{64})  (\S+\.deb)", line)
         if not match:
             raise ValueError("malformed SHA256SUMS")
-        sha, name = match.groups()
-        if Path(name).name != name or name in expected:
+        sha, original = match.groups()
+        # sha256sum ./*.deb emits "./pkg.deb" on the real producer.
+        # Canonicalize only this exact relative prefix; deny traversal,
+        # nested paths and aliases before comparing inventory and hashes.
+        name = original[2:] if original.startswith("./") else original
+        if (not name or "/" in name or "\\" in name
+                or Path(name).name != name or name in expected):
             raise ValueError("unsafe or duplicate SHA256SUMS member")
         expected[name] = sha
     actual = {file.name for file in directory.glob("*.deb") if file.is_file()}

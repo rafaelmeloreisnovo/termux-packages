@@ -1,0 +1,221 @@
+name: RAFCODEPHI Source Batches ARM/AArch64
+# Nonpublishing migration: legacy signed APT pipeline is unchanged.
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/rafcodephi-source-batches.yml'
+      - 'scripts/ci/rafcodephi_batch_manifest.py'
+      - 'scripts/ci/rafcodephi_deb_set_gate.py'
+      - 'scripts/tests/test_rafcodephi_batch_manifest.py'
+      - 'scripts/tests/test_rafcodephi_deb_set_gate.py'
+  workflow_dispatch:
+    inputs:
+      build_source_batches:
+        description: 'Build both separate source lots (no signing or publishing)'
+        type: boolean
+        default: false
+        required: true
+permissions:
+  contents: read
+concurrency:
+  group: rafcodephi-batches-${{ github.event_name }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+env:
+  SOURCE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+  CI: 'true'
+jobs:
+  contract:
+    name: L0 - contracts only
+    runs-on: ubuntu-24.04
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: ${{ env.SOURCE_SHA }}
+          persist-credentials: false
+      - uses: rafaelmeloreisnovo/actions/rafcode/verify-source@7c03495ebe1d28a11ea419799c4f61427250244f
+        with:
+          expected-sha: ${{ env.SOURCE_SHA }}
+      - name: Validate source and negative cases
+        shell: bash
+        run: |
+          set -euo pipefail
+          bash -n scripts/build-rafcodephi-real-bootstrap.sh
+          bash -n scripts/run-rafcodephi-bootstrap-docker.sh
+          python3 scripts/tests/test_rafcodephi_deb_set_gate.py
+          python3 scripts/tests/test_rafcodephi_batch_manifest.py
+          python3 scripts/tests/test_rafcodephi_publish_dev_apt_workflow_contract.py
+          echo 'CONTRACT=PASS_SOURCE_ONLY DEB=NOT_RUN APT=NOT_RUN CLAIM_ALLOWED=false'
+  build:
+    name: L1 - independent source lot ${{ matrix.arch }}
+    needs: contract
+    if: ${{ github.event_name == 'workflow_dispatch' && inputs.build_source_batches == true }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 240
+    strategy:
+      fail-fast: false
+      matrix:
+        arch: [arm, aarch64]
+    env:
+      TERMUX_DOCKER_USE_SUDO: '1'
+      TERMUX_BUILDER_IMAGE_NAME: ghcr.io/termux-play-store/package-builder@sha256:09cdbb34db05274dfcdf0e52430de2980e3e58aa34fa122a05c014bf67e24124
+      LOT_DIR: build/rafcodephi-lots/${{ matrix.arch }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: ${{ env.SOURCE_SHA }}
+          persist-credentials: false
+      - uses: rafaelmeloreisnovo/actions/rafcode/verify-source@7c03495ebe1d28a11ea419799c4f61427250244f
+        with:
+          expected-sha: ${{ env.SOURCE_SHA }}
+      - name: Prepare package identity and pinned NDK
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 scripts/apply-rafcodephi-build-properties.py \
+            --properties scripts/properties.sh \
+            --receipt /tmp/batch-properties.json
+          bash scripts/validate-rafcodephi-build-properties.sh
+          grep -Fx 'TERMUX_APP__PACKAGE_NAME="com.termux.rafacodephi"' scripts/properties.sh
+          bash scripts/run-docker.sh bash scripts/ci/rafcodephi_prepare_ndk29.sh
+      - name: Build one architecture in canonical container
+        id: source_build
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p build/reports
+          bash scripts/run-rafcodephi-bootstrap-docker.sh env \
+            NDK=/home/builder/.termux-build/android-ndk-r29 \
+            bash ./scripts/build-rafcodephi-real-bootstrap.sh \
+              --architectures '${{ matrix.arch }}' \
+            2>&1 | tee 'build/reports/rafcodephi-batch-${{ matrix.arch }}.log'
+      - name: Fingerprint failed lot without rebuilding
+        if: ${{ failure() }}
+        shell: bash
+        run: |
+          python3 scripts/ci/rafcodephi_failure_triage.py \
+            --log 'build/reports/rafcodephi-batch-${{ matrix.arch }}.log' \
+            --out 'build/reports/rafcodephi-batch-${{ matrix.arch }}-triage.json'
+      - name: Stage separate batch and verify SHA custody
+        if: ${{ always() }}
+        shell: bash
+        env:
+          BUILD_OUTCOME: ${{ steps.source_build.outcome }}
+        run: |
+          set -euo pipefail
+          mkdir -p "$LOT_DIR"
+          printf 'arch=%s\nsource_commit=%s\nsource_step=%s\nclaim_allowed=false\n' \
+            '${{ matrix.arch }}' "$SOURCE_SHA" "$BUILD_OUTCOME" > "$LOT_DIR/build.state"
+          cp 'build/reports/rafcodephi-batch-${{ matrix.arch }}.log' "$LOT_DIR/build.log" 2>/dev/null || true
+          cp 'build/reports/rafcodephi-batch-${{ matrix.arch }}-triage.json' "$LOT_DIR/triage.json" 2>/dev/null || true
+          if [[ "$BUILD_OUTCOME" != success ]]; then
+            echo 'LOT=BLOCKED_PREVIOUS_BUILD' >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+          src=artifacts/rafcodephi-bootstrap
+          arch='${{ matrix.arch }}'
+          cp -a "$src/debs/$arch" "$LOT_DIR/debs"
+          cp "$src/rafcodephi-bootstrap-$arch.zip" "$LOT_DIR/bootstrap.zip"
+          cp "$src/RAFCODEPHI_REAL_BOOTSTRAP_MANIFEST.txt" "$LOT_DIR/manifest.txt"
+          cp "$src/rafcodephi-bootstrap-$arch-prefix-gate.json" "$LOT_DIR/prefix-gate.json"
+          cp "$src/rafcodephi-deb-set-$arch-prefix-gate.json" "$LOT_DIR/deb-gate.json"
+          python3 scripts/ci/rafcodephi_batch_manifest.py \
+            --arch "$arch" --lot "$LOT_DIR" --source-commit "$SOURCE_SHA" \
+            --out "$LOT_DIR/custody.json"
+          echo "SOURCE_LOT=$arch PASS_SCOPED (NOT_SIGNED_APT)" >> "$GITHUB_STEP_SUMMARY"
+      - name: Upload lot even on failure
+        if: ${{ always() }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: rafcodephi-source-${{ github.run_id }}-${{ matrix.arch }}
+          path: build/rafcodephi-lots/${{ matrix.arch }}/
+          if-no-files-found: error
+          retention-days: 30
+          compression-level: 0
+  reconcile:
+    name: L2 - exact two-lot hash binding
+    needs: [contract, build]
+    if: ${{ github.event_name == 'workflow_dispatch' && needs.contract.result == 'success' && needs.build.result == 'success' }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: ${{ env.SOURCE_SHA }}
+          persist-credentials: false
+      - uses: rafaelmeloreisnovo/actions/rafcode/verify-source@7c03495ebe1d28a11ea419799c4f61427250244f
+        with:
+          expected-sha: ${{ env.SOURCE_SHA }}
+      - name: Download ARM evidence
+        uses: actions/download-artifact@v8
+        with:
+          name: rafcodephi-source-${{ github.run_id }}-arm
+          path: handoff/arm
+      - name: Download AArch64 evidence
+        uses: actions/download-artifact@v8
+        with:
+          name: rafcodephi-source-${{ github.run_id }}-aarch64
+          path: handoff/aarch64
+      - name: Validate separate lots and aggregate hashes
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p build/reports
+          python3 scripts/ci/rafcodephi_batch_manifest.py \
+            --arm-lot handoff/arm --aarch64-lot handoff/aarch64 \
+            --source-commit "$SOURCE_SHA" \
+            --out build/reports/rafcodephi-batch-combined.json
+          sha256sum build/reports/rafcodephi-batch-combined.json \
+            > build/reports/rafcodephi-batch-combined.json.sha256
+          echo 'COMBINED=PASS_SCOPED SIGNED_APT=NOT_RUN PUBLISH=BLOCKED' >> "$GITHUB_STEP_SUMMARY"
+      - name: Publish separate custody artifact (not APT)
+        if: ${{ always() }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: rafcodephi-source-${{ github.run_id }}-custody
+          path: build/reports/rafcodephi-batch-combined.json*
+          if-no-files-found: warn
+          retention-days: 30
+  summary:
+    name: L3 - continuity receipt (no false green)
+    needs: [contract, build, reconcile]
+    if: ${{ always() }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    env:
+      CONTRACT_RESULT: ${{ needs.contract.result }}
+      BUILD_RESULT: ${{ needs.build.result }}
+      RECONCILE_RESULT: ${{ needs.reconcile.result }}
+    steps:
+      - name: Record job outcomes and release boundary
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p reports
+          python3 - <<'PY'
+          import json, os
+          from pathlib import Path
+          results = {k.lower(): os.environ[k] for k in ("CONTRACT_RESULT","BUILD_RESULT","RECONCILE_RESULT")}
+          passed = all(v == "success" for v in results.values())
+          report = {
+              "schema": "rafcodephi.batch-outcome/v1",
+              "source_commit": os.environ["SOURCE_SHA"],
+              "results": results,
+              "state": "PASS_SCOPED" if passed else "BLOCKED_OR_NOT_RUN",
+              "publish": "NOT_RUN", "signed_apt": "NOT_RUN",
+              "device_runtime": "TOKEN_VAZIO", "claim_allowed": False,
+          }
+          Path("reports/batch-outcome.json").write_text(json.dumps(report, sort_keys=True, indent=2) + "\n")
+          print(json.dumps(report, sort_keys=True))
+          with open(os.environ["GITHUB_STEP_SUMMARY"], "a") as h:
+              h.write(f"Source lot outcome: {report['state']}\n\n")
+              h.write("APT publication: NOT_RUN; runtime: TOKEN_VAZIO\n")
+          PY
+          if [[ "$CONTRACT_RESULT" == failure || "$BUILD_RESULT" == failure || "$RECONCILE_RESULT" == failure ]]; then exit 1; fi
+      - uses: actions/upload-artifact@v7
+        if: ${{ always() }}
+        with:
+          name: rafcodephi-source-${{ github.run_id }}-outcome
+          path: reports/batch-outcome.json
+          if-no-files-found: error
+          retention-days: 30
