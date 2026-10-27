@@ -48,6 +48,34 @@ class DebSetGateTests(unittest.TestCase):
             self.assertEqual(receipt["device_runtime"], "TOKEN_VAZIO")
             self.assertFalse(receipt["claim_allowed"])
 
+    def test_producer_dot_slash_sha256sums_is_accepted(self) -> None:
+        with tempfile.TemporaryDirectory() as root:
+            folder = Path(root)
+            deb = package(folder, b"\x7fELF\x00VALID")
+            digest = hashlib.sha256(deb.read_bytes()).hexdigest()
+            (folder / "SHA256SUMS").write_text(f"{digest}  ./{deb.name}\n")
+            receipt = gate.gate(folder, "arm")
+            self.assertEqual(receipt["state"], "PASS_SCOPED")
+
+    def test_canonical_alias_duplicate_is_blocked(self) -> None:
+        with tempfile.TemporaryDirectory() as root:
+            folder = Path(root)
+            deb = package(folder, b"\x7fELF\x00VALID")
+            digest = hashlib.sha256(deb.read_bytes()).hexdigest()
+            (folder / "SHA256SUMS").write_text(
+                f"{digest}  {deb.name}\\n{digest}  ./{deb.name}\n")
+            with self.assertRaisesRegex(ValueError, "duplicate SHA256SUMS"):
+                gate.indexed_files(folder)
+
+    def test_directory_traversal_is_blocked(self) -> None:
+        with tempfile.TemporaryDirectory() as root:
+            folder = Path(root)
+            deb = package(folder, b"\x7fELF\x00VALID")
+            digest = hashlib.sha256(deb.read_bytes()).hexdigest()
+            (folder / "SHA256SUMS").write_text(f"{digest}  ../{deb.name}\n")
+            with self.assertRaisesRegex(ValueError, "unsafe"):
+                gate.indexed_files(folder)
+
     def test_binary_with_legacy_prefix_is_blocked(self) -> None:
         with tempfile.TemporaryDirectory() as root:
             folder = Path(root)
