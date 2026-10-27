@@ -1,0 +1,577 @@
+# Candidate preview only: no production credentials or publication.
+# Original publisher remains unchanged as rollback.
+name: RAFCODEPHI Batch Pipeline (Candidate)
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/rafcodephi-batch-pipeline.yml'
+  workflow_dispatch:
+    inputs:
+      build:
+        description: 'Run expensive dual-arch preview and isolated APT gates; never publish'
+        required: true
+        default: false
+        type: boolean
+permissions:
+  contents: read
+concurrency:
+  group: rafcodephi-batch-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }
+jobs:
+  signed-apt-contract:
+    name: Signed APT source-contract preflight (NOT DEB)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - name: Checkout exact candidate
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          fetch-depth: 1
+          persist-credentials: false
+      - name: Verify exact source with owned RAFAELIA Action
+        uses: rafaelmeloreisnovo/actions/rafcode/verify-source@7c03495ebe1d28a11ea419799c4f61427250244f
+        with:
+          expected-sha: ${{ github.event.pull_request.head.sha || github.sha }}
+      - name: Validate signed APT source and custody contracts
+        shell: bash
+        run: |
+          set -euo pipefail
+          bash -n scripts/ci/rafcodephi_prepare_ndk29.sh
+          grep -Eq '^[[:space:]]*ANDROID_NDK_SHA256=4abbbcdc842f3d4879206e9695d52709603e52dd68d3c1fff04b3b5e7a308ecf$' scripts/setup-android-sdk.sh
+          python3 scripts/tests/test_rafcodephi_publish_dev_apt_workflow_contract.py
+          python3 scripts/ci/rafcodephi_failure_triage.py --self-test
+          python3 scripts/tests/test_rafcodephi_package_custody_contract.py
+          python3 scripts/tests/test_rafcodephi_bootstrap_symlink_repair.py
+          python3 scripts/tests/test_rafcodephi_prefix_gate.py
+          python3 scripts/tests/test_rafcodephi_proot_prefix_patch.py
+          python3 scripts/tests/test_rafcodephi_deb_set_gate.py
+          echo 'SIGNED_APT_CONTRACT=PASS_SOURCE_ONLY'
+          echo 'DUAL_ARCH_DEB=NOT_RUN'
+          echo 'SIGNED_REPOSITORY=NOT_RUN'
+          echo 'CLAIM_ALLOWED=false'
+
+  source-producer:
+    needs: signed-apt-contract
+    # Explicit dispatch OR a same-repository PR proof without publication.
+    # Fork PRs are excluded from the expensive build; publisher stays manual.
+    if: ${{ github.event_name == 'workflow_dispatch' && inputs.build == true }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 240
+    env:
+      CI: 'true'
+      TERMUX_DOCKER_USE_SUDO: '1'
+      RAFCODEPHI_APT_REPOSITORY_URL: https://raw.githubusercontent.com/rafaelmeloreisnovo/termux-packages/rafcodephi-apt-preview/repo
+      RAFCODEPHI_APT_PUBLISH_BRANCH: rafcodephi-apt-preview
+      RAFCODEPHI_APT_TRUST_MODE: signed-by
+      TERMUX_BUILDER_IMAGE_NAME: ghcr.io/termux-play-store/package-builder@sha256:09cdbb34db05274dfcdf0e52430de2980e3e58aa34fa122a05c014bf67e24124
+
+    steps:
+      - name: Checkout exact candidate
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Verify exact source with owned RAFAELIA Action
+        uses: rafaelmeloreisnovo/actions/rafcode/verify-source@7c03495ebe1d28a11ea419799c4f61427250244f
+        with:
+          expected-sha: ${{ github.event.pull_request.head.sha || github.sha }}
+      - name: Validate signed APT workflow contract
+        shell: bash
+        run: |
+          set -euo pipefail
+          bash -n scripts/ci/rafcodephi_prepare_ndk29.sh
+          grep -Eq '^[[:space:]]*ANDROID_NDK_SHA256=4abbbcdc842f3d4879206e9695d52709603e52dd68d3c1fff04b3b5e7a308ecf$' scripts/setup-android-sdk.sh
+          python3 scripts/tests/test_rafcodephi_publish_dev_apt_workflow_contract.py
+          python3 scripts/ci/rafcodephi_failure_triage.py --self-test
+          python3 scripts/tests/test_rafcodephi_package_custody_contract.py
+          python3 scripts/tests/test_rafcodephi_bootstrap_symlink_repair.py
+          python3 scripts/tests/test_rafcodephi_proot_prefix_patch.py
+
+      - name: Prepare ephemeral preview signer (no production secrets)
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p build/signing
+          export GNUPGHOME="$RUNNER_TEMP/rafcodephi-apt-gnupg"
+          mkdir -m 700 -p "$GNUPGHOME"
+          gpg --batch --passphrase '' --quick-generate-key \
+            "RAFCODEPHI CI Ephemeral APT <ci@rafcodephi.invalid>" ed25519 sign 1d >/dev/null 2>&1
+          FPR="$(gpg --batch --with-colons --list-secret-keys | awk -F: '$1=="fpr"{print $10; exit}')"
+          [[ "$FPR" =~ ^[0-9A-F]{40}$ ]] || exit 2
+          gpg --batch --export "$FPR" > build/signing/rafcodephi-archive-key.gpg
+          gpg --batch --armor --export "$FPR" > build/signing/rafcodephi-archive-key.asc
+          test -s build/signing/rafcodephi-archive-key.gpg
+          test -s build/signing/rafcodephi-archive-key.asc
+          echo "GNUPGHOME=$GNUPGHOME" >> "$GITHUB_ENV"
+          echo "RAFCODEPHI_APT_SIGNING_FINGERPRINT=$FPR" >> "$GITHUB_ENV"
+          echo "RAFCODEPHI_APT_SIGNING_MODE=ephemeral-test" >> "$GITHUB_ENV"
+      - name: Materialize RAFCODEPHI package identity
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p build/reports
+          python3 scripts/apply-rafcodephi-build-properties.py \
+            --properties scripts/properties.sh \
+            --receipt build/reports/rafcodephi-signed-apt-properties.json
+          bash scripts/validate-rafcodephi-build-properties.sh
+          grep -Fx 'TERMUX_APP__PACKAGE_NAME="com.termux.rafacodephi"' scripts/properties.sh
+
+      # Restricted AppArmor denies writing checkout/lib: NDK lives in
+      # /home/builder/.termux-build and remains SHA-256 verified.
+      - name: Provision/verify NDK29 in canonical isolated builder (SHA-bound)
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p build/reports
+          bash scripts/run-docker.sh bash scripts/ci/rafcodephi_prepare_ndk29.sh \
+            2>&1 | tee build/reports/rafcodephi-ndk29-prepare.log
+
+      - name: Build ARM and ARM64 source closure + signed bootstrap pair
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p build/reports
+          set +e
+          bash scripts/run-rafcodephi-bootstrap-docker.sh env \
+            NDK=/home/builder/.termux-build/android-ndk-r29 \
+            RAFCODEPHI_APT_REPOSITORY_URL="$RAFCODEPHI_APT_REPOSITORY_URL" \
+            RAFCODEPHI_APT_TRUST_MODE="$RAFCODEPHI_APT_TRUST_MODE" \
+            RAFCODEPHI_APT_PUBLIC_KEY_FILE=/home/builder/termux-packages/build/signing/rafcodephi-archive-key.gpg \
+            bash ./scripts/build-rafcodephi-live-bootstrap.sh --architectures arm,aarch64 \
+            2>&1 | tee build/reports/rafcodephi-signed-apt-build.log
+          build_status="${PIPESTATUS[0]}"
+          set -e
+
+          python3 - "$build_status" > build/reports/rafcodephi-signed-apt-build-status.json <<'PY'
+          import json, sys
+          status = int(sys.argv[1])
+          print(json.dumps({
+              "schema": "rafcodephi.signed-apt-source-build-status/v1",
+              "state": "PASS" if status == 0 else "BLOCKED",
+              "exit_code": status,
+              "architectures": ["arm", "aarch64"],
+              "claim_allowed_release": False,
+              "device_runtime_proof": "TOKEN_VAZIO",
+          }, sort_keys=True))
+          PY
+
+          if [[ "$build_status" -ne 0 ]]; then
+            echo "RAFCODEPHI_SIGNED_APT_BUILD=BLOCKED exit_code=$build_status" >&2
+            exit "$build_status"
+          fi
+
+          for arch in arm aarch64; do
+            zip="artifacts/rafcodephi-bootstrap/rafcodephi-bootstrap-$arch.zip"
+            debdir="artifacts/rafcodephi-bootstrap/debs/$arch"
+            test -s "$zip"
+            test -s "$debdir/SHA256SUMS"
+            (
+              cd "$debdir"
+              sha256sum -c SHA256SUMS
+            )
+            # Signed release cannot hide a skipped producer ZIP/DEB safety gate.
+            manifest=artifacts/rafcodephi-bootstrap/RAFCODEPHI_REAL_BOOTSTRAP_MANIFEST.txt
+            for gate_type in prefix deb; do
+              case "$gate_type" in
+                prefix)
+                  report="artifacts/rafcodephi-bootstrap/rafcodephi-bootstrap-$arch-prefix-gate.json"
+                  field=prefix_gate
+                  ;;
+                deb)
+                  report="artifacts/rafcodephi-bootstrap/rafcodephi-deb-set-$arch-prefix-gate.json"
+                  field=deb_gate
+                  ;;
+              esac
+              test -s "$report"
+              grep -Fx "${field}_state_${arch}=PASS_SCOPED" "$manifest"
+              report_sha="$(sha256sum "$report" | awk '{print $1}')"
+              grep -Fx "${field}_receipt_sha256_${arch}=$report_sha" "$manifest"
+              python3 -c 'import json,sys; d=json.load(open(sys.argv[1],encoding="utf-8")); sys.exit(0 if d.get("state")=="PASS_SCOPED" and d.get("arch")==sys.argv[2] and d.get("claim_allowed") is False and d.get("device_runtime")=="TOKEN_VAZIO" else "BLOCKED: invalid gate receipt")' "$report" "$arch"
+            done
+            # The live signer injects a key and changes the exact ZIP bytes.
+            # Rescan that final artifact too; raw source proof is not inherited.
+            python3 scripts/ci/rafcodephi_bootstrap_prefix_gate.py \
+              --zip "$zip" --arch "$arch" \
+              --receipt "build/reports/rafcodephi-live-prefix-$arch.json"
+            sha256sum "$zip" > "build/reports/rafcodephi-live-bootstrap-$arch.sha256"
+            sha256sum "build/reports/rafcodephi-live-prefix-$arch.json" \
+              > "build/reports/rafcodephi-live-prefix-$arch.json.sha256"
+            unzip -p "$zip" etc/apt/sources.list.d/termux.sources > "build/reports/termux-$arch.sources"
+            grep -Fx 'Enabled: yes' "build/reports/termux-$arch.sources"
+            grep -Fx "URIs: $RAFCODEPHI_APT_REPOSITORY_URL" "build/reports/termux-$arch.sources"
+            grep -Fx 'Suites: stable' "build/reports/termux-$arch.sources"
+            grep -Fx 'Components: main' "build/reports/termux-$arch.sources"
+            grep -Fx 'Architectures: arm aarch64' "build/reports/termux-$arch.sources"
+            grep -Fq 'Signed-By: /data/data/com.termux.rafacodephi/files/usr/etc/apt/keyrings/rafcodephi-archive-key.gpg' "build/reports/termux-$arch.sources"
+            ! grep -Fq 'Trusted: yes' "build/reports/termux-$arch.sources"
+          done
+
+      - name: Fingerprint failed signed APT build (no rebuild)
+        if: ${{ failure() }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 scripts/ci/rafcodephi_failure_triage.py \
+            --log build/reports/rafcodephi-signed-apt-build.log \
+            --out build/reports/rafcodephi-signed-apt-failure-triage.json \
+            --markdown build/reports/rafcodephi-signed-apt-failure-triage.md
+          cat build/reports/rafcodephi-signed-apt-failure-triage.md >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Emit complete per-DEB custody for ARM and ARM64
+        shell: bash
+        run: |
+          set -euo pipefail
+          for arch in arm aarch64; do
+            python3 scripts/emit_rafcodephi_package_custody.py \
+              --auto-map \
+              --repo-root . \
+              --deb-dir "artifacts/rafcodephi-bootstrap/debs/$arch" \
+              --out "build/reports/rafcodephi-package-custody-$arch.json" \
+              --commit "$GITHUB_SHA" \
+              --arch "$arch" \
+              --profile bootstrap
+            (cd build/reports && sha256sum -c "rafcodephi-package-custody-$arch.json.sha256")
+          done
+
+          python3 - <<'PY' > build/reports/rafcodephi-package-custody-dualarch.json
+          import hashlib, json, os
+          from pathlib import Path
+          records = {}
+          for arch in ("arm", "aarch64"):
+              p = Path(f"build/reports/rafcodephi-package-custody-{arch}.json")
+              doc = json.loads(p.read_text())
+              records[arch] = {
+                  "manifest_sha256": hashlib.sha256(p.read_bytes()).hexdigest(),
+                  "records_root_sha256": doc["records_root_sha256"],
+                  "record_count": doc["record_count"],
+              }
+          canonical = json.dumps(records, sort_keys=True, separators=(",", ":")).encode()
+          print(json.dumps({
+              "schema": "rafcodephi.package-custody-dualarch/v1",
+              "source_commit": os.environ["GITHUB_SHA"],
+              "architectures": records,
+              "root_sha256": hashlib.sha256(canonical).hexdigest(),
+              "claim_allowed": False,
+          }, indent=2, sort_keys=True))
+          PY
+          sha256sum build/reports/rafcodephi-package-custody-dualarch.json \
+            > build/reports/rafcodephi-package-custody-dualarch.json.sha256
+
+      - name: Upload source/custody lot arm on success OR failure
+        if: ${{ always() }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: rafcodephi-source-arm-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            artifacts/rafcodephi-bootstrap/debs/arm/
+            artifacts/rafcodephi-bootstrap/rafcodephi-bootstrap-arm.zip
+            artifacts/rafcodephi-bootstrap/rafcodephi-bootstrap-arm-prefix-gate.json
+            artifacts/rafcodephi-bootstrap/rafcodephi-deb-set-arm-prefix-gate.json
+            artifacts/rafcodephi-bootstrap/rafcodephi-bootstrap-arm-symlink-repair.json
+            artifacts/rafcodephi-bootstrap/RAFCODEPHI_REAL_BOOTSTRAP_MANIFEST.txt
+            build/reports/rafcodephi-package-custody-arm.json*
+            build/reports/rafcodephi-live-prefix-arm.json*
+            build/reports/rafcodephi-live-bootstrap-arm.sha256
+            build/reports/rafcodephi-signed-apt-build-status.json
+            build/reports/rafcodephi-signed-apt-failure-triage.*
+          if-no-files-found: warn
+          retention-days: 14
+      - name: Upload source/custody lot aarch64 on success OR failure
+        if: ${{ always() }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: rafcodephi-source-aarch64-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            artifacts/rafcodephi-bootstrap/debs/aarch64/
+            artifacts/rafcodephi-bootstrap/rafcodephi-bootstrap-aarch64.zip
+            artifacts/rafcodephi-bootstrap/rafcodephi-bootstrap-aarch64-prefix-gate.json
+            artifacts/rafcodephi-bootstrap/rafcodephi-deb-set-aarch64-prefix-gate.json
+            artifacts/rafcodephi-bootstrap/rafcodephi-bootstrap-aarch64-symlink-repair.json
+            artifacts/rafcodephi-bootstrap/RAFCODEPHI_REAL_BOOTSTRAP_MANIFEST.txt
+            build/reports/rafcodephi-package-custody-aarch64.json*
+            build/reports/rafcodephi-live-prefix-aarch64.json*
+            build/reports/rafcodephi-live-bootstrap-aarch64.sha256
+            build/reports/rafcodephi-signed-apt-build-status.json
+            build/reports/rafcodephi-signed-apt-failure-triage.*
+          if-no-files-found: warn
+          retention-days: 14
+      - name: Materialize signed dual-architecture APT repository
+        shell: bash
+        run: |
+          set -euo pipefail
+          command -v dpkg-scanpackages >/dev/null || { sudo apt-get update; sudo apt-get install -y dpkg-dev; }
+          command -v apt-ftparchive >/dev/null || { sudo apt-get update; sudo apt-get install -y apt-utils; }
+          command -v gpg >/dev/null || { sudo apt-get update; sudo apt-get install -y gnupg; }
+
+          root=/tmp/rafcodephi-apt-publish
+          repo="$root/repo"
+          rm -rf "$root"
+          mkdir -p "$repo/pool/main/arm" "$repo/pool/main/aarch64"
+          mkdir -p "$repo/dists/stable/main/binary-arm" "$repo/dists/stable/main/binary-aarch64"
+
+          cp artifacts/rafcodephi-bootstrap/debs/arm/*.deb "$repo/pool/main/arm/"
+          cp artifacts/rafcodephi-bootstrap/debs/aarch64/*.deb "$repo/pool/main/aarch64/"
+          cp build/signing/rafcodephi-archive-key.gpg "$repo/"
+          cp build/signing/rafcodephi-archive-key.asc "$repo/"
+
+          (
+            cd "$repo"
+            LC_ALL=C dpkg-scanpackages -a arm pool/main/arm /dev/null \
+              > dists/stable/main/binary-arm/Packages
+            gzip -9n -c dists/stable/main/binary-arm/Packages \
+              > dists/stable/main/binary-arm/Packages.gz
+
+            LC_ALL=C dpkg-scanpackages -a aarch64 pool/main/aarch64 /dev/null \
+              > dists/stable/main/binary-aarch64/Packages
+            gzip -9n -c dists/stable/main/binary-aarch64/Packages \
+              > dists/stable/main/binary-aarch64/Packages.gz
+
+            apt-ftparchive \
+              -o APT::FTPArchive::Release::Origin=RAFCODEPHI \
+              -o APT::FTPArchive::Release::Label=RAFCODEPHI \
+              -o APT::FTPArchive::Release::Suite=stable \
+              -o APT::FTPArchive::Release::Codename=stable \
+              -o 'APT::FTPArchive::Release::Architectures=arm aarch64' \
+              -o APT::FTPArchive::Release::Components=main \
+              release dists/stable > dists/stable/Release
+
+            gpg --batch --yes --local-user "$RAFCODEPHI_APT_SIGNING_FINGERPRINT" \
+              --clearsign --output dists/stable/InRelease dists/stable/Release
+            gpg --batch --yes --local-user "$RAFCODEPHI_APT_SIGNING_FINGERPRINT" \
+              --detach-sign --output dists/stable/Release.gpg dists/stable/Release
+            gpg --batch --verify dists/stable/Release.gpg dists/stable/Release
+            gpg --batch --verify dists/stable/InRelease
+
+            printf '%s\n' \
+              'schema=rafcodephi.signed-apt-repository/v2' \
+              'package_name=com.termux.rafacodephi' \
+              'prefix=/data/data/com.termux.rafacodephi/files/usr' \
+              'architectures=arm,aarch64' \
+              "source_commit=${GITHUB_SHA}" \
+              "publish_branch=${RAFCODEPHI_APT_PUBLISH_BRANCH}" \
+              "repository_url=${RAFCODEPHI_APT_REPOSITORY_URL}" \
+              'suite=stable' \
+              'component=main' \
+              'trust=SIGNED_BY_ARCHIVE_KEY' \
+              "signing_mode=${RAFCODEPHI_APT_SIGNING_MODE}" \
+              "signing_fingerprint=${RAFCODEPHI_APT_SIGNING_FINGERPRINT}" \
+              'claim_allowed_release=false' > RAFCODEPHI_REPOSITORY_MANIFEST.txt
+
+            {
+              find pool dists -type f ! -name 'SHA256SUMS' -print0
+              printf '%s\0' rafcodephi-archive-key.gpg rafcodephi-archive-key.asc RAFCODEPHI_REPOSITORY_MANIFEST.txt
+            } | sort -z | xargs -0 sha256sum > SHA256SUMS
+            sha256sum -c SHA256SUMS
+
+            grep -q '^Architecture: arm$' dists/stable/main/binary-arm/Packages
+            grep -q '^Architecture: aarch64$' dists/stable/main/binary-aarch64/Packages
+            grep -Fx 'Architectures: arm aarch64' dists/stable/Release
+            grep -Fx 'Components: main' dists/stable/Release
+            grep -Fx 'Suite: stable' dists/stable/Release
+          )
+
+      - name: Bundle portable signed APT repository evidence
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p build/reports
+          repo=/tmp/rafcodephi-apt-publish/repo
+          bundle=build/reports/rafcodephi-dualarch-signed-apt-repository.tar
+          state=build/reports/rafcodephi-dualarch-signed-apt-repository.state
+          rm -f "$bundle" "$bundle.sha256"
+
+          if [[ -d "$repo/dists/stable" && -d "$repo/pool/main/arm" && -d "$repo/pool/main/aarch64" ]]; then
+            tar --sort=name --mtime='@0' --owner=0 --group=0 --numeric-owner \
+              -cf "$bundle" -C "$(dirname "$repo")" "$(basename "$repo")"
+            sha256sum "$bundle" > "$bundle.sha256"
+            printf '%s\n' \
+              'schema=rafcodephi.portable-signed-apt-repository-evidence/v2' \
+              'state=PASS' \
+              'architectures=arm,aarch64' \
+              "archive=$bundle" \
+              "signing_mode=${RAFCODEPHI_APT_SIGNING_MODE}" \
+              "signing_fingerprint=${RAFCODEPHI_APT_SIGNING_FINGERPRINT}" \
+              'claim_allowed_release=false' \
+              'device_runtime_proof=TOKEN_VAZIO' > "$state"
+          else
+            printf '%s\n' \
+              'schema=rafcodephi.portable-signed-apt-repository-evidence/v2' \
+              'state=TOKEN_VAZIO' \
+              'reason=DUAL_ARCH_APT_REPOSITORY_NOT_MATERIALIZED' \
+              'claim_allowed_release=false' \
+              'device_runtime_proof=TOKEN_VAZIO' > "$state"
+          fi
+
+      - name: Upload signed APT preview lot (not published)
+        if: ${{ always() }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: rafcodephi-apt-preview-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            build/reports/rafcodephi-dualarch-signed-apt-repository.*
+          if-no-files-found: warn
+          retention-days: 14
+  signed-apt-proof:
+    name: Isolated signed APT proof / ${{ matrix.arch }}
+    needs: source-producer
+    if: ${{ github.event_name == 'workflow_dispatch' && inputs.build == true }}
+    strategy:
+      fail-fast: false
+      matrix:
+        arch: [arm, aarch64]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - name: Checkout exact candidate
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - name: Verify exact source with owned RAFAELIA Action
+        uses: rafaelmeloreisnovo/actions/rafcode/verify-source@7c03495ebe1d28a11ea419799c4f61427250244f
+        with:
+          expected-sha: ${{ github.sha }}
+      - name: Download same-attempt signed APT preview
+        uses: actions/download-artifact@v7
+        with:
+          name: rafcodephi-apt-preview-${{ github.run_id }}-${{ github.run_attempt }}
+          path: build/reports
+      - name: Verify digest, archive members, signing identity
+        shell: bash
+        run: |
+          set -euo pipefail
+          grep -Fx 'state=PASS' build/reports/rafcodephi-dualarch-signed-apt-repository.state
+          sha256sum -c build/reports/rafcodephi-dualarch-signed-apt-repository.tar.sha256
+          python3 - <<'PY'
+          from pathlib import Path, PurePosixPath
+          import tarfile
+          archive = Path("build/reports/rafcodephi-dualarch-signed-apt-repository.tar")
+          dest = Path("/tmp/rafcodephi-apt-publish")
+          dest.mkdir(parents=True, exist_ok=True)
+          with tarfile.open(archive) as tf:
+              for m in tf.getmembers():
+                  p = PurePosixPath(m.name)
+                  if (p.is_absolute() or ".." in p.parts or not p.parts or p.parts[0] != "repo"
+                          or not (m.isfile() or m.isdir())):
+                      raise SystemExit("BLOCKED unsafe APT archive member")
+              tf.extractall(dest, filter="data")
+          PY
+          repo=/tmp/rafcodephi-apt-publish/repo
+          (cd "$repo" && sha256sum -c SHA256SUMS)
+          gpg --batch --no-default-keyring --keyring "$RUNNER_TEMP/rafcodephi-apt-trusted.gpg" \
+            --import "$repo/rafcodephi-archive-key.gpg"
+          gpg --batch --no-default-keyring --keyring "$RUNNER_TEMP/rafcodephi-apt-trusted.gpg" \
+            --verify "$repo/dists/stable/Release.gpg" "$repo/dists/stable/Release"
+      - name: Resolve isolated APT for one architecture
+        shell: bash
+        run: |
+          set -euo pipefail
+          repo=/tmp/rafcodephi-apt-publish/repo
+          arch="${{ matrix.arch }}"
+          mkdir -p build/reports
+
+            apt_root="/tmp/rafcodephi-apt-client-$arch"
+            rm -rf "$apt_root"
+            mkdir -p "$apt_root/etc/apt/sourceparts" "$apt_root/lists/partial" \
+              "$apt_root/cache/archives/partial" "$apt_root/var/lib/dpkg"
+            : > "$apt_root/var/lib/dpkg/status"
+
+            printf 'deb [arch=%s signed-by=%s/rafcodephi-archive-key.gpg] file:%s stable main\n' \
+              "$arch" "$repo" "$repo" > "$apt_root/etc/apt/sources.list"
+
+            apt_options=(
+              -o "Dir::Etc::sourcelist=$apt_root/etc/apt/sources.list"
+              -o "Dir::Etc::sourceparts=$apt_root/etc/apt/sourceparts"
+              -o "Dir::State::status=$apt_root/var/lib/dpkg/status"
+              -o "Dir::State::lists=$apt_root/lists"
+              -o "Dir::Cache::archives=$apt_root/cache/archives"
+              -o "APT::Architecture=$arch"
+              -o "APT::Architectures=$arch"
+              -o 'Acquire::Languages=none'
+            )
+
+            packages_file="$repo/dists/stable/main/binary-$arch/Packages"
+            package_name="$(awk -v arch="$arch" '
+              BEGIN { RS=""; FS="\n" }
+              {
+                pkg=""; pa=""
+                for (i=1; i<=NF; i++) {
+                  if ($i ~ /^Package: /) pkg=substr($i, 10)
+                  if ($i ~ /^Architecture: /) pa=substr($i, 15)
+                }
+                if (pkg != "" && (pa == arch || pa == "all")) { print pkg; exit }
+              }
+            ' "$packages_file")"
+            test -n "$package_name"
+
+            set +e
+            (
+              apt-get "${apt_options[@]}" update
+              apt-cache "${apt_options[@]}" show "$package_name"
+              apt-get "${apt_options[@]}" -y --download-only --no-install-recommends install "$package_name"
+
+              resolved_filename="$(awk -v pkg="$package_name" '
+                BEGIN { RS=""; FS="\n" }
+                {
+                  p=""; f=""
+                  for (i=1; i<=NF; i++) {
+                    if ($i ~ /^Package: /) p=substr($i, 10)
+                    if ($i ~ /^Filename: /) f=substr($i, 11)
+                  }
+                  if (p == pkg) { print f; exit }
+                }
+              ' "$packages_file")"
+              test -n "$resolved_filename"
+              resolved_deb="$repo/$resolved_filename"
+              test -s "$resolved_deb"
+              dpkg-deb -f "$resolved_deb" Package | grep -Fx "$package_name"
+              dpkg-deb -f "$resolved_deb" Architecture | grep -E "^($arch|all)$"
+              sha256sum "$resolved_deb" > "build/reports/rafcodephi-isolated-apt-$arch-resolved-deb.sha256"
+            ) 2>&1 | tee "build/reports/rafcodephi-isolated-apt-$arch.log"
+            apt_status="${PIPESTATUS[0]}"
+            set -e
+
+            python3 -c 'import json,sys; s=int(sys.argv[1]); print(json.dumps({"schema":"rafcodephi.isolated-signed-apt-resolution/v2","state":"PASS" if s == 0 else "BLOCKED","exit_code":s,"package":sys.argv[2],"architecture":sys.argv[3],"trust":"SIGNED_BY_ARCHIVE_KEY","claim_allowed_release":False,"device_runtime_proof":"TOKEN_VAZIO"}, sort_keys=True))' \
+              "$apt_status" "$package_name" "$arch" \
+              > "build/reports/rafcodephi-isolated-apt-$arch-status.json"
+
+            if [[ "$apt_status" -ne 0 ]]; then
+              echo "RAFCODEPHI_ISOLATED_APT=BLOCKED architecture=$arch exit_code=$apt_status" >&2
+              exit "$apt_status"
+            fi
+            echo "RAFCODEPHI_ISOLATED_APT=PASS architecture=$arch package=$package_name trust=signed-by"
+      - name: Upload isolated APT proof receipt
+        if: ${{ always() }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: rafcodephi-apt-proof-${{ matrix.arch }}-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            build/reports/rafcodephi-isolated-apt-${{ matrix.arch }}*
+          if-no-files-found: warn
+          retention-days: 14
+
+  summary:
+    name: Fail-closed preview batch summary
+    needs: [signed-apt-contract, source-producer, signed-apt-proof]
+    if: ${{ always() }}
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Report gates and never publish
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo "contract=${{ needs.signed-apt-contract.result }}"
+          echo "producer=${{ needs.source-producer.result }}"
+          echo "signed_apt=${{ needs.signed-apt-proof.result }}"
+          [[ "${{ needs.signed-apt-contract.result }}" == success ]] || exit 1
+          if [[ "${{ github.event_name }}" != workflow_dispatch || "${{ inputs.build }}" != true ]]; then
+            echo "SOURCE_ONLY=PASS; DUAL_ARCH=NOT_RUN; RELEASE=HOLD"
+            exit 0
+          fi
+          [[ "${{ needs.source-producer.result }}" == success ]] || exit 1
+          [[ "${{ needs.signed-apt-proof.result }}" == success ]] || exit 1
+          echo "BATCH_PREVIEW=PASS_SCOPED; DEVICE=TOKEN_VAZIO; RELEASE=HOLD"
