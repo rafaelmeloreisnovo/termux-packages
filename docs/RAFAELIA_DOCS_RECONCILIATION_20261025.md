@@ -74,3 +74,7 @@ Estados: `OBSERVED_SOURCE`, `DOCUMENTED`, `TESTED_SCOPED`, `RUNTIME_PROVEN`, `TO
 - [Validador somente leitura](../scripts/ci/doc_ref_integrity_gate.py), [testes isolados](../scripts/ci/test_doc_ref_integrity_gate.py) e [workflow de CI](../.github/workflows/rafaelia-docs-integrity-v1.yml).
 - Saída JSON por HEAD: links Markdown locais sob escopo explícito + quantidade de arquivos e diretórios raiz sem índice local. O número de pastas sem índice **não prova que sejam órfãs**; URLs externos, HTML e âncoras ainda requerem verificação própria.
 - Revisão humana e enforcement do provedor pendentes; nenhum resultado autoriza merge ou claim. `claim_allowed=false`; `PROMOTION=HOLD`.
+
+## Sucessor: contrato e esquema — 27/10/2026
+
+> **DRAFT/HOLD · Fonte pinada:** [Inventário de contratos, JSON Schema, autoridade e consumidores](assurance/CONTRACTS_INDEX_20261027.md). Superfícies contratuais não são provas de execução, certificação, compatibilidade sem adaptador ou autorização humana. Documentos de 25/10 preservados.
