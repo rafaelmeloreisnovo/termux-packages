@@ -5,6 +5,8 @@ on:
   pull_request:
     paths:
       - '.github/workflows/rafcodephi-batch-pipeline.yml'
+      - 'scripts/tests/test_rafcodephi_batch_pipeline_contract.py'
+      - 'scripts/tests/test_rafcodephi_batch_pipeline_falsifiers.py'
   workflow_dispatch:
     inputs:
       build:
@@ -39,6 +41,7 @@ jobs:
           set -euo pipefail
           bash -n scripts/ci/rafcodephi_prepare_ndk29.sh
           grep -Eq '^[[:space:]]*ANDROID_NDK_SHA256=4abbbcdc842f3d4879206e9695d52709603e52dd68d3c1fff04b3b5e7a308ecf$' scripts/setup-android-sdk.sh
+          python3 scripts/tests/test_rafcodephi_batch_pipeline_falsifiers.py
           python3 scripts/tests/test_rafcodephi_publish_dev_apt_workflow_contract.py
           python3 scripts/ci/rafcodephi_failure_triage.py --self-test
           python3 scripts/tests/test_rafcodephi_package_custody_contract.py
@@ -84,6 +87,7 @@ jobs:
           set -euo pipefail
           bash -n scripts/ci/rafcodephi_prepare_ndk29.sh
           grep -Eq '^[[:space:]]*ANDROID_NDK_SHA256=4abbbcdc842f3d4879206e9695d52709603e52dd68d3c1fff04b3b5e7a308ecf$' scripts/setup-android-sdk.sh
+          python3 scripts/tests/test_rafcodephi_batch_pipeline_falsifiers.py
           python3 scripts/tests/test_rafcodephi_publish_dev_apt_workflow_contract.py
           python3 scripts/ci/rafcodephi_failure_triage.py --self-test
           python3 scripts/tests/test_rafcodephi_package_custody_contract.py
