@@ -1,3 +1,5 @@
+> **Atualização documental RAFCODEΦ (31/10/2026) — DRAFT/HOLD:** [estado da fábrica de pacotes, recibos, bootstrap e gates reais](docs/SOURCE_TRUTH_20261031.md). O texto Google Play/upstream e demais descrições abaixo preservam a origem histórica, não são evidência de publicação APT ou execução no Android deste fork.
+
 > **Reconciliação documental 25/10/2026 — DRAFT/HOLD:** [Novo mapa de diretórios, aplicações, evidências e lacunas](docs/RAFAELIA_DOCS_RECONCILIATION_20261025.md). Os textos datados abaixo permanecem como predecessores; claims operacionais dependem do HEAD e de testes próprios.
 
 # Termux packages for the Google Play build of Termux
