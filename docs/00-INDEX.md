@@ -1,3 +1,5 @@
+> **Leitura prioritária em 31/10/2026 — DRAFT/HOLD:** [SOURCE_TRUTH_20261031.md](SOURCE_TRUTH_20261031.md) fixa o produtor/HEAD, fontes, divergências e gaps. Os selos `Production/Complete` e contagens abaixo são do inventário histórico, não validação independente do HEAD atual.
+
 > **Sucessor de navegação — 2026-10-25 · DRAFT/HOLD:** [censo integral da raiz e lacunas por Git HEAD](RAFAELIA_DOCS_RECONCILIATION_20261025.md). Este índice segue preservado como fotografia histórica até verificação individual dos alvos e status.
 
 # 📚 Termux Packages Documentation Index
