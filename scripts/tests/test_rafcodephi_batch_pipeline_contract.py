@@ -20,8 +20,9 @@ def check_workflow_text(text: str, publisher_present: bool = True) -> None:
     required = [
         "name: RAFCODEPHI Batch Pipeline (Candidate)",
         "default: false",
-        "scripts/tests/test_rafcodephi_batch_pipeline_contract.py",
-        "scripts/tests/test_rafcodephi_batch_pipeline_falsifiers.py",
+        "      - 'scripts/tests/test_rafcodephi_batch_pipeline_contract.py'",
+        "      - 'scripts/tests/test_rafcodephi_batch_pipeline_falsifiers.py'",
+        "          python3 scripts/tests/test_rafcodephi_batch_pipeline_falsifiers.py",
         "permissions:\n  contents: read",
         "    needs: signed-apt-contract",
         "    needs: source-producer",
