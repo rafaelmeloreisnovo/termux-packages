@@ -260,3 +260,10 @@ For questions about navigation or structure, consult [`NAVIGATION.md`](./01-NAVI
 ## 2026-10-24 — prefix sentinel hotfix
 
 [NULL denial + exact-source CI receipt](assurance/RAFCODEPHI_PREFIX_NULL_HOTFIX_20261024.md): bounded local evidence; Android runtime remains unverified.
+
+## 2026-11-03 — candidate APT failure propagation
+
+- [Routine, boundaries and license](../scripts/rafcodephi/batch-guard/README.md)
+- [Baseline, falsifiers and rollback](receipts/RAFCODEPHI_BATCH_FAIL_CLOSED_20261103.md)
+- [Continuity pointer](../001_PONTEIRO/README.md)
+
