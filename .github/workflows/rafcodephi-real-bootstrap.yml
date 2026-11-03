@@ -38,7 +38,8 @@ on:
 
 concurrency:
   group: rafcodephi-real-bootstrap-${{ github.event.pull_request.number || github.ref }}
-  cancel-in-progress: true
+  # Preserve expensive source builds; queue newer revisions instead of cancelling completed work.
+  cancel-in-progress: false
 
 permissions:
   contents: read
