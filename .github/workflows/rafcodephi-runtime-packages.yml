@@ -187,10 +187,35 @@ jobs:
              rafcodephi-package-custody.json rafcodephi-package-custody.json.sha256 \
              rafcodephi-package-build.receipt rafcodephi-artifacts/
 
+      # GitHub artifact paths cannot contain Debian epoch colons. Preserve
+      # original .deb basenames in a tar, alongside the existing custody files.
+      - name: Seal portable runtime DEB evidence
+        if: ${{ always() }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ ! -d rafcodephi-artifacts ]]; then
+            echo 'RUNTIME_DEBS=TOKEN_VAZIO reason=ARTIFACT_DIR_MISSING'
+            exit 0
+          fi
+          if compgen -G 'rafcodephi-artifacts/*.deb' >/dev/null; then
+            (
+              cd rafcodephi-artifacts
+              tar -cf debs.tar -- ./*.deb
+            )
+            tar -tf rafcodephi-artifacts/debs.tar >/dev/null
+            sha256sum rafcodephi-artifacts/debs.tar > rafcodephi-artifacts/debs.tar.sha256
+            sha256sum -c rafcodephi-artifacts/debs.tar.sha256
+          else
+            echo 'RUNTIME_DEBS=TOKEN_VAZIO reason=NO_DEB_OUTPUT' > rafcodephi-artifacts/debs.state
+          fi
+
       - name: Upload immutable build evidence
         if: always()
         uses: actions/upload-artifact@v6
         with:
           name: rafcodephi-${{ env.RAFCODEPHI_PROFILE }}-${{ env.RAFCODEPHI_ARCH }}-${{ github.sha }}
-          path: rafcodephi-artifacts/
+          path: |
+            rafcodephi-artifacts/
+            !rafcodephi-artifacts/*.deb
           if-no-files-found: error

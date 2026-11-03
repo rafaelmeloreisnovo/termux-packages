@@ -143,6 +143,7 @@ jobs:
   transit:
     name: Full ARM cross graph transit
     runs-on: ubuntu-24.04
+    timeout-minutes: 45
     needs: [full-cross-graph]
     if: always()
     steps:

@@ -104,6 +104,23 @@ jobs:
         run: |
           python3 control/scripts/build_rafcodephi_webhook_candidate.py \
             --candidate-root candidate --reports "$RUNNER_TEMP/webhook-build"
+      - name: Seal candidate DEBs without renaming Debian epoch paths
+        if: ${{ always() }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/webhook-build"
+          if [[ -d candidate/output ]] && compgen -G 'candidate/output/*.deb' >/dev/null; then
+            (
+              cd candidate/output
+              tar -cf "$RUNNER_TEMP/webhook-build/candidate-debs.tar" -- ./*.deb
+            )
+            tar -tf "$RUNNER_TEMP/webhook-build/candidate-debs.tar" >/dev/null
+            sha256sum "$RUNNER_TEMP/webhook-build/candidate-debs.tar" > "$RUNNER_TEMP/webhook-build/candidate-debs.tar.sha256"
+            sha256sum -c "$RUNNER_TEMP/webhook-build/candidate-debs.tar.sha256"
+          else
+            echo 'TOKEN_VAZIO=NO_CANDIDATE_DEBS' > "$RUNNER_TEMP/webhook-build/candidate-debs.state"
+          fi
       - name: Store build evidence and candidate packages
         if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
@@ -111,7 +128,6 @@ jobs:
           name: webhook-candidate-${{ needs.intake.outputs.delivery_id }}-${{ github.run_id }}-${{ github.run_attempt }}
           path: |
             ${{ runner.temp }}/webhook-build/
-            candidate/output/*.deb
           if-no-files-found: error
           retention-days: 14
       - name: Preserve manual promotion boundary

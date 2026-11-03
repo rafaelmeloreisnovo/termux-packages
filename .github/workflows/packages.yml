@@ -38,6 +38,7 @@ jobs:
     permissions:
       contents: read # actions/upload-artifact doesn't need contents: write
     runs-on: ubuntu-24.04
+    timeout-minutes: 300
     strategy:
       matrix:
         target_arch: [aarch64, x86_64]
@@ -66,6 +67,7 @@ jobs:
     permissions:
       contents: read
     runs-on: ubuntu-slim
+    timeout-minutes: 15
     steps:
     - name: Clone repository
       uses: actions/checkout@v6
