@@ -41,6 +41,7 @@ jobs:
   fleet-audit:
     name: Whole recipe fleet
     runs-on: ubuntu-24.04
+    timeout-minutes: 60
     steps:
       - name: Checkout repository
         uses: actions/checkout@v6

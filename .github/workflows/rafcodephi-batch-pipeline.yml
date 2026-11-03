@@ -576,6 +576,7 @@ jobs:
     needs: [signed-apt-contract, source-producer, signed-apt-proof]
     if: ${{ always() }}
     runs-on: ubuntu-24.04
+    timeout-minutes: 15
     steps:
       - name: Report gates and never publish
         shell: bash
