@@ -48,6 +48,7 @@ jobs:
           set -euo pipefail
           python3 scripts/tests/test_rafcodephi_workflow_syntax.py
           python3 scripts/tests/test_rafcodephi_workflow_trigger_contract.py
+          python3 scripts/tests/test_rafcodephi_real_bootstrap_workflow_contract.py
           python3 scripts/tests/test_rafcodephi_555_workflow_contract.py
           python3 scripts/tests/test_rafcodephi_batch_pipeline_falsifiers.py
           if test -f scripts/ci/rafcodephi_555_compose.py; then
