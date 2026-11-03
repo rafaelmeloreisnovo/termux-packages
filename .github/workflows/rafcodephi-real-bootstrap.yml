@@ -45,9 +45,14 @@ permissions:
 
 jobs:
   real-bootstrap-arm:
-    name: Source-build real RAFCODEPHI bootstrap
+    name: Source-build real RAFCODEPHI bootstrap (${{ matrix.architecture }})
     runs-on: ubuntu-latest
     timeout-minutes: 240
+    strategy:
+      fail-fast: false
+      max-parallel: 2
+      matrix:
+        architecture: ${{ fromJSON(inputs.architectures == 'arm' && '["arm"]' || inputs.architectures == 'aarch64' && '["aarch64"]' || '["arm","aarch64"]') }}
     env:
       CI: 'true'
       TERMUX_DOCKER_USE_SUDO: '1'
@@ -72,11 +77,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          if [[ "${GITHUB_EVENT_NAME}" == "workflow_dispatch" ]]; then
-            ARCHITECTURES='${{ inputs.architectures }}'
-          else
-            ARCHITECTURES='arm,aarch64'
-          fi
+          ARCHITECTURES='${{ matrix.architecture }}'
           echo "architectures=$ARCHITECTURES" >> "$GITHUB_OUTPUT"
           echo "Selected: $ARCHITECTURES"
 
@@ -240,16 +241,31 @@ jobs:
           sha256sum -c "$archive.sha256"
           echo "RAFCODEPHI_BOOTSTRAP_EVIDENCE=PACKAGED_SHA256 $(cat "$archive.sha256")"
 
+      # Successful payloads are independent by ABI; compressed data is never
+      # recompressed by the GitHub uploader.
       - name: Upload real bootstrap artifacts
-        if: always()
+        if: success()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
         with:
-          name: rafcodephi-real-bootstrap-${{ steps.arch.outputs.architectures }}-${{ github.sha }}
+          name: rafcodephi-real-bootstrap-${{ matrix.architecture }}-${{ github.event.pull_request.head.sha || github.sha }}
           path: |
             artifacts/rafcodephi-bootstrap-evidence.tar.gz
             artifacts/rafcodephi-bootstrap-evidence.tar.gz.sha256
             artifacts/rafcodephi-freestanding/
             build/reports/rafcodephi-real-bootstrap-properties.json
+            build/reports/rafcodephi-real-bootstrap-status.json
+          if-no-files-found: error
+          compression-level: 0
+          retention-days: 30
+
+      # Logs and triage must remain a separate portable module. A payload
+      # upload failure must not suppress diagnostics or force a rebuild.
+      - name: Upload source-build diagnostics
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: rafcodephi-real-bootstrap-diagnostics-${{ matrix.architecture }}-${{ github.event.pull_request.head.sha || github.sha }}
+          path: |
             build/reports/rafcodephi-ndk29-prepare.log
             build/reports/rafcodephi-ndk-preflight.log
             build/reports/rafcodephi-real-bootstrap.log
