@@ -38,16 +38,22 @@ on:
 
 concurrency:
   group: rafcodephi-real-bootstrap-${{ github.event.pull_request.number || github.ref }}
-  cancel-in-progress: true
+  # Preserve an explicit multi-hour dispatch from later manual requests.
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 permissions:
   contents: read
 
 jobs:
   real-bootstrap-arm:
-    name: Source-build real RAFCODEPHI bootstrap
+    name: Source-build real RAFCODEPHI bootstrap (${{ matrix.arch }})
     runs-on: ubuntu-latest
     timeout-minutes: 240
+    # One source-build per ABI; failures do not cancel sibling jobs.
+    strategy:
+      fail-fast: false
+      matrix:
+        arch: ${{ fromJSON(inputs.architectures == 'arm' && '["arm"]' || inputs.architectures == 'aarch64' && '["aarch64"]' || '["arm","aarch64"]') }}
     env:
       CI: 'true'
       TERMUX_DOCKER_USE_SUDO: '1'
@@ -72,13 +78,10 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          if [[ "${GITHUB_EVENT_NAME}" == "workflow_dispatch" ]]; then
-            ARCHITECTURES='${{ inputs.architectures }}'
-          else
-            ARCHITECTURES='arm,aarch64'
-          fi
-          echo "architectures=$ARCHITECTURES" >> "$GITHUB_OUTPUT"
-          echo "Selected: $ARCHITECTURES"
+          ARCHITECTURE='${{ matrix.arch }}'
+          case "$ARCHITECTURE" in arm|aarch64) ;; *) echo "unsupported ABI: $ARCHITECTURE" >&2; exit 2 ;; esac
+          echo "architectures=$ARCHITECTURE" >> "$GITHUB_OUTPUT"
+          echo "Selected isolated ABI: $ARCHITECTURE"
 
       - name: Build freestanding 16-lane probes
         shell: bash
@@ -244,7 +247,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
         with:
-          name: rafcodephi-real-bootstrap-${{ steps.arch.outputs.architectures }}-${{ github.sha }}
+          name: rafcodephi-real-bootstrap-${{ github.run_id }}-${{ matrix.arch }}
           path: |
             artifacts/rafcodephi-bootstrap-evidence.tar.gz
             artifacts/rafcodephi-bootstrap-evidence.tar.gz.sha256
@@ -258,3 +261,5 @@ jobs:
             build/reports/rafcodephi-real-bootstrap-triage.md
           if-no-files-found: warn
           retention-days: 30
+          # Already compressed inside tar.gz; preserve CPU for build jobs.
+          compression-level: 0
