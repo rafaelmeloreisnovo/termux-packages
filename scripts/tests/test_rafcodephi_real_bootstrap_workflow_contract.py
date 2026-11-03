@@ -45,6 +45,14 @@ def main() -> int:
             "BUILDER_IMAGE_DIGEST_NOT_PINNED")
     require("- name: Upload real bootstrap artifacts\n        if: always()" in text,
             "FAILURE_ARTIFACT_NOT_ALWAYS_UPLOADED")
+    require("- name: Seal DEB evidence for portable artifact upload\n        if: always()" in text,
+            "DEB_TRANSPORT_NOT_FAILSAFE")
+    require('tar -C "$root" -cf "$root/rafcodephi-debs.tar" debs' in text,
+            "EPOCH_DEB_NAMES_NOT_ARCHIVED")
+    require("sha256sum -c rafcodephi-debs.tar.sha256" in text,
+            "DEB_TRANSPORT_HASH_NOT_VERIFIED")
+    require("!artifacts/rafcodephi-bootstrap/debs/**" in text,
+            "RAW_EPOCH_DEBS_STILL_EXPOSED_TO_UPLOAD")
     builder = (ROOT / "scripts/build-rafcodephi-real-bootstrap.sh").read_text(encoding="utf-8")
     generator = (ROOT / "scripts/generate-bootstraps.sh").read_text(encoding="utf-8")
     docker_wrapper = (ROOT / "scripts/run-rafcodephi-bootstrap-docker.sh").read_text(encoding="utf-8")
