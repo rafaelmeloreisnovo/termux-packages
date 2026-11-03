@@ -89,6 +89,8 @@ def main() -> int:
             "NDK29_NOT_BOUND_TO_PREFLIGHT_AND_BUILD")
     require("package-builder@sha256:09cdbb34" in text,
             "BUILDER_IMAGE_DIGEST_NOT_PINNED")
+    require("cancel-in-progress: false" in text,
+            "EXPENSIVE_SOURCE_BUILD_CAN_BE_CANCELLED_BY_PR_PUSH")
     require("fail-fast: false" in text and "max-parallel: 2" in text,
             "ABI_BUILD_MATRIX_NOT_INDEPENDENT")
     require("fromJSON(inputs.architectures" in text and
