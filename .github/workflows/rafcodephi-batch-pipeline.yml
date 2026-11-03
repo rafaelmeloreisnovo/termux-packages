@@ -267,13 +267,34 @@ jobs:
           sha256sum build/reports/rafcodephi-package-custody-dualarch.json \
             > build/reports/rafcodephi-package-custody-dualarch.json.sha256
 
+      # Debian epoch ':' filenames remain inside portable, SHA-bound tar.
+      - name: Seal portable source DEB lots
+        if: ${{ always() }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p build/reports
+          for arch in arm aarch64; do
+            src="artifacts/rafcodephi-bootstrap/debs/$arch"
+            archive="build/reports/rafcodephi-source-debs-$arch.tar"
+            if [[ ! -d "$src" ]]; then
+              echo "SOURCE_DEBS_ARCHIVE=TOKEN_VAZIO arch=$arch reason=SOURCE_DIR_MISSING" >> "$GITHUB_STEP_SUMMARY"
+              continue
+            fi
+            tar -C artifacts/rafcodephi-bootstrap -cf "$archive" "debs/$arch"
+            tar -tf "$archive" >/dev/null
+            sha256sum "$archive" > "$archive.sha256"
+            sha256sum -c "$archive.sha256"
+            echo "SOURCE_DEBS_ARCHIVE=PASS_SCOPED arch=$arch" >> "$GITHUB_STEP_SUMMARY"
+          done
+
       - name: Upload source/custody lot arm on success OR failure
         if: ${{ always() }}
         uses: actions/upload-artifact@v7
         with:
           name: rafcodephi-source-arm-${{ github.run_id }}-${{ github.run_attempt }}
           path: |
-            artifacts/rafcodephi-bootstrap/debs/arm/
+            build/reports/rafcodephi-source-debs-arm.tar*
             artifacts/rafcodephi-bootstrap/rafcodephi-bootstrap-arm.zip
             artifacts/rafcodephi-bootstrap/rafcodephi-bootstrap-arm-prefix-gate.json
             artifacts/rafcodephi-bootstrap/rafcodephi-deb-set-arm-prefix-gate.json
@@ -292,7 +313,7 @@ jobs:
         with:
           name: rafcodephi-source-aarch64-${{ github.run_id }}-${{ github.run_attempt }}
           path: |
-            artifacts/rafcodephi-bootstrap/debs/aarch64/
+            build/reports/rafcodephi-source-debs-aarch64.tar*
             artifacts/rafcodephi-bootstrap/rafcodephi-bootstrap-aarch64.zip
             artifacts/rafcodephi-bootstrap/rafcodephi-bootstrap-aarch64-prefix-gate.json
             artifacts/rafcodephi-bootstrap/rafcodephi-deb-set-aarch64-prefix-gate.json
