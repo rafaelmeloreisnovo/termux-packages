@@ -219,6 +219,44 @@ jobs:
             echo 'Observed builder prerequisite: **NDK_MISSING** (not a successful build).' >> "$GITHUB_STEP_SUMMARY"
           fi
 
+      # Preserve epoch-colon DEB names in a TAR instead of renaming source packages.
+      - name: Seal DEB evidence for portable artifact upload
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          root=artifacts/rafcodephi-bootstrap
+          if [[ ! -d "$root/debs" ]]; then
+            echo 'DEB_EVIDENCE_TRANSPORT=SKIPPED reason=NO_DEB_DIRECTORY'
+            exit 0
+          fi
+          tar -C "$root" -cf "$root/rafcodephi-debs.tar" debs
+          (
+            cd "$root"
+            sha256sum rafcodephi-debs.tar > rafcodephi-debs.tar.sha256
+            sha256sum -c rafcodephi-debs.tar.sha256
+          )
+          tar -tf "$root/rafcodephi-debs.tar" > "$root/rafcodephi-debs.tar.members"
+          grep -Eq '^debs/(arm|aarch64)/[^/]+[.]deb
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: rafcodephi-real-bootstrap-${{ steps.arch.outputs.architectures }}-${{ github.sha }}
+          path: |
+            artifacts/rafcodephi-bootstrap/
+            !artifacts/rafcodephi-bootstrap/debs/**
+            artifacts/rafcodephi-freestanding/
+            build/reports/rafcodephi-real-bootstrap-properties.json
+            build/reports/rafcodephi-ndk29-prepare.log
+            build/reports/rafcodephi-ndk-preflight.log
+            build/reports/rafcodephi-real-bootstrap.log
+            build/reports/rafcodephi-real-bootstrap-status.json
+            build/reports/rafcodephi-real-bootstrap-triage.json
+            build/reports/rafcodephi-real-bootstrap-triage.md
+          if-no-files-found: warn
+          retention-days: 30
+ "$root/rafcodephi-debs.tar.members"
+          echo 'DEB_EVIDENCE_TRANSPORT=PASS_SCOPED claim_allowed_release=false'
+
       - name: Upload real bootstrap artifacts
         if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
@@ -226,6 +264,7 @@ jobs:
           name: rafcodephi-real-bootstrap-${{ steps.arch.outputs.architectures }}-${{ github.sha }}
           path: |
             artifacts/rafcodephi-bootstrap/
+            !artifacts/rafcodephi-bootstrap/debs/**
             artifacts/rafcodephi-freestanding/
             build/reports/rafcodephi-real-bootstrap-properties.json
             build/reports/rafcodephi-ndk29-prepare.log
