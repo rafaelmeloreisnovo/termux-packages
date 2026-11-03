@@ -7,6 +7,8 @@ on:
       - '.github/workflows/rafcodephi-batch-pipeline.yml'
       - 'scripts/tests/test_rafcodephi_batch_pipeline_contract.py'
       - 'scripts/tests/test_rafcodephi_batch_pipeline_falsifiers.py'
+      - 'scripts/tests/test_rafcodephi_batch_runtime.py'
+      - 'scripts/rafcodephi/batch-guard/**'
   workflow_dispatch:
     inputs:
       build:
@@ -42,6 +44,7 @@ jobs:
           bash -n scripts/ci/rafcodephi_prepare_ndk29.sh
           grep -Eq '^[[:space:]]*ANDROID_NDK_SHA256=4abbbcdc842f3d4879206e9695d52709603e52dd68d3c1fff04b3b5e7a308ecf$' scripts/setup-android-sdk.sh
           python3 scripts/tests/test_rafcodephi_batch_pipeline_falsifiers.py
+          bash scripts/rafcodephi/batch-guard/check.sh
           python3 scripts/tests/test_rafcodephi_publish_dev_apt_workflow_contract.py
           python3 scripts/ci/rafcodephi_failure_triage.py --self-test
           python3 scripts/tests/test_rafcodephi_package_custody_contract.py
@@ -303,6 +306,7 @@ jobs:
           if-no-files-found: warn
           retention-days: 14
       - name: Materialize signed dual-architecture APT repository
+        id: signed_repository
         shell: bash
         run: |
           set -euo pipefail
@@ -380,6 +384,8 @@ jobs:
       - name: Bundle portable signed APT repository evidence
         if: always()
         shell: bash
+        env:
+          REPOSITORY_OUTCOME: ${{ steps.signed_repository.outcome }}
         run: |
           set -euo pipefail
           mkdir -p build/reports
@@ -388,7 +394,7 @@ jobs:
           state=build/reports/rafcodephi-dualarch-signed-apt-repository.state
           rm -f "$bundle" "$bundle.sha256"
 
-          if [[ -d "$repo/dists/stable" && -d "$repo/pool/main/arm" && -d "$repo/pool/main/aarch64" ]]; then
+          if [[ "${REPOSITORY_OUTCOME:-}" == success && -d "$repo/dists/stable" && -d "$repo/pool/main/arm" && -d "$repo/pool/main/aarch64" ]]; then
             tar --sort=name --mtime='@0' --owner=0 --group=0 --numeric-owner \
               -cf "$bundle" -C "$(dirname "$repo")" "$(basename "$repo")"
             sha256sum "$bundle" > "$bundle.sha256"
@@ -405,7 +411,7 @@ jobs:
             printf '%s\n' \
               'schema=rafcodephi.portable-signed-apt-repository-evidence/v2' \
               'state=TOKEN_VAZIO' \
-              'reason=DUAL_ARCH_APT_REPOSITORY_NOT_MATERIALIZED' \
+              'reason=DUAL_ARCH_APT_REPOSITORY_NOT_VERIFIED' \
               'claim_allowed_release=false' \
               'device_runtime_proof=TOKEN_VAZIO' > "$state"
           fi
@@ -514,6 +520,9 @@ jobs:
 
             set +e
             (
+              # The parent disables errexit only to collect pipeline status.
+              # Restore it here so later metadata cannot mask an APT failure.
+              set -e
               apt-get "${apt_options[@]}" update
               apt-cache "${apt_options[@]}" show "$package_name"
               apt-get "${apt_options[@]}" -y --download-only --no-install-recommends install "$package_name"
@@ -536,7 +545,11 @@ jobs:
               dpkg-deb -f "$resolved_deb" Architecture | grep -E "^($arch|all)$"
               sha256sum "$resolved_deb" > "build/reports/rafcodephi-isolated-apt-$arch-resolved-deb.sha256"
             ) 2>&1 | tee "build/reports/rafcodephi-isolated-apt-$arch.log"
-            apt_status="${PIPESTATUS[0]}"
+            pipeline_status=("${PIPESTATUS[@]}")
+            apt_status="${pipeline_status[0]}"
+            if [[ "$apt_status" -eq 0 ]]; then
+              apt_status="${pipeline_status[1]}"
+            fi
             set -e
 
             python3 -c 'import json,sys; s=int(sys.argv[1]); print(json.dumps({"schema":"rafcodephi.isolated-signed-apt-resolution/v2","state":"PASS" if s == 0 else "BLOCKED","exit_code":s,"package":sys.argv[2],"architecture":sys.argv[3],"trust":"SIGNED_BY_ARCHIVE_KEY","claim_allowed_release":False,"device_runtime_proof":"TOKEN_VAZIO"}, sort_keys=True))' \
@@ -579,3 +592,4 @@ jobs:
           [[ "${{ needs.source-producer.result }}" == success ]] || exit 1
           [[ "${{ needs.signed-apt-proof.result }}" == success ]] || exit 1
           echo "BATCH_PREVIEW=PASS_SCOPED; DEVICE=TOKEN_VAZIO; RELEASE=HOLD"
+
