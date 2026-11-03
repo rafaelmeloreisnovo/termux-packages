@@ -219,6 +219,20 @@ jobs:
             echo 'Observed builder prerequisite: **NDK_MISSING** (not a successful build).' >> "$GITHUB_STEP_SUMMARY"
           fi
 
+      # Package original .deb names (including Debian epoch colons) inside TAR:
+      # the upload service rejects ':' in directly uploaded paths.
+      - name: Seal DEB evidence into portable tar
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          root=artifacts/rafcodephi-bootstrap
+          if [[ -d "$root/debs" ]]; then
+            tar -C "$root" -cf "$root/rafcodephi-debs-evidence.tar" debs
+            tar -tf "$root/rafcodephi-debs-evidence.tar" > /dev/null
+            sha256sum "$root/rafcodephi-debs-evidence.tar" > "$root/rafcodephi-debs-evidence.tar.sha256"
+          fi
+
       - name: Upload real bootstrap artifacts
         if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
@@ -226,6 +240,7 @@ jobs:
           name: rafcodephi-real-bootstrap-${{ steps.arch.outputs.architectures }}-${{ github.sha }}
           path: |
             artifacts/rafcodephi-bootstrap/
+            !artifacts/rafcodephi-bootstrap/debs/**
             artifacts/rafcodephi-freestanding/
             build/reports/rafcodephi-real-bootstrap-properties.json
             build/reports/rafcodephi-ndk29-prepare.log
