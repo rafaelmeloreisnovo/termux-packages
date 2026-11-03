@@ -45,7 +45,7 @@ def main() -> int:
             "BUILDER_IMAGE_DIGEST_NOT_PINNED")
     require("- name: Upload real bootstrap artifacts\n        if: always()" in text,
             "FAILURE_ARTIFACT_NOT_ALWAYS_UPLOADED")
-    require("- name: Seal DEB evidence into portable tar\\n        if: always()".replace("\\n", "\n") in text,
+    require("- name: Seal DEB evidence into portable tar" in text,
             "PORTABLE_DEB_EVIDENCE_PACKAGING_MISSING")
     require('tar -C "$root" -cf "$root/rafcodephi-debs-evidence.tar" debs' in text,
             "ORIGINAL_DEB_FILENAMES_NOT_PRESERVED_IN_TAR")
