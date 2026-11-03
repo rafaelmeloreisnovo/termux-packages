@@ -91,5 +91,18 @@ jobs:
                   raise SystemExit(f"BOOTSTRAP_MATRIX_POLICY=BLOCKED missing={required}")
           if "            artifacts/rafcodephi-bootstrap/" in source:
               raise SystemExit("BOOTSTRAP_UPLOAD=BLOCKED raw_deb_directory")
+          # A tar may safely contain Debian epoch ':' names, but uploader
+          # path globs must never directly select raw .deb filenames.
+          for path in sorted(root.glob("*.yml")):
+              parsed = yaml.safe_load(path.read_text(encoding="utf-8"))
+              for job_name, job in parsed.get("jobs", {}).items():
+                  for step in job.get("steps", []):
+                      if not str(step.get("uses", "")).startswith("actions/upload-artifact@"):
+                          continue
+                      paths = str(step.get("with", {}).get("path", ""))
+                      for entry in paths.splitlines():
+                          item = entry.strip()
+                          if ".deb" in item and not item.startswith("!"):
+                              raise SystemExit(f"PORTABLE_UPLOAD=BLOCKED file={path.name} job={job_name} path={item}")
           print(f"YAML_OPERATIONAL_GATE=PASS_SCOPED workflows={len(list(root.glob('*.yml')))} jobs={checked} runtime=TOKEN_VAZIO")
           PY
