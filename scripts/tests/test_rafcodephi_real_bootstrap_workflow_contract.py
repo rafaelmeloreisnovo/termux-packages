@@ -14,6 +14,52 @@ def require(condition: bool, token: str) -> None:
         raise SystemExit(f"RAFCODEPHI_REAL_BOOTSTRAP_WORKFLOW=BLOCKED reason={token}")
 
 
+def exercise_ninja_sealer(builder: str) -> None:
+    """Run the actual source sealer, including missing-tool falsifiers."""
+    import ast
+    import json
+    import subprocess
+    import sys
+    import tempfile
+    import zipfile
+
+    marker = '''python3 - "$zip_path" "$PACKAGE_NAME" "$TARGET_PREFIX" "$arch" "$API_RECEIVER_COMPONENT" <<'PY'\n'''
+    require(builder.count(marker) == 1, "SOURCE_SEALER_UNRESOLVED")
+    script = builder.split(marker, 1)[1].split("\nPY\n", 1)[0]
+    required = next(ast.literal_eval(n.value) for n in ast.parse(script).body
+                    if isinstance(n, ast.Assign) and any(
+                        isinstance(t, ast.Name) and t.id == "required" for t in n.targets))
+    require("bin/ninja" in required, "NINJA_NOT_A_REQUIRED_INSTALLED_ENTRY")
+    require("--add busybox,proot,ca-certificates,termux-api,ninja" in builder,
+            "NINJA_SOURCE_PACKAGE_NOT_REQUESTED")
+    with tempfile.TemporaryDirectory(prefix="raf-ninja-sealer-") as temp:
+        for arch, missing in (("arm", False), ("aarch64", False), ("arm", True)):
+            archive = Path(temp) / f"{arch}-{missing}.zip"
+            with zipfile.ZipFile(archive, "w") as zf:
+                for name in required:
+                    if name in ("BOOTSTRAP_INFO", "bin/sh", "etc/apt/apt.conf.d/00rafcodephi-repository-block"):
+                        continue
+                    if name == "bin/ninja" and missing:
+                        continue
+                    zf.writestr(name, "dash←bin/sh\n" if name == "SYMLINKS.txt" else "synthetic-not-runtime")
+            proc = subprocess.run([sys.executable, "-", str(archive), "com.termux.rafacodephi",
+                "/data/data/com.termux.rafacodephi/files/usr", arch,
+                "com.termux.rafacodephi.api/com.termux.api.TermuxApiReceiver"],
+                input=script, text=True, capture_output=True)
+            if missing:
+                require(proc.returncode != 0 and "bin/ninja" in proc.stderr,
+                        "MISSING_NINJA_SEALED_AS_SUCCESS")
+            else:
+                require(proc.returncode == 0, f"NINJA_SEALER_FAILED:{proc.stderr[-200:]}")
+                with zipfile.ZipFile(archive) as zf:
+                    profile = json.loads(zf.read("BOOTSTRAP_PROFILE.json"))
+                    require(profile["build_tools_contract"] == "rafcodephi.apt-bootstrap-ninja/v1",
+                            "NINJA_CONTRACT_NOT_SEALED")
+                    require(b"RAFCODEPHI_BUILD_TOOLS_CONTRACT=rafcodephi.apt-bootstrap-ninja/v1\n"
+                            in zf.read("BOOTSTRAP_INFO"), "NINJA_INFO_NOT_SEALED")
+    print("RAFCODEPHI_NINJA_SEALER=PASS cases=3 scope=HOST_SYNTHETIC")
+
+
 def main() -> int:
     text = WORKFLOW.read_text(encoding="utf-8")
     require("scripts/apply-rafcodephi-build-properties.py" in text, "CANONICAL_PROPERTIES_OVERLAY_MISSING")
@@ -54,6 +100,7 @@ def main() -> int:
     require("!artifacts/rafcodephi-bootstrap/debs/**" in text,
             "RAW_EPOCH_DEBS_STILL_EXPOSED_TO_UPLOAD")
     builder = (ROOT / "scripts/build-rafcodephi-real-bootstrap.sh").read_text(encoding="utf-8")
+    exercise_ninja_sealer(builder)
     generator = (ROOT / "scripts/generate-bootstraps.sh").read_text(encoding="utf-8")
     docker_wrapper = (ROOT / "scripts/run-rafcodephi-bootstrap-docker.sh").read_text(encoding="utf-8")
     require('"runtime_materialized": False' in builder,

@@ -48,6 +48,7 @@ jobs:
           set -euo pipefail
           python3 scripts/tests/test_rafcodephi_workflow_syntax.py
           python3 scripts/tests/test_rafcodephi_workflow_trigger_contract.py
+          python3 scripts/tests/test_rafcodephi_real_bootstrap_workflow_contract.py
           python3 scripts/tests/test_rafcodephi_555_workflow_contract.py
           python3 scripts/tests/test_rafcodephi_batch_pipeline_falsifiers.py
           if test -f scripts/ci/rafcodephi_555_compose.py; then
@@ -55,3 +56,53 @@ jobs:
             python3 scripts/ci/rafcodephi_555_compose.py --self-test
             python3 scripts/tests/test_rafcodephi_555_workflow_contract.py
           fi
+
+      - name: Check bounded jobs and portable bootstrap evidence
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+          import yaml
+
+          root = Path(".github/workflows")
+          checked = 0
+          for path in sorted(root.glob("*.yml")):
+              parsed = yaml.safe_load(path.read_text(encoding="utf-8"))
+              for job_name, job in parsed.get("jobs", {}).items():
+                  if "runs-on" not in job:
+                      continue
+                  limit = job.get("timeout-minutes")
+                  if not isinstance(limit, int) or limit < 1 or limit > 360:
+                      raise SystemExit(f"WORKFLOW_TIMEOUT=BLOCKED file={path.name} job={job_name} value={limit}")
+                  checked += 1
+
+          source = (root / "rafcodephi-real-bootstrap.yml").read_text(encoding="utf-8")
+          for required in (
+              "fail-fast: false",
+              "matrix.arch",
+              "rafcodephi-bootstrap-evidence.tar.gz",
+              "rafcodephi-bootstrap-matrix-custody.tsv",
+              "device_runtime_proof=TOKEN_VAZIO",
+              "claim_allowed_device_runtime=false",
+              "compression-level: 0",
+          ):
+              if required not in source:
+                  raise SystemExit(f"BOOTSTRAP_MATRIX_POLICY=BLOCKED missing={required}")
+          if "            artifacts/rafcodephi-bootstrap/" in source:
+              raise SystemExit("BOOTSTRAP_UPLOAD=BLOCKED raw_deb_directory")
+          # A tar may safely contain Debian epoch ':' names, but uploader
+          # path globs must never directly select raw .deb filenames.
+          for path in sorted(root.glob("*.yml")):
+              parsed = yaml.safe_load(path.read_text(encoding="utf-8"))
+              for job_name, job in parsed.get("jobs", {}).items():
+                  for step in job.get("steps", []):
+                      if not str(step.get("uses", "")).startswith("actions/upload-artifact@"):
+                          continue
+                      paths = str(step.get("with", {}).get("path", ""))
+                      for entry in paths.splitlines():
+                          item = entry.strip()
+                          if ".deb" in item and not item.startswith("!"):
+                              raise SystemExit(f"PORTABLE_UPLOAD=BLOCKED file={path.name} job={job_name} path={item}")
+          print(f"YAML_OPERATIONAL_GATE=PASS_SCOPED workflows={len(list(root.glob('*.yml')))} jobs={checked} runtime=TOKEN_VAZIO")
+          PY

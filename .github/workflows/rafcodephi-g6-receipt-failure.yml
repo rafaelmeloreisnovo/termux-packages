@@ -122,6 +122,7 @@ jobs:
     needs: [g6-negative-path]
     if: always()
     runs-on: ubuntu-24.04
+    timeout-minutes: 45
     steps:
       - name: Fail closed if either compiler path is red
         shell: bash
