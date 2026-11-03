@@ -33,7 +33,7 @@ jobs:
   assurance:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Seven knowledge/work guards — adversarial tests
         run: python3 tests/test_knowledge_work_seven_guards.py

@@ -43,7 +43,7 @@ jobs:
     timeout-minutes: 180
     steps:
       - name: Checkout pinned source tree
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
 
       - name: Configure custom Termux package identity
         run: bash scripts/rafcodephi-configure-package-name.sh
