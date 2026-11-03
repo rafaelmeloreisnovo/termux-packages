@@ -1,0 +1,57 @@
+name: RAFCODEPHI APT production readiness probe
+
+on:
+  push:
+    branches: [ops/apt-readiness-20261103]
+    paths: ['.github/workflows/rafcodephi-apt-readiness-probe.yml']
+
+permissions:
+  contents: read
+
+jobs:
+  signing-readiness:
+    if: github.repository == 'rafaelmeloreisnovo/termux-packages' && github.actor == 'rafaelmeloreisnovo'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - name: Check production bindings without disclosing secret values
+        shell: bash
+        env:
+          PROD_KEY_B64: ${{ secrets.RAFCODEPHI_APT_SIGNING_KEY_B64 }}
+          PROD_FINGERPRINT: ${{ secrets.RAFCODEPHI_APT_SIGNING_FINGERPRINT }}
+          PROD_PUBLISH_TOKEN: ${{ secrets.RAFCODEPHI_APT_PUBLISH_TOKEN }}
+        run: |
+          set -euo pipefail
+          mkdir -p build/reports
+          python3 - <<'PY'
+          import json, os
+          from pathlib import Path
+          flags = {name: bool(os.environ.get(variable)) for name, variable in (
+              ("signing_key_present", "PROD_KEY_B64"),
+              ("signing_fingerprint_present", "PROD_FINGERPRINT"),
+              ("publish_token_present", "PROD_PUBLISH_TOKEN"),
+          )}
+          report = {
+              "schema": "rafcodephi.apt-production-readiness/v1",
+              "source_commit": os.environ["GITHUB_SHA"],
+              "repository": os.environ["GITHUB_REPOSITORY"],
+              "flags": flags,
+              "state": "READY_FOR_SIGNING_CHALLENGE" if all(flags.values()) else "BLOCKED",
+              "reason": "SIGNING_CHALLENGE_NOT_RUN" if all(flags.values()) else "REQUIRED_PRODUCTION_SECRET_NOT_BOUND",
+              "secret_values_disclosed": False,
+              "publication_performed": False,
+              "claim_allowed_release": False,
+          }
+          Path("build/reports/apt-production-readiness.json").write_text(json.dumps(report, sort_keys=True, indent=2)+"\n")
+          print(json.dumps(report, sort_keys=True))
+          raise SystemExit(0 if all(flags.values()) else 2)
+          PY
+
+      - name: Preserve sanitized signing readiness receipt
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: rafcodephi-production-readiness-${{ github.sha }}
+          path: build/reports/apt-production-readiness.json
+          if-no-files-found: error
+          retention-days: 30
