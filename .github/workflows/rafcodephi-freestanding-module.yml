@@ -80,7 +80,7 @@ jobs:
           } > out/rmr-vector-field/receipt.txt
 
       - name: Upload cross-object evidence
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7
         with:
           name: rafcodephi-rmr-vector-field-${{ github.sha }}
           path: out/rmr-vector-field/

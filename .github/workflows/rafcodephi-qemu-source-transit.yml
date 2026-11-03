@@ -178,7 +178,7 @@ jobs:
 
       - name: Upload emulation evidence
         if: always()
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
         with:
           name: rafcodephi-qemu-${{ matrix.arch }}-${{ github.run_id }}
           path: _emulation/${{ matrix.arch }}/
@@ -232,7 +232,7 @@ jobs:
 
       - name: Upload transit receipt
         if: always()
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
         with:
           name: rafcodephi-qemu-transit-${{ github.run_id }}
           path: _transit/
