@@ -219,13 +219,35 @@ jobs:
             echo 'Observed builder prerequisite: **NDK_MISSING** (not a successful build).' >> "$GITHUB_STEP_SUMMARY"
           fi
 
+      # Debian version epochs legitimately use ':' in .deb filenames. GitHub's
+      # artifact uploader rejects ':' in uploaded paths; tar preserves the exact
+      # package filenames and provenance without renaming packages or binaries.
+      - name: Package portable real bootstrap evidence
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          source_dir=artifacts/rafcodephi-bootstrap
+          archive=artifacts/rafcodephi-bootstrap-evidence.tar.gz
+          if [[ ! -d "$source_dir" ]]; then
+            echo 'RAFCODEPHI_BOOTSTRAP_EVIDENCE=TOKEN_VAZIO reason=SOURCE_DIR_MISSING'
+            exit 0
+          fi
+          tar -C artifacts -czf "$archive" rafcodephi-bootstrap
+          test -s "$archive"
+          tar -tzf "$archive" >/dev/null
+          sha256sum "$archive" > "$archive.sha256"
+          sha256sum -c "$archive.sha256"
+          echo "RAFCODEPHI_BOOTSTRAP_EVIDENCE=PACKAGED_SHA256 $(cat "$archive.sha256")"
+
       - name: Upload real bootstrap artifacts
         if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
         with:
           name: rafcodephi-real-bootstrap-${{ steps.arch.outputs.architectures }}-${{ github.sha }}
           path: |
-            artifacts/rafcodephi-bootstrap/
+            artifacts/rafcodephi-bootstrap-evidence.tar.gz
+            artifacts/rafcodephi-bootstrap-evidence.tar.gz.sha256
             artifacts/rafcodephi-freestanding/
             build/reports/rafcodephi-real-bootstrap-properties.json
             build/reports/rafcodephi-ndk29-prepare.log
