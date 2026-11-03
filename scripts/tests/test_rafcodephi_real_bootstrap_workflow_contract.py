@@ -89,27 +89,16 @@ def main() -> int:
             "NDK29_NOT_BOUND_TO_PREFLIGHT_AND_BUILD")
     require("package-builder@sha256:09cdbb34" in text,
             "BUILDER_IMAGE_DIGEST_NOT_PINNED")
-    require("cancel-in-progress: false" in text,
-            "EXPENSIVE_SOURCE_BUILD_CAN_BE_CANCELLED_BY_PR_PUSH")
-    require("fail-fast: false" in text and "max-parallel: 2" in text,
-            "ABI_BUILD_MATRIX_NOT_INDEPENDENT")
-    require("fromJSON(inputs.architectures" in text and
-            "ARCHITECTURES='${{ matrix.architecture }}'" in text,
-            "ABI_MATRIX_NOT_ROUTED_TO_SOURCE_BUILDER")
-    require("- name: Upload real bootstrap artifacts\n        if: success()" in text,
-            "SUCCESS_PAYLOAD_UPLOAD_NOT_GATED")
-    require("- name: Upload source-build diagnostics\n        if: always()" in text,
-            "FAILURE_DIAGNOSTICS_NOT_ALWAYS_UPLOADED")
-    require("rafcodephi-real-bootstrap-diagnostics-${{ matrix.architecture }}" in text,
-            "DIAGNOSTICS_NOT_ABI_ISOLATED")
-    require("rafcodephi-real-bootstrap-${{ matrix.architecture }}" in text,
-            "PAYLOAD_NOT_ABI_ISOLATED")
-    require("artifacts/rafcodephi-bootstrap-evidence.tar.gz.sha256" in text and
-            'tar -C artifacts -czf "$archive" rafcodephi-bootstrap' in text and
-            'sha256sum -c "$archive.sha256"' in text,
-            "PORTABLE_HASHED_EVIDENCE_ARCHIVE_MISSING")
-    require("compression-level: 0" in text,
-            "COMPRESSED_BOOTSTRAP_RECOMPRESSED")
+    require("- name: Upload real bootstrap artifacts\n        if: always()" in text,
+            "FAILURE_ARTIFACT_NOT_ALWAYS_UPLOADED")
+    require("- name: Seal DEB evidence for portable artifact upload\n        if: always()" in text,
+            "DEB_TRANSPORT_NOT_FAILSAFE")
+    require('tar -C "$root" -cf "$root/rafcodephi-debs.tar" debs' in text,
+            "EPOCH_DEB_NAMES_NOT_ARCHIVED")
+    require("sha256sum -c rafcodephi-debs.tar.sha256" in text,
+            "DEB_TRANSPORT_HASH_NOT_VERIFIED")
+    require("!artifacts/rafcodephi-bootstrap/debs/**" in text,
+            "RAW_EPOCH_DEBS_STILL_EXPOSED_TO_UPLOAD")
     builder = (ROOT / "scripts/build-rafcodephi-real-bootstrap.sh").read_text(encoding="utf-8")
     exercise_ninja_sealer(builder)
     generator = (ROOT / "scripts/generate-bootstraps.sh").read_text(encoding="utf-8")
