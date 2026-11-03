@@ -20,6 +20,7 @@ jobs:
           PROD_KEY_B64: ${{ secrets.RAFCODEPHI_APT_SIGNING_KEY_B64 }}
           PROD_FINGERPRINT: ${{ secrets.RAFCODEPHI_APT_SIGNING_FINGERPRINT }}
           PROD_PUBLISH_TOKEN: ${{ secrets.RAFCODEPHI_APT_PUBLISH_TOKEN }}
+          CONFIG_TOKEN: ${{ secrets.PAT_ENV }}
         run: |
           set -euo pipefail
           mkdir -p build/reports
@@ -44,7 +45,78 @@ jobs:
           }
           Path("build/reports/apt-production-readiness.json").write_text(json.dumps(report, sort_keys=True, indent=2)+"\n")
           print(json.dumps(report, sort_keys=True))
-          raise SystemExit(0 if all(flags.values()) else 2)
+          PY
+
+          export GNUPGHOME="$RUNNER_TEMP/rafcodephi-first-production-key"
+          mkdir -p "$GNUPGHOME"
+          chmod 700 "$GNUPGHOME"
+          trap 'gpgconf --homedir "$GNUPGHOME" --kill gpg-agent 2>/dev/null || true; rm -rf "$GNUPGHOME"' EXIT
+          initialized=false
+          if [[ -z "$PROD_KEY_B64" && -z "$PROD_FINGERPRINT" ]]; then
+            if [[ -z "$CONFIG_TOKEN" ]]; then
+              python3 - <<'PY'
+          import json
+          from pathlib import Path
+          path=Path("build/reports/apt-production-readiness.json")
+          d=json.loads(path.read_text())
+          d.update(state="BLOCKED", reason="PRODUCTION_KEY_ABSENT_AND_PAT_ENV_NOT_BOUND", configured_writer_present=False)
+          path.write_text(json.dumps(d,sort_keys=True,indent=2)+"\n")
+          print(json.dumps(d,sort_keys=True))
+          PY
+              exit 2
+            fi
+            # Check current names again; never overwrite a key added after job start.
+            GH_TOKEN="$CONFIG_TOKEN" gh api "repos/$GITHUB_REPOSITORY/actions/secrets" \
+              > "$GNUPGHOME/current-secret-names.json"
+            python3 - "$GNUPGHOME/current-secret-names.json" <<'PY'
+          import json,sys
+          names={s["name"] for s in json.load(open(sys.argv[1]))["secrets"]}
+          if names & {"RAFCODEPHI_APT_SIGNING_KEY_B64", "RAFCODEPHI_APT_SIGNING_FINGERPRINT"}:
+              raise SystemExit("BLOCKED: concurrent signing binding detected; do not overwrite")
+          PY
+            gpg --batch --passphrase '' --quick-generate-key \
+              'RAFCODEPHI APT Archive <packages@rafcodephi.invalid>' ed25519 sign 2y >/dev/null 2>&1
+            observed="$(gpg --batch --with-colons --list-secret-keys 2>/dev/null | awk -F: '$1=="fpr"{print $10; exit}')"
+            [[ "$observed" =~ ^[0-9A-F]{40}$ ]]
+            # Private key travels directly from GPG to encrypted GitHub Secrets.
+            gpg --batch --export-secret-keys "$observed" | base64 -w0 | \
+              GH_TOKEN="$CONFIG_TOKEN" gh secret set RAFCODEPHI_APT_SIGNING_KEY_B64 --repo "$GITHUB_REPOSITORY"
+            printf '%s' "$observed" | GH_TOKEN="$CONFIG_TOKEN" \
+              gh secret set RAFCODEPHI_APT_SIGNING_FINGERPRINT --repo "$GITHUB_REPOSITORY"
+            initialized=true
+          elif [[ -n "$PROD_KEY_B64" ]]; then
+            printf '%s' "$PROD_KEY_B64" | base64 -d > "$GNUPGHOME/import.key"
+            gpg --batch --import "$GNUPGHOME/import.key" >/dev/null 2>&1
+            rm -f "$GNUPGHOME/import.key"
+            observed="$(gpg --batch --with-colons --list-secret-keys 2>/dev/null | awk -F: '$1=="fpr"{print $10; exit}')"
+            [[ "$observed" =~ ^[0-9A-F]{40}$ ]]
+            if [[ -z "$PROD_FINGERPRINT" && -n "$CONFIG_TOKEN" ]]; then
+              printf '%s' "$observed" | GH_TOKEN="$CONFIG_TOKEN" \
+                gh secret set RAFCODEPHI_APT_SIGNING_FINGERPRINT --repo "$GITHUB_REPOSITORY"
+            else
+              [[ "$observed" == "$PROD_FINGERPRINT" ]] || { echo 'BLOCKED: signing fingerprint mismatch' >&2; exit 3; }
+            fi
+          else
+            echo 'BLOCKED: fingerprint is bound but private signing key is absent; no rotation performed' >&2
+            exit 3
+          fi
+          printf '%s\n' 'rafcodephi-production-signing-readiness-v1' > "$GNUPGHOME/challenge"
+          gpg --batch --yes --local-user "$observed" --detach-sign \
+            --output "$GNUPGHOME/challenge.sig" "$GNUPGHOME/challenge"
+          gpg --batch --verify "$GNUPGHOME/challenge.sig" "$GNUPGHOME/challenge" >/dev/null 2>&1
+          gpg --batch --export "$observed" > build/reports/production-archive-public-key.gpg
+          OBSERVED_FINGERPRINT="$observed" INITIALIZED="$initialized" python3 - <<'PY'
+          import hashlib,json,os
+          from pathlib import Path
+          path=Path("build/reports/apt-production-readiness.json")
+          d=json.loads(path.read_text())
+          d.update(state="PASS_SIGNING_CHALLENGE",reason="PRODUCTION_KEY_BOUND_AND_VERIFIED",
+              first_key_initialized=os.environ["INITIALIZED"]=="true",
+              public_fingerprint=os.environ["OBSERVED_FINGERPRINT"],
+              public_key_sha256=hashlib.sha256(Path("build/reports/production-archive-public-key.gpg").read_bytes()).hexdigest(),
+              publication_performed=False, claim_allowed_release=False)
+          path.write_text(json.dumps(d,sort_keys=True,indent=2)+"\n")
+          print(json.dumps(d,sort_keys=True))
           PY
 
       - name: Preserve sanitized signing readiness receipt
@@ -52,6 +124,8 @@ jobs:
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
         with:
           name: rafcodephi-production-readiness-${{ github.sha }}
-          path: build/reports/apt-production-readiness.json
+          path: |
+            build/reports/apt-production-readiness.json
+            build/reports/production-archive-public-key.gpg
           if-no-files-found: error
           retention-days: 30
