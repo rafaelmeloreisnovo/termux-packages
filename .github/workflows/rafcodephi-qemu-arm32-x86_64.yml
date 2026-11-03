@@ -86,7 +86,7 @@ jobs:
 
       - name: Upload immutable ARM32 package evidence
         if: always()
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7
         with:
           name: rafcodephi-qemu-arm32-x86_64-${{ github.sha }}
           path: rafcodephi-qemu-arm32-evidence/

@@ -70,7 +70,7 @@ jobs:
             --receipt "$RUNNER_TEMP/webhook-intake/receipt.json"
       - name: Store intake evidence
         if: always()
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
         with:
           name: webhook-intake-${{ github.run_id }}-${{ github.run_attempt }}
           path: ${{ runner.temp }}/webhook-intake/receipt.json
@@ -106,7 +106,7 @@ jobs:
             --candidate-root candidate --reports "$RUNNER_TEMP/webhook-build"
       - name: Store build evidence and candidate packages
         if: always()
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
         with:
           name: webhook-candidate-${{ needs.intake.outputs.delivery_id }}-${{ github.run_id }}-${{ github.run_attempt }}
           path: |

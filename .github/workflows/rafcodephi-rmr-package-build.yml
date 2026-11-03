@@ -89,7 +89,7 @@ jobs:
           } > out/rmr-package/receipt.txt
 
       - name: Upload package evidence
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7
         with:
           name: rafcodephi-rmr-vector-field-${{ matrix.arch }}-${{ github.sha }}
           path: out/rmr-package/
