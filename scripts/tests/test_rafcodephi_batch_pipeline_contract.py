@@ -58,6 +58,15 @@ def check_workflow_text(text: str, publisher_present: bool = True) -> None:
     require("      - name: Upload source/custody lot arm" in text, "ARM_UPLOAD_MISSING")
     require("      - name: Upload source/custody lot aarch64" in text, "AARCH64_UPLOAD_MISSING")
     require(text.count("if: ${{ always() }}") >= 5, "FAILURE_EVIDENCE_UPLOADS_MISSING")
+    # Count alone is insufficient: mutating one upload can still leave five always() guards.
+    for step_name in (
+        "Upload source/custody lot arm on success OR failure",
+        "Upload source/custody lot aarch64 on success OR failure",
+        "Upload signed APT preview lot (not published)",
+        "Upload isolated APT proof receipt",
+    ):
+        marker = "      - name: " + step_name + "\n        if: $" + "{{ always() }}"
+        require(marker in text, f"FAILURE_ARTIFACT_UPLOAD_CONDITION_MISSING:{step_name}")
     print("RAFCODEPHI_BATCH_CONTRACT=PASS_SOURCE_ONLY; BUILD=NOT_RUN; RELEASE=HOLD")
 
 
