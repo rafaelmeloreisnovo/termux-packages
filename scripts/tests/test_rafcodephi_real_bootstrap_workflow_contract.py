@@ -105,12 +105,12 @@ def main() -> int:
             "BUILDER_IMAGE_DIGEST_NOT_PINNED")
     require("- name: Upload real bootstrap artifacts\n        if: always()" in text,
             "FAILURE_ARTIFACT_NOT_ALWAYS_UPLOADED")
-    require("- name: Seal DEB evidence for portable artifact upload\n        if: always()" in text,
-            "DEB_TRANSPORT_NOT_FAILSAFE")
-    require('tar -C "$root" -cf "$root/rafcodephi-debs.tar" debs' in text,
-            "EPOCH_DEB_NAMES_NOT_ARCHIVED")
-    require("sha256sum -c rafcodephi-debs.tar.sha256" in text,
-            "DEB_TRANSPORT_HASH_NOT_VERIFIED")
+    require("- name: Seal DEB evidence into portable tar" in text,
+            "PORTABLE_DEB_EVIDENCE_PACKAGING_MISSING")
+    require('tar -C "$root" -cf "$root/rafcodephi-debs-evidence.tar" debs' in text,
+            "ORIGINAL_DEB_FILENAMES_NOT_PRESERVED_IN_TAR")
+    require('sha256sum "$root/rafcodephi-debs-evidence.tar"' in text,
+            "PORTABLE_DEB_ARCHIVE_DIGEST_MISSING")
     require("!artifacts/rafcodephi-bootstrap/debs/**" in text,
             "RAW_EPOCH_DEBS_STILL_EXPOSED_TO_UPLOAD")
     require(sealed_transport_complete(text), "SEALED_ABI_EVIDENCE_NOT_UPLOADED_WITH_DIGEST")
