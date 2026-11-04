@@ -46,6 +46,12 @@ jobs:
         shell: bash
         run: python3 -m pip install --disable-pip-version-check --quiet pyyaml
 
+      - name: Shared bootstrap NDK29 failure-path tests (offline)
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 scripts/tests/test_rafcodephi_shared_builder_ndk_gate.py -v
+
       - name: Parse all workflows and embedded Bash
         shell: bash
         run: |
@@ -53,7 +59,6 @@ jobs:
           python3 scripts/tests/test_rafcodephi_workflow_syntax.py
           python3 scripts/tests/test_rafcodephi_workflow_trigger_contract.py
           python3 scripts/tests/test_rafcodephi_real_bootstrap_workflow_contract.py
-          python3 scripts/tests/test_rafcodephi_shared_builder_ndk_gate.py -v
           python3 scripts/tests/test_rafcodephi_555_workflow_contract.py
           python3 scripts/tests/test_rafcodephi_batch_pipeline_falsifiers.py
           if test -f scripts/ci/rafcodephi_555_compose.py; then
