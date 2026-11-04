@@ -99,6 +99,74 @@ def main() -> int:
             "DEB_TRANSPORT_HASH_NOT_VERIFIED")
     require("!artifacts/rafcodephi-bootstrap/debs/**" in text,
             "RAW_EPOCH_DEBS_STILL_EXPOSED_TO_UPLOAD")
+    # Guard against a provider upload stanza being spliced into the shell grep.
+    require("""grep -Eq '^debs/(arm|aarch64)/[^/]+[.]deb
+    builder = (ROOT / "scripts/build-rafcodephi-real-bootstrap.sh").read_text(encoding="utf-8")
+    exercise_ninja_sealer(builder)
+    generator = (ROOT / "scripts/generate-bootstraps.sh").read_text(encoding="utf-8")
+    docker_wrapper = (ROOT / "scripts/run-rafcodephi-bootstrap-docker.sh").read_text(encoding="utf-8")
+    require('"runtime_materialized": False' in builder,
+            "ARCHIVE_MATERIALIZATION_STATE_MISSING")
+    require('TERMUX_BOOTSTRAP_OUTPUT_DIR' in generator,
+            "WRITABLE_BOOTSTRAP_OUTPUT_HOOK_MISSING")
+    require('BOOTSTRAP_OUTPUT_DIR="${TERMUX_BOOTSTRAP_OUTPUT_DIR:-.}"' in generator,
+            "UPSTREAM_DEFAULT_OUTPUT_COMPATIBILITY_MISSING")
+    require('"$BOOTSTRAP_OUTPUT_DIR/"' in generator,
+            "BOOTSTRAP_ARCHIVE_NOT_ROUTED_TO_OUTPUT_DIR")
+    require('export TERMUX_BOOTSTRAP_OUTPUT_DIR="$GENERATED_BOOTSTRAP_DIR"' in builder,
+            "RAFCODEPHI_WRITABLE_GENERATED_OUTPUT_NOT_BOUND")
+    require('zip_path="$GENERATED_BOOTSTRAP_DIR/bootstrap-${arch}.zip"' in builder,
+            "RAFCODEPHI_GENERATED_ZIP_ROUTE_MISSING")
+    require("run-rafcodephi-bootstrap-docker.sh" in text,
+            "CANONICAL_DOCKER_HANDOFF_NOT_USED")
+    require('RAFCODEPHI_BOOTSTRAP_OUT_DIR="$CONTAINER_OUT"' in docker_wrapper,
+            "CONTAINER_LOCAL_OUTPUT_NOT_FORCED")
+    require('docker_cmd[@]' in docker_wrapper and ' cp "$CONTAINER:$CONTAINER_OUT/." "$HOST_OUT/"' in docker_wrapper,
+            "DOCKER_COPY_BACK_MISSING")
+    require('RAFCODEPHI_BOOTSTRAP_DOCKER=PASS' in docker_wrapper,
+            "DOCKER_HANDOFF_RECEIPT_MISSING")
+    require('while link.startswith("./"):' in builder,
+            "SYMLINK_DESTINATION_NORMALIZATION_MISSING")
+    require(builder.count('while link.startswith("./"):') >= 2,
+            "SYMLINK_DESTINATION_NORMALIZATION_NOT_APPLIED_TO_BOTH_GATES")
+    require("termux-api-broadcast←(\\./)?libexec/termux-api" in builder,
+            "TERMUX_API_SYMLINK_OPTIONAL_DOT_SLASH_GATE_MISSING")
+    repair = (ROOT / "scripts/repair_rafcodephi_bootstrap_symlinks.py").read_text(encoding="utf-8")
+    require("rafcodephi_bootstrap_prefix_gate.py" in builder,
+            "FULL_PAYLOAD_BINARY_PREFIX_GATE_MISSING")
+    require('prefix_gate_receipt_sha256_%s' in builder,
+            "HASH_BOUND_PREFIX_AUDIT_RECEIPT_MISSING")
+    require('prefix_gate_state_%s=PASS_SCOPED' in builder,
+            "SOURCE_BUILD_SUCCESS_SCOPE_INCORRECT")
+    require("rafcodephi_deb_set_gate.py" in builder,
+            "SOURCE_DEB_SET_GATE_NOT_CALLED")
+    require('deb_gate_receipt_sha256_%s' in builder,
+            "HASH_BOUND_DEB_GATE_RECEIPT_MISSING")
+    require('deb_gate_state_%s=PASS_SCOPED' in builder,
+            "SOURCE_DEB_CLAIM_SCOPE_INVALID")
+    require("repair_rafcodephi_bootstrap_symlinks.py" in builder,
+            "DEB_EVIDENCE_SYMLINK_REPAIR_NOT_CALLED")
+    require('--deb-dir "$RAFCODEPHI_BOOTSTRAP_PACKAGE_EVIDENCE_DIR/$arch"' in builder,
+            "DEB_EVIDENCE_DIR_NOT_BOUND_TO_ARCH")
+    require('rafcodephi-bootstrap-${arch}-symlink-repair.json' in builder,
+            "SYMLINK_REPAIR_RECEIPT_NOT_BOUND")
+    for token in (
+        "rafcodephi.bootstrap-symlink-evidence-repair/v1",
+        '"bin/sh": "dash"',
+        '"libexec/termux-api": "termux-api-broadcast"',
+        '"dpkg-deb", "--fsys-tarfile"',
+        '"claim_allowed": False',
+        '"device_runtime_proof": "TOKEN_VAZIO"',
+    ):
+        require(token in repair, f"SYMLINK_REPAIR_CONTRACT_MISSING:{token}")
+    print("RAFCODEPHI_REAL_BOOTSTRAP_WORKFLOW=PASS canonical_overlay=true failure_evidence=true writable_archive_output=true canonical_docker_handoff=true deb_evidence_symlink_repair=true")
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
+ "$root/rafcodephi-debs.tar.members" """ .strip() in text,
+            "DEB_MEMBER_GREP_BROKEN_OR_UNBOUNDED")
     builder = (ROOT / "scripts/build-rafcodephi-real-bootstrap.sh").read_text(encoding="utf-8")
     exercise_ninja_sealer(builder)
     generator = (ROOT / "scripts/generate-bootstraps.sh").read_text(encoding="utf-8")
