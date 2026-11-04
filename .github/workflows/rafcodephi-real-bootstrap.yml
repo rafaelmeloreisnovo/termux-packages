@@ -271,6 +271,10 @@ jobs:
           path: |
             artifacts/rafcodephi-bootstrap/
             !artifacts/rafcodephi-bootstrap/debs/**
+            # Seal and digest are sibling files, not children of bootstrap/.
+            # Both must travel to the reconciliation job; missing either is fatal.
+            artifacts/rafcodephi-bootstrap-evidence.tar.gz
+            artifacts/rafcodephi-bootstrap-evidence.tar.gz.sha256
             artifacts/rafcodephi-freestanding/
             build/reports/rafcodephi-real-bootstrap-properties.json
             build/reports/rafcodephi-real-bootstrap-status.json
