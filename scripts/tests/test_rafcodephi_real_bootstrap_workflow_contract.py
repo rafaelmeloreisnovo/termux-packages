@@ -62,13 +62,13 @@ def exercise_ninja_sealer(builder: str) -> None:
 
 def sealed_transport_complete(text: str) -> bool:
     """The handoff must actually upload the exact TAR and its independent digest."""
-    marker = "      - name: Upload real bootstrap artifacts\\n        if: success()"
+    marker = "      - name: Upload real bootstrap artifacts\n        if: success()"
     if text.count(marker) != 1:
         return False
     block = text.split(marker, 1)[1].split("      - name: Upload source-build diagnostics", 1)[0]
-    if block.count("          path: |\\n") != 1:
+    if block.count("          path: |\n") != 1:
         return False
-    paths = block.split("          path: |\\n", 1)[1].split("\\n          if-no-files-found:", 1)[0]
+    paths = block.split("          path: |\n", 1)[1].split("\n          if-no-files-found:", 1)[0]
     named = {line.strip() for line in paths.splitlines() if line.strip() and not line.lstrip().startswith("#")}
     return {"artifacts/rafcodephi-bootstrap-evidence.tar.gz",
             "artifacts/rafcodephi-bootstrap-evidence.tar.gz.sha256"}.issubset(named)
@@ -116,7 +116,7 @@ def main() -> int:
     require(sealed_transport_complete(text), "SEALED_ABI_EVIDENCE_NOT_UPLOADED_WITH_DIGEST")
     for missing in ("artifacts/rafcodephi-bootstrap-evidence.tar.gz",
                     "artifacts/rafcodephi-bootstrap-evidence.tar.gz.sha256"):
-        mutated = text.replace("            " + missing + "\\n", "", 1)
+        mutated = text.replace("            " + missing + "\n", "", 1)
         require(mutated != text and not sealed_transport_complete(mutated),
                 "SEALED_TRANSPORT_MISSING_FILE_FALSIFIER_FAILED:" + missing)
     # Prevent upload YAML from being spliced inside the shell grep.
