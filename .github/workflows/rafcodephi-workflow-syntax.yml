@@ -10,6 +10,8 @@ on:
       - 'scripts/tests/test_rafcodephi_555_workflow_contract.py'
       - 'scripts/tests/test_rafcodephi_batch_pipeline_contract.py'
       - 'scripts/tests/test_rafcodephi_batch_pipeline_falsifiers.py'
+      - 'scripts/run-rafcodephi-bootstrap-docker.sh'
+      - 'scripts/tests/test_rafcodephi_shared_builder_ndk_gate.py'
   push:
     branches: [main]
     paths:
@@ -19,6 +21,8 @@ on:
       - 'scripts/tests/test_rafcodephi_555_workflow_contract.py'
       - 'scripts/tests/test_rafcodephi_batch_pipeline_contract.py'
       - 'scripts/tests/test_rafcodephi_batch_pipeline_falsifiers.py'
+      - 'scripts/run-rafcodephi-bootstrap-docker.sh'
+      - 'scripts/tests/test_rafcodephi_shared_builder_ndk_gate.py'
 
 permissions:
   contents: read
@@ -49,6 +53,7 @@ jobs:
           python3 scripts/tests/test_rafcodephi_workflow_syntax.py
           python3 scripts/tests/test_rafcodephi_workflow_trigger_contract.py
           python3 scripts/tests/test_rafcodephi_real_bootstrap_workflow_contract.py
+          python3 scripts/tests/test_rafcodephi_shared_builder_ndk_gate.py -v
           python3 scripts/tests/test_rafcodephi_555_workflow_contract.py
           python3 scripts/tests/test_rafcodephi_batch_pipeline_falsifiers.py
           if test -f scripts/ci/rafcodephi_555_compose.py; then
