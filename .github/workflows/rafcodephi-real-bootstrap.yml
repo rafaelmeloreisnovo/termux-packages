@@ -268,11 +268,10 @@ jobs:
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
         with:
           name: rafcodephi-real-bootstrap-${{ github.run_id }}-${{ matrix.arch }}
+          # Sealed TAR and checksum live beside bootstrap/; fan-in requires both.
           path: |
             artifacts/rafcodephi-bootstrap/
             !artifacts/rafcodephi-bootstrap/debs/**
-            # Seal and digest are sibling files, not children of bootstrap/.
-            # Both must travel to the reconciliation job; missing either is fatal.
             artifacts/rafcodephi-bootstrap-evidence.tar.gz
             artifacts/rafcodephi-bootstrap-evidence.tar.gz.sha256
             artifacts/rafcodephi-freestanding/
