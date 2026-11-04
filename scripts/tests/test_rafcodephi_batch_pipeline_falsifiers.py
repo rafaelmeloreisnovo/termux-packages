@@ -37,9 +37,15 @@ def main() -> None:
         "missing_test_trigger",
         original.replace("      - 'scripts/tests/test_rafcodephi_batch_pipeline_falsifiers.py'\n", "", 1),
     )
+    artifact_upload = (
+        "      - name: Upload source/custody lot arm on success OR failure\n"
+        + "        if: $" + "{{ always() }}"
+    )
+    if original.count(artifact_upload) != 1:
+        raise SystemExit("RAFCODEPHI_BATCH_FALSIFIER=BLOCKED upload_anchor_count")
     must_block(
         "missing_failure_artifact",
-        original.replace("if: ${{ always() }}", "if: ${{ success() }}", 1),
+        original.replace(artifact_upload, artifact_upload.replace("always()", "success()"), 1),
     )
     try:
         check_workflow_text(original, publisher_present=False)
