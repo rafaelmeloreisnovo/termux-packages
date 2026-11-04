@@ -16,6 +16,7 @@ jobs:
     permissions:
       contents: read # actions/upload-artifact doesn't need contents: write
     runs-on: ubuntu-slim
+    timeout-minutes: 15
     strategy:
       matrix:
         arch:
@@ -38,6 +39,7 @@ jobs:
       contents: write # for git push
     needs: build
     runs-on: ubuntu-slim
+    timeout-minutes: 15
     steps:
       - name: Git clone
         uses: actions/checkout@v6

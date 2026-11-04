@@ -1,0 +1,88 @@
+{
+  "R3": {
+    "F_gap": "production artifacts, publication, physical device and independent review",
+    "F_next": "exact-head CI readback then governed build/device validation",
+    "F_ok": "scoped code and host falsifiers passed"
+  },
+  "authority": "User requested hotfix of these two repositories; local producer governs implementation; Drive governs private continuity receipt.",
+  "claim_allowed": false,
+  "code_sha256": {
+    ".github/workflows/rafcodephi-publish-dev-apt.yml": "e483e23827a6074cd795898db29a22c52382e3318d1e8c0c9a3f1e77cf9b2ecc",
+    "scripts/build-rafcodephi-real-bootstrap.sh": "5131382c8b4801fdc2b30f3b659d34e0333f1d375271ab00f175ef5ed1ac1985",
+    "scripts/tests/test_rafcodephi_publish_dev_apt_workflow_contract.py": "12326ef5d25cfce1cb2f8dd1c70540cb63539e839300d06bb3e9fe4415d57037",
+    "scripts/tests/test_rafcodephi_real_bootstrap_workflow_contract.py": "7a4a0b3af28eacf7e149d0ce03ab7da8b2a24b1e0f4a0414bbeb067f3a209f62",
+    "scripts/tests/test_rafcodephi_signed_apt_fixture.sh": "432e8bb75886325651fad725daac18d030562ceeb08d61304bf64b62ed36b038"
+  },
+  "contract": "rafcodephi.apt-bootstrap-ninja/v1",
+  "cross_repository_execution": {
+    "architectures": [
+      "arm",
+      "aarch64"
+    ],
+    "device_proof": false,
+    "path": "actual producer source sealer -> actual live sealer -> actual app importer",
+    "signature_crypto_proof": false,
+    "state": "PASS_SCOPED_SYNTHETIC"
+  },
+  "falsifier": "failed update/show/download/metadata, missing/script/wrong-ABI Ninja, inconsistent declarations, not-installed dpkg or absent/wrong graph output must fail",
+  "gaps": [
+    "TOKEN_VAZIO_NEW_SOURCE_DEB_BUILD",
+    "TOKEN_VAZIO_NEW_APK_BUILD",
+    "TOKEN_VAZIO_PRODUCTION_PUBLICATION",
+    "TOKEN_VAZIO_PHYSICAL_ANDROID",
+    "TOKEN_VAZIO_INDEPENDENT_REVIEW",
+    "CI_PENDING_AT_WRITE"
+  ],
+  "kind": "URGENT_SCOPED_HOTFIX",
+  "mu_id": "MU-TERMUX-APT-BOOTSTRAP-NINJA-20261103-S1",
+  "parent": "BASELINE@58d6eaf1300c51c5a3749024a02f6448e02599f7",
+  "preflight": {
+    "data": "PUBLIC source metadata and synthetic fixtures only",
+    "federated_route": "Drive current-state dispatch -> local Termux producer/consumer indices",
+    "governance": "reversible source candidate; no merge/release/provider mutation",
+    "privacy": "no credentials/device IDs/private corpus copied",
+    "security": "signed APT/key pin/prefix/ABI fail-closed preserved; first failing APT stage must stop",
+    "source_and_target": "bound exact base + scoped paths",
+    "urgency": "P0_FALSE_APT_SUCCESS + P1_MISSING_BOOTSTRAP_NINJA"
+  },
+  "release_allowed": false,
+  "rollback": "abandon unmerged candidate; reviewed compensating revert if merged; preserve predecessor and history",
+  "source": {
+    "base_commit": "58d6eaf1300c51c5a3749024a02f6448e02599f7",
+    "repository": "rafaelmeloreisnovo/termux-packages",
+    "role": "PACKAGE_SOURCE_PRODUCER"
+  },
+  "source_not_artifact_not_execution_not_evidence_not_claim": true,
+  "tests": [
+    {
+      "command": "python3 scripts/tests/test_rafcodephi_publish_dev_apt_workflow_contract.py",
+      "exit_code": 0,
+      "falsifiers": "5 APT stages + predecessor masking; 7 unsafe URLs; live sealer negative cases",
+      "gate": "signed_apt_workflow"
+    },
+    {
+      "command": "python3 scripts/tests/test_rafcodephi_real_bootstrap_workflow_contract.py",
+      "exit_code": 0,
+      "gate": "real_bootstrap_workflow",
+      "sealer_cases": 3
+    },
+    {
+      "exit_code": 0,
+      "gate": "workflow_syntax_and_triggers",
+      "run_steps": 259,
+      "workflows": 47
+    },
+    {
+      "exit_code": 0,
+      "gate": "prefix_and_deb_gate_regressions",
+      "test_methods": 13
+    },
+    {
+      "evidence": "gpg cannot start /usr/bin/gpg-agent; no bypass or PASS claim; public CI fixture now wired",
+      "exit_code": 2,
+      "gate": "native_signed_apt_fixture_local",
+      "state": "BLOCKED_HOST_GPG_AGENT_UNAVAILABLE"
+    }
+  ],
+  "timestamp": "2026-11-03T10:00:01.869694-03:00"
+}

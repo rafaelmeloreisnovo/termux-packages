@@ -70,7 +70,7 @@ opts=(
   -o 'Acquire::Languages=none'
 )
 
-apt-get "${opts[@]}" update >/dev/null
+apt-get "${opts[@]}" -o APT::Update::Error-Mode=any update >/dev/null
 apt-cache "${opts[@]}" show rafcodephi-custody-fixture | grep -Fx 'Package: rafcodephi-custody-fixture'
 apt-get "${opts[@]}" -y --download-only --no-install-recommends install rafcodephi-custody-fixture \
   2>&1 | tee build/reports/rafcodephi-signed-apt-fixture-download.log
