@@ -60,6 +60,20 @@ def exercise_ninja_sealer(builder: str) -> None:
     print("RAFCODEPHI_NINJA_SEALER=PASS cases=3 scope=HOST_SYNTHETIC")
 
 
+def sealed_transport_complete(text: str) -> bool:
+    """The handoff must actually upload the exact TAR and its independent digest."""
+    marker = "      - name: Upload real bootstrap artifacts\\n        if: success()"
+    if text.count(marker) != 1:
+        return False
+    block = text.split(marker, 1)[1].split("      - name: Upload source-build diagnostics", 1)[0]
+    if block.count("          path: |\\n") != 1:
+        return False
+    paths = block.split("          path: |\\n", 1)[1].split("\\n          if-no-files-found:", 1)[0]
+    named = {line.strip() for line in paths.splitlines() if line.strip() and not line.lstrip().startswith("#")}
+    return {"artifacts/rafcodephi-bootstrap-evidence.tar.gz",
+            "artifacts/rafcodephi-bootstrap-evidence.tar.gz.sha256"}.issubset(named)
+
+
 def main() -> int:
     text = WORKFLOW.read_text(encoding="utf-8")
     require("scripts/apply-rafcodephi-build-properties.py" in text, "CANONICAL_PROPERTIES_OVERLAY_MISSING")
@@ -99,6 +113,12 @@ def main() -> int:
             "DEB_TRANSPORT_HASH_NOT_VERIFIED")
     require("!artifacts/rafcodephi-bootstrap/debs/**" in text,
             "RAW_EPOCH_DEBS_STILL_EXPOSED_TO_UPLOAD")
+    require(sealed_transport_complete(text), "SEALED_ABI_EVIDENCE_NOT_UPLOADED_WITH_DIGEST")
+    for missing in ("artifacts/rafcodephi-bootstrap-evidence.tar.gz",
+                    "artifacts/rafcodephi-bootstrap-evidence.tar.gz.sha256"):
+        mutated = text.replace("            " + missing + "\\n", "", 1)
+        require(mutated != text and not sealed_transport_complete(mutated),
+                "SEALED_TRANSPORT_MISSING_FILE_FALSIFIER_FAILED:" + missing)
     # Prevent upload YAML from being spliced inside the shell grep.
     require("""grep -Eq '^debs/(arm|aarch64)/[^/]+[.]deb$' "$root/rafcodephi-debs.tar.members" """ .strip() in text,
             "DEB_MEMBER_GREP_BROKEN_OR_UNBOUNDED")
