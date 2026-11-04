@@ -89,8 +89,20 @@ jobs:
           ):
               if required not in source:
                   raise SystemExit(f"BOOTSTRAP_MATRIX_POLICY=BLOCKED missing={required}")
-          if "            artifacts/rafcodephi-bootstrap/" in source:
-              raise SystemExit("BOOTSTRAP_UPLOAD=BLOCKED raw_deb_directory")
+          # Inspect upload entries in their own step: broad source paths require
+          # an explicit exclusion for raw Debian epoch .deb names.
+          bootstrap_jobs = yaml.safe_load(source).get("jobs", {})
+          for bootstrap_job_name, bootstrap_job in bootstrap_jobs.items():
+              for bootstrap_step in bootstrap_job.get("steps", []):
+                  if not str(bootstrap_step.get("uses", "")).startswith("actions/upload-artifact@"):
+                      continue
+                  entries = [entry.strip() for entry in str(bootstrap_step.get("with", {}).get("path", "")).splitlines()]
+                  broad = any(entry in ("artifacts/rafcodephi-bootstrap/", "artifacts/rafcodephi-bootstrap/**") for entry in entries)
+                  excluded = "!artifacts/rafcodephi-bootstrap/debs/**" in entries
+                  if broad and not excluded:
+                      raise SystemExit(f"BOOTSTRAP_UPLOAD=BLOCKED raw_deb_directory job={bootstrap_job_name}")
+                  if any(entry.startswith("artifacts/rafcodephi-bootstrap/debs/") for entry in entries):
+                      raise SystemExit(f"BOOTSTRAP_UPLOAD=BLOCKED direct_deb_directory job={bootstrap_job_name}")
           # A tar may safely contain Debian epoch ':' names, but uploader
           # path globs must never directly select raw .deb filenames.
           for path in sorted(root.glob("*.yml")):
