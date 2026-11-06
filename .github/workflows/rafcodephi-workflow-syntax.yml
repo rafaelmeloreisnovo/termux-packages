@@ -10,6 +10,8 @@ on:
       - 'scripts/tests/test_rafcodephi_555_workflow_contract.py'
       - 'scripts/tests/test_rafcodephi_batch_pipeline_contract.py'
       - 'scripts/tests/test_rafcodephi_batch_pipeline_falsifiers.py'
+      - 'scripts/run-rafcodephi-bootstrap-docker.sh'
+      - 'scripts/tests/test_rafcodephi_shared_builder_ndk_gate.py'
   push:
     branches: [main]
     paths:
@@ -19,6 +21,8 @@ on:
       - 'scripts/tests/test_rafcodephi_555_workflow_contract.py'
       - 'scripts/tests/test_rafcodephi_batch_pipeline_contract.py'
       - 'scripts/tests/test_rafcodephi_batch_pipeline_falsifiers.py'
+      - 'scripts/run-rafcodephi-bootstrap-docker.sh'
+      - 'scripts/tests/test_rafcodephi_shared_builder_ndk_gate.py'
 
 permissions:
   contents: read
@@ -41,6 +45,12 @@ jobs:
       - name: Install YAML parser
         shell: bash
         run: python3 -m pip install --disable-pip-version-check --quiet pyyaml
+
+      - name: Shared bootstrap NDK29 failure-path tests (offline)
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 scripts/tests/test_rafcodephi_shared_builder_ndk_gate.py -v
 
       - name: Parse all workflows and embedded Bash
         shell: bash
