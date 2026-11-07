@@ -1,0 +1,19 @@
+name: RAFAELIA Inline ASM L0
+on:
+  pull_request:
+    paths:
+      - 'core/raf_inline_asm_v1.h'
+      - 'tests/raf_inline_asm_v1_selftest.c'
+      - 'tests/raf_inline_asm_v1_gate.sh'
+      - '.github/workflows/raf-inline-asm-l0.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  abi-pure-core:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Host/negative vector + ARMv7/AArch64 codegen
+        shell: bash
+        run: sh tests/raf_inline_asm_v1_gate.sh core
