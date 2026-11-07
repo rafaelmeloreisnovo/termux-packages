@@ -3,6 +3,11 @@
 name: RAFCODEPHI ARM32 Compact Bootstrap (from source-built run)
 
 on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/rafcodephi-arm32-compact-from-run.yml'
+      - 'scripts/ci/rafcodephi_arm32_compact.py'
   workflow_dispatch:
     inputs:
       source_run_id:
@@ -21,7 +26,7 @@ permissions:
   actions: read
 
 concurrency:
-  group: arm32-compact-${{ inputs.source_run_id }}
+  group: arm32-compact-${{ inputs.source_run_id || '41904631252' }}
   cancel-in-progress: false
 
 jobs:
@@ -39,8 +44,8 @@ jobs:
         shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
-          SOURCE_RUN: ${{ inputs.source_run_id }}
-          EXPECTED_SHA: ${{ inputs.source_sha }}
+          SOURCE_RUN: ${{ inputs.source_run_id || '41904631252' }}
+          EXPECTED_SHA: ${{ inputs.source_sha || 'e7f23f46d039d04577c035457c920047f03dc2a1' }}
         run: |
           set -euo pipefail
           [[ "$SOURCE_RUN" =~ ^[0-9]+$ ]] || { echo 'INVALID_RUN_ID'; exit 2; }
@@ -56,7 +61,7 @@ jobs:
         shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
-          SOURCE_RUN: ${{ inputs.source_run_id }}
+          SOURCE_RUN: ${{ inputs.source_run_id || '41904631252' }}
         run: |
           set -euo pipefail
           mkdir -p input custody
@@ -68,8 +73,8 @@ jobs:
       - name: Extract original bootstrap without changing its bytes
         shell: bash
         env:
-          SOURCE_RUN: ${{ inputs.source_run_id }}
-          SOURCE_SHA: ${{ inputs.source_sha }}
+          SOURCE_RUN: ${{ inputs.source_run_id || '41904631252' }}
+          SOURCE_SHA: ${{ inputs.source_sha || 'e7f23f46d039d04577c035457c920047f03dc2a1' }}
         run: |
           set -euo pipefail
           python3 scripts/ci/rafcodephi_arm32_compact.py \
@@ -87,7 +92,7 @@ jobs:
       - name: Publish compact ARM32 bootstrap and handoff receipt
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
         with:
-          name: rafcodephi-arm32-compact-${{ inputs.source_run_id }}
+          name: rafcodephi-arm32-compact-${{ inputs.source_run_id || '41904631252' }}
           path: dist/arm32/
           if-no-files-found: error
           compression-level: 0
