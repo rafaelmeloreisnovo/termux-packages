@@ -13,7 +13,7 @@ jobs:
   abi-pure-core:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - name: Host/negative vector + ARMv7/AArch64 codegen
         shell: bash
         run: sh tests/raf_inline_asm_v1_gate.sh core
