@@ -35,6 +35,8 @@ jobs:
           done
           ./core/pkg-real-dag-shadow "$fixture" | tee /tmp/dag-shadow.txt
           grep -qx 'comparison_state=PASS_SCOPED' /tmp/dag-shadow.txt
+          grep -qx 'projection=OBSERVED_LIMITED' /tmp/dag-shadow.txt
+          grep -Eq '^nodes=6 edges=[1-9][0-9]* ' /tmp/dag-shadow.txt
           grep -qx 'claim_allowed_device_runtime=false' /tmp/dag-shadow.txt
       - name: Validate ARM32 and ARM64 freestanding objects
         run: |
