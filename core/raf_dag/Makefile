@@ -1,5 +1,13 @@
 CC ?= clang
-CFLAGS_CORE = -std=c11 -O2 -ffreestanding -fno-builtin -fno-stack-protector \
+PROFILE ?= balanced
+ifeq ($(PROFILE),balanced)
+RAF_OPT := -O2
+else ifeq ($(PROFILE),compact)
+RAF_OPT := -Oz
+else
+$(error Unsupported PROFILE=$(PROFILE); use balanced or compact)
+endif
+CFLAGS_CORE = -std=c11 $(RAF_OPT) -ffreestanding -fno-builtin -fno-stack-protector \
  -fno-unwind-tables -fno-asynchronous-unwind-tables -fdata-sections \
  -ffunction-sections -fvisibility=hidden -Wall -Wextra -Wshadow \
  -Wconversion -Werror -pedantic

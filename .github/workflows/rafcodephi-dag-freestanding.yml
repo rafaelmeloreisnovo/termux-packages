@@ -17,8 +17,23 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
           persist-credentials: false
-      - name: Verify authorial DAG and hosted assertions
-        run: make -C core/raf_dag verify CC=clang
+      - name: Verify balanced profile and preserve object
+        run: |
+          make -C core/raf_dag verify CC=clang PROFILE=balanced
+          cp core/raf_dag/raf_dag.o /tmp/raf-dag-balanced.o
+      - name: Verify compact profile and compare emitted object sizes
+        run: |
+          set -euo pipefail
+          make -C core/raf_dag verify CC=clang PROFILE=compact
+          cp core/raf_dag/raf_dag.o /tmp/raf-dag-compact.o
+          balanced="$(size /tmp/raf-dag-balanced.o | awk 'NR==2 {print $1}')"
+          compact="$(size /tmp/raf-dag-compact.o | awk 'NR==2 {print $1}')"
+          echo "DAG_TEXT_BALANCED=$balanced bytes"
+          echo "DAG_TEXT_COMPACT=$compact bytes"
+          test "$compact" -le "$balanced" || {
+            echo "BLOCKED_COMPACT_PROFILE_LARGER"
+            exit 1
+          }
       - name: Verify corrected legacy adapter using ASan and UBSan
         run: |
           clang -std=c11 -O2 -Wall -Wextra -Wconversion -Wshadow -Werror \

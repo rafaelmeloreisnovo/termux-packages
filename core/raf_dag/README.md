@@ -17,3 +17,7 @@ FNV-based fingerprint is non-cryptographic; artifact custody requires a cryptogr
 - Adds independent seeded property tests (512 generated graphs), duplicate edges, a longest-depth oracle and negative structural tests.
 - Preflights legacy layer capacity before populating any layer and tests depth overflow at 256 edges.
 - Graph fingerprint is input-order-sensitive and non-cryptographic. No physical Android/apt/runtime claim.
+
+## Selectable compiled-code profiles
+
+Production **core only**: `make -C core/raf_dag verify CC=clang PROFILE=balanced` uses `-O2`; `PROFILE=compact` uses `-Oz`. Both retain freestanding/no-libc flags, strict warnings, the same C API and the same property tests. Hosted test executables are not distributed. CI reports the emitted object text bytes and requires compact text not exceed balanced for this pinned build. This is a size gate, **not** a CPU speed benchmark or proof of smaller Termux APK/bootstrap. A consumer must choose the profile explicitly and reverify its ABI and device behavior. No production-profile substitution occurs automatically.
