@@ -9,3 +9,11 @@ Test: make -C core/raf_dag verify CC=clang. The standalone test.c uses hosted st
 Optimization: -O2, -ffunction-sections, -fdata-sections, -fvisibility=hidden and -Werror are compiler hints/checks, not proof of performance. Comments and ordinary formatting are not machine instructions; only directives/attributes/flags can affect code generation and those effects require emitted-binary inspection. No claim of bare metal Android without an OS interface.
 
 FNV-based fingerprint is non-cryptographic; artifact custody requires a cryptographic digest outside this core. The original hosted builder and third-party recipes are left untouched, with their upstream authorship and licenses preserved. Legacy adapter remains a separate compatibility layer and requires its own tests. claim_allowed_device_runtime=false.
+
+## V1.1 hardening
+
+- Reuses indegree[] as CSR scatter cursor: 4,114 fewer bytes per caller workspace (3.86% of v1).
+- Rejects malformed CSR offsets and adjacency before traversal; resets solved on failures.
+- Adds independent seeded property tests (512 generated graphs), duplicate edges, a longest-depth oracle and negative structural tests.
+- Preflights legacy layer capacity before populating any layer and tests depth overflow at 256 edges.
+- Graph fingerprint is input-order-sensitive and non-cryptographic. No physical Android/apt/runtime claim.

@@ -135,13 +135,19 @@ int termux_dep_resolver_build_layers(struct termux_dep_resolver *r) {
   if (status) return status;
   status = termux_dep_graph_validate(&r->graph);
   if (status) return status;
+  /* Preflight layer capacity: no partially populated batches on failure. */
+  uint16_t layer_counts[TERMUX_TOROIDAL_LAYERS];
   for (uint32_t i = 0; i < TERMUX_TOROIDAL_LAYERS; ++i) {
     r->layers[i].layer_idx = i;
     r->layers[i].pkg_count = 0U;
+    layer_counts[i] = 0U;
+  }
+  for (uint32_t i = 0; i < r->graph.pkg_count; ++i) {
+    uint32_t idx = (uint32_t)r->graph.depths[i] % TERMUX_TOROIDAL_LAYERS;
+    if (++layer_counts[idx] > TERMUX_MAX_LAYER_SIZE) return -5;
   }
   for (uint32_t i = 0; i < r->graph.pkg_count; ++i) {
     struct termux_layer_batch *layer = &r->layers[r->graph.depths[i] % TERMUX_TOROIDAL_LAYERS];
-    if (layer->pkg_count >= TERMUX_MAX_LAYER_SIZE) return -5;
     layer->pkg_indices[layer->pkg_count++] = (uint16_t)i;
   }
   (void)termux_dep_graph_compute_crc32c(&r->graph);

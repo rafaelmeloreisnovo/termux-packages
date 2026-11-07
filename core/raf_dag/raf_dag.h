@@ -1,9 +1,6 @@
 #ifndef RAF_DAG_H
 #define RAF_DAG_H
-/* RAFCODEPhi: freestanding, caller-owned bounded directed graph.
- * No hosted headers, libc, heap, syscalls or mutable global state.
- * Edge means prerequisite -> consumer.
- */
+/* RAFCODEPhi: pure caller-owned DAG. No libc, heap, syscalls or globals. */
 #if !defined(__SIZEOF_SHORT__) || !defined(__SIZEOF_INT__) || !defined(__CHAR_BIT__)
 #error "Unsupported integer model"
 #endif
@@ -21,9 +18,11 @@ typedef struct raf_dag {
  raf_u16 nodes,edges,sealed,solved;
  raf_u16 from[RAF_DAG_MAX_EDGES],to[RAF_DAG_MAX_EDGES];
  raf_u16 offsets[RAF_DAG_MAX_NODES+1],adjacency[RAF_DAG_MAX_EDGES];
- raf_u16 cursor[RAF_DAG_MAX_NODES],indegree[RAF_DAG_MAX_NODES];
+ /* Reuse indegree as CSR cursor during finalize; saves 4,114 bytes. */
+ raf_u16 indegree[RAF_DAG_MAX_NODES];
  raf_u16 depth[RAF_DAG_MAX_NODES],order[RAF_DAG_MAX_NODES];
 } raf_dag;
+enum { RAF_DAG_WORKSPACE_BYTES = sizeof(raf_dag) };
 int raf_dag_init(raf_dag *g,raf_u32 nodes);
 int raf_dag_add(raf_dag *g,raf_u32 prerequisite,raf_u32 consumer);
 int raf_dag_finalize(raf_dag *g);

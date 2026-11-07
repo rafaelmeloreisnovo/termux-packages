@@ -30,6 +30,14 @@ int main(void) {
  CHECK(termux_dep_resolver_init(&r,70)==0);
  CHECK(termux_dep_graph_finalize_csr(&r.graph)==0);
  CHECK(termux_dep_resolver_build_layers(&r)==-5);
+ for (int layer=0;layer<TERMUX_TOROIDAL_LAYERS;++layer)
+   CHECK(r.layers[layer].pkg_count==0);
+ termux_dep_resolver_destroy(&r);
+ CHECK(termux_dep_resolver_init(&r,257)==0);
+ for(int i=0;i<256;++i)
+   CHECK(termux_dep_graph_add_edge(&r.graph,(uint16_t)i,(uint16_t)(i+1))==0);
+ CHECK(termux_dep_graph_finalize_csr(&r.graph)==0);
+ CHECK(termux_dep_resolver_build_layers(&r)==-4);
  termux_dep_resolver_destroy(&r);
  if(!failures)puts("Legacy adapter PASS_SCOPED: CSR, indegree 300, cycle, layer bound");
  return failures!=0;
