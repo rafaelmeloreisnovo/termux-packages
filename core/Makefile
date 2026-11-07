@@ -133,6 +133,21 @@ test-security-hardening: tests/test_security_hardening.o crypto_ed25519.o crypto
 test-integration-e2e: tests/test_integration_e2e.o dist_orchestrator.o rpc_coordinator.o dist_checkpoint.o load_balancer.o crypto_ed25519.o crypto_chacha20.o rate_limiter.o crypto_pqc.o
 	$(CC) $(CFLAGS) -o $@ $^ $(LDFLAGS) -lm
 
+# RAFCODEPHI Stage 2 — read-only real-recipe shadow.
+# Compiles the standalone kernel without libc references; hosted CLI uses
+# the existing scanner/parser. Default pkg-real is not modified.
+pkg-real-dag-shadow: pkg_dag_shadow_cli.o pkg_dag_shadow.o raf_dag/raf_dag.shadow.o pkg_scanner.o pkg_parser.o pkg_dag.o
+	$(CC) $(CFLAGS) -o $@ $^ $(LDFLAGS)
+
+test-pkg-dag-shadow: tests/test_pkg_dag_shadow.o pkg_dag_shadow.o raf_dag/raf_dag.shadow.o
+	$(CC) $(CFLAGS) -o $@ $^ $(LDFLAGS)
+
+raf_dag/raf_dag.shadow.o: raf_dag/raf_dag.c raf_dag/raf_dag.h
+	$(CC) -std=c11 -O2 -ffreestanding -fno-builtin -fno-stack-protector \
+	  -fno-unwind-tables -fno-asynchronous-unwind-tables \
+	  -ffunction-sections -fdata-sections -fvisibility=hidden \
+	  -Wall -Wextra -Wshadow -Werror -c -o $@ $<
+
 # REAL: inventory + parser + DAG (no simulation)
 pkg-real: pkg_real_cli.o pkg_scanner.o pkg_parser.o pkg_dag.o
 	$(CC) $(CFLAGS) -o $@ $^ $(LDFLAGS)

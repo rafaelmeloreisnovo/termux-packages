@@ -1,0 +1,74 @@
+{
+  "schema": "rafaelia.muwrite.dag-shadow-stage2/v1",
+  "mu_id": "MU-TERMUX-DAG-STAGE2-SHADOW-20261107-S1",
+  "timestamp_utc": "2026-11-07T20:09:09Z",
+  "parent": "MU-TERMUX-DAG-FREESTANDING-20261107-S2",
+  "producer": "rafaelmeloreisnovo/termux-packages",
+  "base_sha": "44aa07795b2c488cc7e4077dd50d0e2d65f0ff68",
+  "validated_source_sha": "b089b0d4c61eccebc70f2c06ad5e0b25c91a3170",
+  "branch": "feat/raf-dag-stage2-shadow-20261107",
+  "pr_url": "https://github.com/rafaelmeloreisnovo/termux-packages/pull/186",
+  "kind": "READ_ONLY_REAL_RECIPE_SHADOW_INTEGRATION",
+  "delta_summary": "Hosted package recipe graph consumer-to-dependency edges explicitly inverted into pure freestanding DAG, independent order/depth comparison, negative gates, source recipe fixture CI, no builder replacement",
+  "files": [
+    "core/pkg_dag_shadow.h",
+    "core/pkg_dag_shadow.c",
+    "core/pkg_dag_shadow_cli.c",
+    "core/tests/test_pkg_dag_shadow.c",
+    "core/Makefile",
+    ".github/workflows/rafcodephi-dag-stage2-shadow.yml",
+    "001_PONTEIRO/DAG_FREESTANDING_STAGE2_V1.md"
+  ],
+  "evidence": {
+    "ci_run_id": 42409627509,
+    "ci_url": "https://github.com/rafaelmeloreisnovo/termux-packages/actions/runs/42409627509",
+    "job_id": 128514734035,
+    "conclusion": "SUCCESS_SCOPED",
+    "source_recipe_packages": [
+      "bash",
+      "apt",
+      "dpkg",
+      "ninja",
+      "coreutils",
+      "libc++"
+    ],
+    "projection": {
+      "nodes": 6,
+      "edges_internal": 5,
+      "unresolved_external": 22,
+      "alternatives": 0,
+      "classification": "OBSERVED_LIMITED"
+    },
+    "checks": [
+      "independent_shadow_falsifiers=PASS",
+      "real_recipe_nonzero_edges=PASS",
+      "comparative_depth_and_topological_validity=PASS",
+      "armv7a_aarch64_freestanding_objects_no_undefined_symbols=PASS"
+    ],
+    "measured_runtime_performance": "TOKEN_VAZIO",
+    "full_fleet_comparison": "TOKEN_VAZIO"
+  },
+  "routes_L9": [
+    "P:exact_GitHub_SHA",
+    "I:001_PONTEIRO",
+    "E:CI_logs",
+    "R:termux-packages_to_App_pending",
+    "C:source-factory"
+  ],
+  "boundaries": "SOURCE != ARTIFACT != EXECUTION != EVIDENCE != CLAIM",
+  "gates": {
+    "core_graph_scoped_CI": "PASS_SCOPED",
+    "package_builder_replacement": "NOT_DONE",
+    "apt_signed_repository": "TOKEN_VAZIO",
+    "bootstrap_install_on_moto_e7": "TOKEN_VAZIO",
+    "global_pr_checks": "TOKEN_VAZIO",
+    "claim_allowed_device_runtime": false,
+    "release_allowed": false
+  },
+  "rollback": "Close or revert this separate Draft PR; no changes to default pkg-real or existing recipes; keep PR185 history.",
+  "R3": {
+    "F_ok": "Source-backed DAG shadow comparison and ARM32/64 objects passed CI on exact source SHA",
+    "F_gap": "Unresolved external projected deps, fleet capacity and full Android bootstrap/device not verified",
+    "F_next": "Determine full-fleet counts; introduce bounded sharding only if required; compare linked ELF/performance and run device gate before enabling operational changes"
+  }
+}

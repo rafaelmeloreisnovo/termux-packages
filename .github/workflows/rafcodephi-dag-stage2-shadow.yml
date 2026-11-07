@@ -1,0 +1,52 @@
+name: RAFCODEPHI DAG Stage 2 — real recipe shadow
+on:
+  pull_request:
+    paths:
+      - 'core/pkg_dag_shadow*'
+      - 'core/tests/test_pkg_dag_shadow.c'
+      - 'core/Makefile'
+      - 'core/raf_dag/**'
+      - '.github/workflows/rafcodephi-dag-stage2-shadow.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  shadow:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+      - name: Build read-only comparison and negative tests
+        run: |
+          set -euo pipefail
+          make -C core pkg-real-dag-shadow test-pkg-dag-shadow CC=clang
+          ./core/test-pkg-dag-shadow
+      - name: Compare 6 real Termux source recipes, isolated inventory
+        run: |
+          set -euo pipefail
+          fixture="$(mktemp -d)"
+          trap 'rm -rf "$fixture"' EXIT
+          mkdir -p "$fixture"/{packages,root-packages,x11-packages,disabled-packages}
+          for pkg in bash apt dpkg ninja coreutils 'libc++'; do
+            mkdir -p "$fixture/packages/$pkg"
+            cp "packages/$pkg/build.sh" "$fixture/packages/$pkg/build.sh"
+          done
+          ./core/pkg-real-dag-shadow "$fixture" | tee /tmp/dag-shadow.txt
+          grep -qx 'comparison_state=PASS_SCOPED' /tmp/dag-shadow.txt
+          grep -qx 'projection=OBSERVED_LIMITED' /tmp/dag-shadow.txt
+          grep -Eq '^nodes=6 edges=[1-9][0-9]* ' /tmp/dag-shadow.txt
+          grep -qx 'claim_allowed_device_runtime=false' /tmp/dag-shadow.txt
+      - name: Validate ARM32 and ARM64 freestanding objects
+        run: |
+          set -euo pipefail
+          for triple in armv7a-linux-androideabi21 aarch64-linux-android21; do
+            clang --target="$triple" -std=c11 -O2 -ffreestanding \
+              -fno-builtin -fno-stack-protector -fno-unwind-tables \
+              -fno-asynchronous-unwind-tables -fvisibility=hidden \
+              -Wall -Wextra -Werror -c core/raf_dag/raf_dag.c \
+              -o "/tmp/raf-dag-$triple.o"
+            test -z "$(nm -u "/tmp/raf-dag-$triple.o")"
+            readelf -h "/tmp/raf-dag-$triple.o" | grep -E 'Class:|Machine:'
+          done
