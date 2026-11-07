@@ -5,6 +5,20 @@ DEST=${1:-"$ROOT/out"}
 mkdir -p "$DEST"
 CC_HOST=${CC_HOST:-cc}
 CLANG=${CLANG:-clang}
+AR_BIN=${RAF_AR:-}
+if [ -z "$AR_BIN" ]; then
+  for candidate in llvm-ar llvm-ar-22 llvm-ar-21 llvm-ar-20 llvm-ar-19 llvm-ar-18 llvm-ar-17 ar; do
+    if command -v "$candidate" >/dev/null 2>&1; then AR_BIN=$candidate; break; fi
+  done
+fi
+[ -n "$AR_BIN" ] && command -v "$AR_BIN" >/dev/null 2>&1 || { echo "missing LLVM/GNU archiver" >&2; exit 127; }
+OBJDUMP_BIN=${RAF_OBJDUMP:-}
+if [ -z "$OBJDUMP_BIN" ]; then
+  for candidate in llvm-objdump llvm-objdump-22 llvm-objdump-21 llvm-objdump-20 llvm-objdump-19 llvm-objdump-18 llvm-objdump-17; do
+    if command -v "$candidate" >/dev/null 2>&1; then OBJDUMP_BIN=$candidate; break; fi
+  done
+fi
+[ -n "$OBJDUMP_BIN" ] && command -v "$OBJDUMP_BIN" >/dev/null 2>&1 || { echo "missing LLVM cross-ISA disassembler" >&2; exit 127; }
 # closed target/flag vocabulary: no eval; no external imports in compiled leaves
 n=0
 while IFS='|' read -r target rel opt; do
@@ -42,7 +56,7 @@ done < "$ROOT/flags/units.v2.tsv"
 for target in portable armv7-a32 armv7-thumb2 aarch64; do
   set -- "$DEST/$target/"*.o
   [ "$#" -eq 12 ] || { echo "unexpected object count: $target" >&2; exit 4; }
-  llvm-ar rcs "$DEST/$target/librafmicroasm.a" "$@"
+  "$AR_BIN" rcs "$DEST/$target/librafmicroasm.a" "$@"
 done
 # Host executable links portable archive. Any failed vector is a nonzero exit.
 "$CC_HOST" -std=c11 -O2 -Wall -Wextra -Werror -I"$ROOT/include" \
@@ -59,7 +73,7 @@ for pair in 'rev32:rev' 'rev16:rev16' 'rbit32:rbit' 'clz32:clz' 'ctz32:rbit' \
  'ror32:ror' 'lsl32:lsl' 'lsr32:lsr' 'xor32:eor' 'and32:and' 'orr32:orr' 'bic32:bic'; do
   op=${pair%%:*}; ins=${pair#*:}
   for target in armv7-a32 armv7-thumb2 aarch64; do
-    llvm-objdump -d "$DEST/$target/$op.o" > "$DEST/$target/$op.dis"
+    "$OBJDUMP_BIN" -d "$DEST/$target/$op.o" > "$DEST/$target/$op.dis"
     if ! grep -Eq "[[:space:]]$ins(\.w)?[[:space:]]" "$DEST/$target/$op.dis"; then
       echo "ISA instruction missing: $target/$op expected $ins" >&2; exit 6
     fi
