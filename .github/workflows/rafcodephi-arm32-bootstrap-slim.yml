@@ -1,0 +1,86 @@
+name: RAFCODEPHI ARM32 Bootstrap - compact handoff
+
+# Reuse a verified historical producer run. Do not rebuild DEBs/ARM64.
+# Upload the original 22.7 MB bootstrap ZIP and metadata, never an APK claim.
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - .github/workflows/rafcodephi-arm32-bootstrap-slim.yml
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: rafcodephi-arm32-slim-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  extract-arm32:
+    name: Extract and publish original ARM32 bootstrap (85 MiB cap)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 40
+    env:
+      PRODUCER_RUN: '41904631252'
+      PRODUCER_SHA: e7f23f46d039d04577c035457c920047f03dc2a1
+      PRODUCER_ARTIFACT_ID: '13364243636'
+      PRODUCER_ARTIFACT_NAME: rafcodephi-real-bootstrap-41904631252-arm
+      CLAIM_ALLOWED: 'false'
+      DEVICE_RUNTIME: TOKEN_VAZIO
+
+    steps:
+      - name: Checkout local extraction validator
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+          fetch-depth: 1
+
+      - name: Validate exact historical producer artifact
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$PRODUCER_RUN" --jq '.conclusion')" = success
+          actual_id="$(gh api "repos/$GITHUB_REPOSITORY/actions/artifacts/$PRODUCER_ARTIFACT_ID" --jq '.id')"
+          actual_name="$(gh api "repos/$GITHUB_REPOSITORY/actions/artifacts/$PRODUCER_ARTIFACT_ID" --jq '.name')"
+          actual_run="$(gh api "repos/$GITHUB_REPOSITORY/actions/artifacts/$PRODUCER_ARTIFACT_ID" --jq '.workflow_run.id // empty')"
+          expired="$(gh api "repos/$GITHUB_REPOSITORY/actions/artifacts/$PRODUCER_ARTIFACT_ID" --jq '.expired')"
+          test "$actual_id" = "$PRODUCER_ARTIFACT_ID"
+          test "$actual_name" = "$PRODUCER_ARTIFACT_NAME"
+          test "$actual_run" = "$PRODUCER_RUN"
+          test "$expired" = false
+
+      - name: Download source-built ARM32 artifact only
+        uses: actions/download-artifact@v8
+        with:
+          name: rafcodephi-real-bootstrap-41904631252-arm
+          run-id: 41904631252
+          repository: ${{ github.repository }}
+          github-token: ${{ github.token }}
+          path: inbound
+
+      - name: Verify and publish byte-identical ARM32 bootstrap
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 scripts/ci/rafcodephi_extract_arm32_handoff.py \
+            --input inbound --output dist/arm32 \
+            --source-run "$PRODUCER_RUN" --source-sha "$PRODUCER_SHA"
+          (cd dist/arm32 && sha256sum -c SHA256SUMS.txt)
+          test "$(find dist/arm32 -name '*.zip' -type f | wc -l)" -eq 1
+          echo '### RAFCODEPHI ARM32 compact bootstrap' >> "$GITHUB_STEP_SUMMARY"
+          echo "Source run: $PRODUCER_RUN / $PRODUCER_SHA" >> "$GITHUB_STEP_SUMMARY"
+          echo "ARM32 bootstrap bytes: $(stat -c '%s' dist/arm32/rafcodephi-bootstrap-arm.zip)" >> "$GITHUB_STEP_SUMMARY"
+          echo 'APT signed repo BLOCKED; Android runtime TOKEN_VAZIO; NOT AN APK.' >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload compact ARM32 bootstrap, manifest, receipt and SHA256
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: rafcodephi-bootstrap-arm32-41904631252-compact
+          path: dist/arm32/
+          if-no-files-found: error
+          compression-level: 0
+          retention-days: 30
