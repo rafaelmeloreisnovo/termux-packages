@@ -1,0 +1,94 @@
+# ci_track: artifact
+# ci_abis: armeabi-v7a
+name: RAFCODEPHI ARM32 Compact Bootstrap (from source-built run)
+
+on:
+  workflow_dispatch:
+    inputs:
+      source_run_id:
+        description: Existing successful real-bootstrap producer run ID
+        type: string
+        required: true
+        default: '41904631252'
+      source_sha:
+        description: Exact 40-character producer HEAD SHA for that run
+        type: string
+        required: true
+        default: 'e7f23f46d039d04577c035457c920047f03dc2a1'
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: arm32-compact-${{ inputs.source_run_id }}
+  cancel-in-progress: false
+
+jobs:
+  compact-arm32:
+    name: Extract verified ARM32 runtime ZIP (85 MB cap)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 50
+    steps:
+      - name: Checkout producer implementation
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+
+      - name: Verify historical run identity and conclusion
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          SOURCE_RUN: ${{ inputs.source_run_id }}
+          EXPECTED_SHA: ${{ inputs.source_sha }}
+        run: |
+          set -euo pipefail
+          [[ "$SOURCE_RUN" =~ ^[0-9]+$ ]] || { echo 'INVALID_RUN_ID'; exit 2; }
+          [[ "$EXPECTED_SHA" =~ ^[0-9a-f]{40}$ ]] || { echo 'INVALID_SHA'; exit 2; }
+          result="$(gh api "repos/${GITHUB_REPOSITORY}/actions/runs/${SOURCE_RUN}" --jq '[.head_sha,.status,.conclusion] | @tsv')"
+          IFS=$'\t' read -r actual_sha state conclusion <<< "$result"
+          [[ "$actual_sha" == "$EXPECTED_SHA" && "$state" == 'completed' && "$conclusion" == 'success' ]] || {
+            echo 'SOURCE_RUN_NOT_MATCHED_OR_NOT_SUCCESS'; exit 1;
+          }
+          echo "SOURCE_VERIFIED_RUN=${SOURCE_RUN} HEAD=${actual_sha}"
+
+      - name: Download original ARM32 and independent custody artifacts
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          SOURCE_RUN: ${{ inputs.source_run_id }}
+        run: |
+          set -euo pipefail
+          mkdir -p input custody
+          gh run download "$SOURCE_RUN" --repo "$GITHUB_REPOSITORY" \
+            --name "rafcodephi-real-bootstrap-${SOURCE_RUN}-arm" --dir input
+          gh run download "$SOURCE_RUN" --repo "$GITHUB_REPOSITORY" \
+            --name "rafcodephi-real-bootstrap-${SOURCE_RUN}-custody" --dir custody
+
+      - name: Extract original bootstrap without changing its bytes
+        shell: bash
+        env:
+          SOURCE_RUN: ${{ inputs.source_run_id }}
+          SOURCE_SHA: ${{ inputs.source_sha }}
+        run: |
+          set -euo pipefail
+          python3 scripts/ci/rafcodephi_arm32_compact.py \
+            --download-dir input --custody-dir custody --output-dir dist/arm32 \
+            --source-run "$SOURCE_RUN" --source-sha "$SOURCE_SHA" --max-bytes 85000000
+          (cd dist/arm32 && sha256sum -c SHA256SUMS.txt)
+          {
+            echo '### ARM32 bootstrap: unchanged runtime ZIP'
+            echo 'ZIP target: <=85,000,000 bytes (known source ZIP: 22,706,296 bytes)'
+            echo 'APT repository: blocked until separately published and signed'
+            echo 'Device test: TOKEN_VAZIO, not a certified APK'
+            cat dist/arm32/SHA256SUMS.txt
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Publish compact ARM32 bootstrap and handoff receipt
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: rafcodephi-arm32-compact-${{ inputs.source_run_id }}
+          path: dist/arm32/
+          if-no-files-found: error
+          compression-level: 0
+          retention-days: 30
