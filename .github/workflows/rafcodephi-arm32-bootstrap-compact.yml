@@ -1,0 +1,166 @@
+name: RAFCODEPHI ARM32 — compact bootstrap from existing run
+
+on:
+  workflow_dispatch:
+    inputs:
+      producer_run_id:
+        description: 'Successful rafcodephi-real-bootstrap source run (same repository)'
+        required: true
+        default: '41904631252'
+        type: string
+      maximum_mib:
+        description: 'Maximum ZIP size in MiB; never remove runtime files to fit'
+        required: true
+        default: '85'
+        type: string
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: rafcodephi-arm32-compact-${{ inputs.producer_run_id }}
+  cancel-in-progress: false
+
+jobs:
+  compact-arm32:
+    name: Publish real ARM32 ZIP only (no DEB evidence transport)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - name: Validate selected run and size target
+        shell: bash
+        env:
+          RUN_ID: ${{ inputs.producer_run_id }}
+          MAX_MIB: ${{ inputs.maximum_mib }}
+        run: |
+          set -euo pipefail
+          [[ "$RUN_ID" =~ ^[1-9][0-9]{0,15}$ ]] || { echo 'BLOCKED_BAD_RUN_ID'; exit 2; }
+          [[ "$MAX_MIB" =~ ^[1-9][0-9]{0,3}$ ]] || { echo 'BLOCKED_BAD_SIZE_LIMIT'; exit 2; }
+
+      - name: Download existing ARM32 source-build artifact
+        uses: actions/download-artifact@v8
+        with:
+          name: rafcodephi-real-bootstrap-${{ inputs.producer_run_id }}-arm
+          run-id: ${{ inputs.producer_run_id }}
+          github-token: ${{ github.token }}
+          repository: ${{ github.repository }}
+          path: incoming
+
+      - name: Select immutable bootstrap and validate without modifying its bytes
+        shell: bash
+        env:
+          SOURCE_RUN_ID: ${{ inputs.producer_run_id }}
+          MAX_MIB: ${{ inputs.maximum_mib }}
+          SOURCE_REPO: ${{ github.repository }}
+          WORKFLOW_SHA: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import hashlib
+          import json
+          import os
+          import shutil
+          import zipfile
+          from pathlib import Path
+
+          root = Path('incoming')
+          candidates = list(root.rglob('rafcodephi-bootstrap-arm.zip'))
+          manifests = list(root.rglob('RAFCODEPHI_REAL_BOOTSTRAP_MANIFEST.txt'))
+          if len(candidates) != 1 or len(manifests) != 1:
+              raise SystemExit(f'BLOCKED_INPUT_UNIQUE zip={len(candidates)} manifest={len(manifests)}')
+          source, manifest_path = candidates[0], manifests[0]
+          raw = manifest_path.read_text(encoding='utf-8')
+          manifest = {}
+          for line in raw.splitlines():
+              if not line or line.startswith('#'):
+                  continue
+              if '=' not in line:
+                  raise SystemExit('BLOCKED_MANIFEST_SYNTAX')
+              key, value = line.split('=', 1)
+              if key in manifest:
+                  raise SystemExit('BLOCKED_DUPLICATE_MANIFEST_KEY')
+              manifest[key] = value
+          required_manifest = {
+              'schema': 'rafcodephi.real-bootstrap-sourcebuild/v1',
+              'package_name': 'com.termux.rafacodephi',
+              'prefix': '/data/data/com.termux.rafacodephi/files/usr',
+              'bridge_allowed': 'false',
+              'legacy_prefix_allowed': 'false',
+              'prefix_gate_state_arm': 'PASS_SCOPED',
+              'deb_gate_state_arm': 'PASS_SCOPED',
+              'claim_allowed_device_runtime': 'false',
+              'device_runtime_proof': 'TOKEN_VAZIO',
+          }
+          for key, expected in required_manifest.items():
+              if manifest.get(key) != expected:
+                  raise SystemExit(f'BLOCKED_MANIFEST_{key}: {manifest.get(key)!r}')
+          size = source.stat().st_size
+          if int(manifest.get('bytes_arm', '-1')) != size:
+              raise SystemExit('BLOCKED_MANIFEST_BYTE_MISMATCH')
+          if size > int(os.environ['MAX_MIB']) * 1024 * 1024:
+              raise SystemExit(f'BLOCKED_OVER_SIZE_LIMIT bytes={size}; do not prune installed runtime')
+          with zipfile.ZipFile(source) as archive:
+              names = set(archive.namelist())
+              required = {
+                  'BOOTSTRAP_INFO', 'BOOTSTRAP_PROFILE.json', 'SYMLINKS.txt',
+                  'bin/bash', 'bin/pkg', 'bin/apt', 'bin/dpkg',
+                  'etc/apt/sources.list.d/termux.sources', 'var/lib/dpkg/status',
+              }
+              if not required.issubset(names):
+                  raise SystemExit(f'BLOCKED_RUNTIME_FILES_MISSING: {sorted(required - names)}')
+              bad = archive.testzip()
+              if bad:
+                  raise SystemExit(f'BLOCKED_ZIP_CRC: {bad}')
+              profile = json.loads(archive.read('BOOTSTRAP_PROFILE.json'))
+              if profile.get('arch') != 'arm' or profile.get('profile') != 'real-pkg':
+                  raise SystemExit('BLOCKED_PROFILE_ARCH_OR_LAYER')
+              if profile.get('package_name') != required_manifest['package_name'] or profile.get('prefix') != required_manifest['prefix']:
+                  raise SystemExit('BLOCKED_PROFILE_PACKAGE_PREFIX')
+              for binary in ('bin/bash', 'bin/apt', 'bin/dpkg'):
+                  with archive.open(binary) as stream:
+                      head = stream.read(20)
+                  if len(head) < 20 or head[:4] != b'\x7fELF' or head[4] != 1 or int.from_bytes(head[18:20], 'little') != 40:
+                      raise SystemExit(f'BLOCKED_NOT_ELF_ARM32: {binary}')
+              links = archive.read('SYMLINKS.txt').decode('utf-8').splitlines()
+              if 'bin/sh' not in names and not any(row.endswith('←./bin/sh') or row.endswith('←bin/sh') for row in links):
+                  raise SystemExit('BLOCKED_SHELL_SYMLINK_MISSING')
+          output = Path('publish')
+          output.mkdir(exist_ok=True)
+          target = output / 'rafcodephi-bootstrap-arm.zip'
+          shutil.copyfile(source, target)
+          digest = hashlib.sha256(target.read_bytes()).hexdigest()
+          (output / 'SHA256SUMS.txt').write_text(f'{digest}  {target.name}\n', encoding='utf-8')
+          (output / 'RAFCODEPHI_REAL_BOOTSTRAP_MANIFEST.txt').write_text(raw, encoding='utf-8')
+          receipt = {
+              'schema': 'rafcodephi.arm32-compact-handoff/v1',
+              'source_repository': os.environ['SOURCE_REPO'],
+              'source_run_id': os.environ['SOURCE_RUN_ID'],
+              'source_artifact': f"rafcodephi-real-bootstrap-{os.environ['SOURCE_RUN_ID']}-arm",
+              'workflow_sha': os.environ['WORKFLOW_SHA'],
+              'arch': 'arm', 'android_abi': 'armeabi-v7a',
+              'package_name': 'com.termux.rafacodephi',
+              'prefix': required_manifest['prefix'],
+              'zip_name': target.name, 'zip_bytes': size, 'zip_sha256': digest,
+              'transformation': 'BYTE_IDENTICAL_COPY_NO_PRUNING',
+              'source_build_gates': 'PASS_SCOPED_FROM_SOURCE_MANIFEST',
+              'device_execution': 'TOKEN_VAZIO',
+              'apt_repository_publication': 'NOT_PROVEN',
+              'claim_allowed_device_runtime': False,
+          }
+          (output / 'receipt.json').write_text(json.dumps(receipt, indent=2, sort_keys=True) + '\n', encoding='utf-8')
+          print(f'ARM32_COMPACT_BOOTSTRAP=PASS_SCOPED bytes={size} sha256={digest}')
+          with open(os.environ['GITHUB_STEP_SUMMARY'], 'a', encoding='utf-8') as summary:
+              summary.write(f'### ARM32 compact ZIP: {size / 1e6:.2f} MB ({size} bytes)\n\n')
+              summary.write(f'ZIP SHA-256: `{digest}`\n\n')
+              summary.write('Unmodified bootstrap payload; physical Android and signed apt remain unverified.\n')
+          PY
+
+      - name: Upload compact ARM32 bootstrap for download
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: rafcodephi-arm32-bootstrap-compact-${{ inputs.producer_run_id }}
+          path: publish/
+          retention-days: 30
+          compression-level: 0
+          if-no-files-found: error
