@@ -1,0 +1,18 @@
+name: RAFAELIA MicroASM v2 per-file build
+on:
+  pull_request:
+    paths:
+      - 'raf_microasm/v2/**'
+      - '.github/workflows/raf-microasm-v2.yml'
+      - '001_PONTEIRO/MICROASM_V2_CURRENT.md'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  bounded-48-object-matrix:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Compile micro-modules with per-file flags and adversarial gate
+        shell: bash
+        run: sh raf_microasm/v2/tooling/build_v2.sh "$RUNNER_TEMP/raf_microasm_v2"
