@@ -6,7 +6,7 @@ Source: rafaelmeloreisnovo/termux-packages, branch feat/inline-asm-dualabi-l0-20
 
 Test: `sh tests/raf_inline_asm_v1_gate.sh core`; strict warnings, positive vectors, deliberately failing negative vector, three ELF codegen targets, ISA disassembly and zero undefined symbols. Build-time cc/clang/readelf/nm/llvm-objdump are tools, not runtime dependencies.
 
-Package producer: no recipe, dpkg, APT, bootstrap builder or upstream source is replaced. No runtime behavior change from these additive files. ARM32 `apkc/sys.h::os_open` has a separate possible mode-argument gap to audit; not changed here.
+Package producer: no recipe, dpkg, APT, bootstrap builder or upstream source is replaced. No runtime behavior change from these additive files. Correction S2 (supersedes S1 suspicion): ARM32 `apkc/sys.h::os_open` already forwards mode through `_sc3_32` as register `r2`; no defect established. ABI scrutiny remains a separate gate.
 
 Next: exact-head CI → peer parity SHA256 → review → scoped consumer wiring → real package/ZIP/APK pinned SHA → ARMv7 physical bootstrap+pkg/apt+terminal receipts. `claim_allowed=false`, `release_allowed=false`.
 
