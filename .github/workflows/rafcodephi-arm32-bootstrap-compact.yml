@@ -1,6 +1,10 @@
 name: RAFCODEPHI ARM32 — compact bootstrap from existing run
 
 on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/rafcodephi-arm32-bootstrap-compact.yml'
   workflow_dispatch:
     inputs:
       producer_run_id:
@@ -19,7 +23,7 @@ permissions:
   actions: read
 
 concurrency:
-  group: rafcodephi-arm32-compact-${{ inputs.producer_run_id }}
+  group: rafcodephi-arm32-compact-${{ inputs.producer_run_id || '41904631252' }}
   cancel-in-progress: false
 
 jobs:
@@ -31,8 +35,8 @@ jobs:
       - name: Validate selected run and size target
         shell: bash
         env:
-          RUN_ID: ${{ inputs.producer_run_id }}
-          MAX_MIB: ${{ inputs.maximum_mib }}
+          RUN_ID: ${{ inputs.producer_run_id || '41904631252' }}
+          MAX_MIB: ${{ inputs.maximum_mib || '85' }}
         run: |
           set -euo pipefail
           [[ "$RUN_ID" =~ ^[1-9][0-9]{0,15}$ ]] || { echo 'BLOCKED_BAD_RUN_ID'; exit 2; }
@@ -41,8 +45,8 @@ jobs:
       - name: Download existing ARM32 source-build artifact
         uses: actions/download-artifact@v8
         with:
-          name: rafcodephi-real-bootstrap-${{ inputs.producer_run_id }}-arm
-          run-id: ${{ inputs.producer_run_id }}
+          name: rafcodephi-real-bootstrap-${{ inputs.producer_run_id || '41904631252' }}-arm
+          run-id: ${{ inputs.producer_run_id || '41904631252' }}
           github-token: ${{ github.token }}
           repository: ${{ github.repository }}
           path: incoming
@@ -50,8 +54,8 @@ jobs:
       - name: Select immutable bootstrap and validate without modifying its bytes
         shell: bash
         env:
-          SOURCE_RUN_ID: ${{ inputs.producer_run_id }}
-          MAX_MIB: ${{ inputs.maximum_mib }}
+          SOURCE_RUN_ID: ${{ inputs.producer_run_id || '41904631252' }}
+          MAX_MIB: ${{ inputs.maximum_mib || '85' }}
           SOURCE_REPO: ${{ github.repository }}
           WORKFLOW_SHA: ${{ github.sha }}
         run: |
@@ -159,7 +163,7 @@ jobs:
       - name: Upload compact ARM32 bootstrap for download
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
         with:
-          name: rafcodephi-arm32-bootstrap-compact-${{ inputs.producer_run_id }}
+          name: rafcodephi-arm32-bootstrap-compact-${{ inputs.producer_run_id || '41904631252' }}
           path: publish/
           retention-days: 30
           compression-level: 0
