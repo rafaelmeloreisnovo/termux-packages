@@ -7,6 +7,20 @@ CC=cc
 CLANG=clang
 TMP=$(mktemp -d)
 trap 'rm -rf "$TMP"' EXIT HUP INT TERM
+# Cross-ISA validation must disassemble the compiled ELF object, not source-only ASM.
+LLVM_DISASM=${LLVM_OBJDUMP:-}
+if [ -z "$LLVM_DISASM" ]; then
+  for tool in llvm-objdump llvm-objdump-21 llvm-objdump-20 llvm-objdump-19 llvm-objdump-18 llvm-objdump-17 llvm-objdump-16; do
+    if command -v "$tool" >/dev/null 2>&1; then
+      LLVM_DISASM=$(command -v "$tool")
+      break
+    fi
+  done
+fi
+if [ -z "$LLVM_DISASM" ] || ! command -v "$LLVM_DISASM" >/dev/null 2>&1; then
+  echo 'BLOCKED: LLVM cross-ISA disassembler missing (no source-only PASS fallback)' >&2
+  exit 127
+fi
 "$CC" -std=c11 -O2 -Wall -Wextra -Werror -Wconversion -Wsign-conversion \
   -I"$ROOT/$INC" -DRAF_ASM_HOST_MAIN "$ROOT/tests/raf_inline_asm_v1_selftest.c" -o "$TMP/host"
 "$TMP/host"
@@ -26,9 +40,9 @@ for target in armv7-thumb armv7-a32 aarch64; do
   if [ -n "$(nm -u "$TMP/$target.o")" ]; then
     echo "FAIL: unresolved symbols for $target" >&2; exit 1
   fi
-  llvm-objdump -d "$TMP/$target.o" > "$TMP/$target.asm"
+  "$LLVM_DISASM" -d "$TMP/$target.o" > "$TMP/$target.asm"
   for instruction in rev clz rbit; do
-    if ! grep -Eq "[[:space:]]$instruction[[:space:]]" "$TMP/$target.asm"; then
+    if ! grep -Eq "[[:space:]]$instruction([.][a-z0-9]+)?[[:space:]]" "$TMP/$target.asm"; then
       echo "FAIL: $instruction not emitted for $target" >&2; exit 1
     fi
   done
