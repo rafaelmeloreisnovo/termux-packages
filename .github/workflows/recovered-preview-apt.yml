@@ -1,0 +1,98 @@
+name: Prepare signed recovered RAFCODEPHI package snapshot
+on:
+  push:
+    branches: [fix/recover-real-pkg-handoff-20261109]
+    paths: [.github/workflows/recovered-preview-apt.yml]
+  workflow_dispatch:
+permissions:
+  actions: read
+  contents: write
+concurrency:
+  group: recovered-preview-apt-${{ github.ref }}
+  cancel-in-progress: false
+jobs:
+  signed-snapshot:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+      - name: Download immutable recovered package sets
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p inputs
+          gh api repos/rafaelmeloreisnovo/termux-packages/actions/artifacts/13691792986/zip > inputs/arm.zip
+          gh api repos/rafaelmeloreisnovo/termux-packages/actions/artifacts/13692117243/zip > inputs/aarch64.zip
+          echo '3d44df5dcd20c539140f1c3867f41e1b3311f009ff80d24c5a4e65fbcdb35953  inputs/arm.zip' | sha256sum -c -
+          echo 'e6da0da42ba0d51b12c932f4d41985433a9396414952b6cddc23948e53e44804  inputs/aarch64.zip' | sha256sum -c -
+          python3 - <<'PY'
+          import io, pathlib, tarfile, zipfile
+          for arch in ('arm','aarch64'):
+              root=pathlib.Path('inputs')/arch
+              root.mkdir()
+              with zipfile.ZipFile('inputs/'+arch+'.zip') as z:
+                  (root/'receipt.json').write_bytes(z.read('receipt.json'))
+                  with tarfile.open(fileobj=io.BytesIO(z.read('debs.tar.gz')), mode='r:gz') as t:
+                      for m in t:
+                          p=pathlib.PurePosixPath(m.name)
+                          if p.is_absolute() or '..' in p.parts or '\\' in m.name: raise ValueError('unsafe path')
+                          if m.isdir(): continue
+                          if not m.isfile() or len(p.parts)!=2 or p.parts[0]!='debs': raise ValueError('unsafe member')
+                          target=root/str(p)
+                          target.parent.mkdir(exist_ok=True)
+                          target.write_bytes(t.extractfile(m).read())
+          PY
+          rm inputs/*.zip
+      - name: Build signed development snapshot from verified package bytes
+        shell: bash
+        run: |
+          set -euo pipefail
+          branch="rafcodephi-apt-preview-${GITHUB_RUN_ID}"
+          url="https://raw.githubusercontent.com/rafaelmeloreisnovo/termux-packages/$branch/repo"
+          echo "SNAPSHOT_BRANCH=$branch" >> "$GITHUB_ENV"
+          echo "SNAPSHOT_URL=$url" >> "$GITHUB_ENV"
+          python3 scripts/prepare_recovered_apt.py --source inputs --output publish/repo --signing "$RUNNER_TEMP/snapshot-signing" --url "$url"
+      - name: Verify signed update and Nano Ninja Python dependency downloads on both ABIs
+        run: python3 scripts/test_recovered_apt_resolution.py --base checks --repo publish/repo
+      - name: Publish new development snapshot branch after package gates
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git branch --show-current)" = fix/recover-real-pkg-handoff-20261109
+          gh auth setup-git
+          git -C publish init -b "$SNAPSHOT_BRANCH"
+          git -C publish config user.name 'RAFCODEPHI CI'
+          git -C publish config user.email 'actions@users.noreply.github.com'
+          git -C publish remote add origin https://github.com/rafaelmeloreisnovo/termux-packages.git
+          if git -C publish ls-remote --exit-code --heads origin "$SNAPSHOT_BRANCH"; then
+            echo 'BLOCKED: immutable development snapshot branch already exists' >&2
+            exit 2
+          fi
+          printf '%s\n' '# RAFCODEPHI development APT snapshot' '' 'Real custom-prefix ARM32/ARM64 packages; development signing identity, not an official release.' 'See repo/snapshot.json for source run, package counts and public key pin.' > publish/README.md
+          git -C publish add README.md repo
+          git -C publish commit -m 'Publish immutable development APT snapshot from verified source-built DEBs'
+          git -C publish push origin "HEAD:refs/heads/$SNAPSHOT_BRANCH"
+      - name: Verify published HTTPS APT index and package downloads
+        run: python3 scripts/test_recovered_apt_resolution.py --base https-checks --repo publish/repo --url "$SNAPSHOT_URL"
+      - name: Upload public trust anchor and host APT results
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: recovered-signed-apt-snapshot-custody
+          path: |
+            publish/repo/snapshot.json
+            publish/repo/rafcodephi-archive-key.gpg
+            publish/repo/dists/stable/Release
+            publish/repo/dists/stable/InRelease
+            checks/*.json
+            checks/*.log
+            https-checks/*.json
+            https-checks/*.log
+          if-no-files-found: error
+          retention-days: 30
