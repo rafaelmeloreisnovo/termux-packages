@@ -45,6 +45,8 @@ jobs:
             --archive "$RUNNER_TEMP/payload.zip" --destination recovered \
             --arch "$ARCH" --sha256 "$ARTIFACT_SHA256"
           rm "$RUNNER_TEMP/payload.zip"
+          tar -C recovered -czf recovered/debs.tar.gz debs
+          sha256sum recovered/debs.tar.gz > recovered/debs.tar.gz.sha256
           echo 'RECOVERY=PASS_SCOPED SOURCE_RUN=41904631252 RUNTIME=TOKEN_VAZIO APT_ENABLED=false' >> "$GITHUB_STEP_SUMMARY"
       - name: Upload compact bootstrap and source custody
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
@@ -61,7 +63,8 @@ jobs:
         with:
           name: recovered-real-debs-${{ matrix.arch }}
           path: |
-            recovered/debs/
+            recovered/debs.tar.gz
+            recovered/debs.tar.gz.sha256
             recovered/receipt.json
           compression-level: 0
           if-no-files-found: error
