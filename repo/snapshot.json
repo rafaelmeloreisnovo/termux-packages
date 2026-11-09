@@ -1,0 +1,19 @@
+{
+  "schema": "rafcodephi.development-apt-snapshot/v1",
+  "source_run": 41904631252,
+  "source_commit": "e7f23f46d039d04577c035457c920047f03dc2a1",
+  "parent_artifact_sha256": {
+    "arm": "3254ecb6b3416bbe4ce5faf5bbc32c1894d2be438ed3ad6c4e9933730ca0811c",
+    "aarch64": "d45d1a5f6c60193483c45c58234da3e2e5a2aedccf26ef5a0adee95f5151548f"
+  },
+  "package_counts": {
+    "arm": 206,
+    "aarch64": 206
+  },
+  "repository_url": "https://raw.githubusercontent.com/rafaelmeloreisnovo/termux-packages/rafcodephi-apt-preview-42658185015/repo",
+  "public_key_sha256": "12beed0a1af401641bade1ae0d02f94d593bfc6cf8bda76d737d558b92df5f6b",
+  "signing_fingerprint": "8243DCB4F7C77DB6EFC192A842D787E1EA63853A",
+  "signing_mode": "development_snapshot",
+  "claim_allowed_release": false,
+  "device_runtime": "TOKEN_VAZIO"
+}

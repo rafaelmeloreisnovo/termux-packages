@@ -1,0 +1,22 @@
+-----BEGIN PGP SIGNED MESSAGE-----
+Hash: SHA512
+
+Origin: RAFCODEPHI Development Snapshot
+Label: RAFCODEPHI
+Suite: stable
+Codename: stable
+Architectures: arm aarch64
+Components: main
+Date: Mon, 09 Nov 2026 16:46:59 +0000
+SHA256:
+ a8bad6875ab1a03a81e1c0c3b9a2e66d565a886104b5b7ea49477ba35b689f01            99709 main/binary-aarch64/Packages
+ c93c9a8ba413b05bced950ffee1e0b540261efae950f6509ade4973b05b9e603            32263 main/binary-aarch64/Packages.gz
+ 78655220cf19e648d41a8af6c445dafc2b8cbebc779e6a976dc9e1fe1d2b568c            97351 main/binary-arm/Packages
+ 0a8d5aca07840ab4301aa002e6fdde77cf0d3bea52405742d4ac628666bc46ab            32208 main/binary-arm/Packages.gz
+-----BEGIN PGP SIGNATURE-----
+
+iHUEARYKAB0WIQSCQ9y098d9tu/BkqhC14fh6mOFOgUCavH5AwAKCRBC14fh6mOF
+OhKFAQDiEPdHuXiec9mKngII3WGY1K+6cmiCrO1m9MSREh9BhQEA19mk6PEutyeY
+mmLS790Kxdqlk09xJWWSN6t0zIkDbAQ=
+=pJAL
+-----END PGP SIGNATURE-----
