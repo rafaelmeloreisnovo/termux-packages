@@ -12,6 +12,7 @@ on:
           - bootstrap
           - runtime
           - build
+          - developer
           - vectras
           - full
       target_arch:
@@ -67,6 +68,9 @@ jobs:
           build_outputs=(clang lld cmake make ninja binutils file patchelf rafcodephi-rmr-vector-field rafcodephi-rmr-vector-field-static rafcodephi-build-profile)
           build_recipes=(libllvm libllvm cmake make ninja binutils file patchelf rafcodephi-rmr-vector-field rafcodephi-rmr-vector-field rafcodephi-build-profile)
 
+          developer_outputs=(nodejs-lts npm openjdk-21 openjdk-21-runtime-image openjdk-21-x android-tools clang make ninja ndk-sysroot rafcodephi-developer-profile)
+          developer_recipes=(nodejs-lts npm openjdk-21 openjdk-21 openjdk-21 android-tools libllvm make ninja ndk-sysroot rafcodephi-developer-profile)
+
           vectras_outputs=(aria2 tar pulseaudio proot proot-distro rafcodephi-vectras-profile)
           vectras_recipes=(aria2 tar pulseaudio proot proot-distro rafcodephi-vectras-profile)
 
@@ -84,6 +88,10 @@ jobs:
             build)
               required+=("${runtime_outputs[@]}" "${build_outputs[@]}")
               recipes+=("${runtime_recipes[@]}" "${build_recipes[@]}")
+              ;;
+            developer)
+              required+=("${developer_outputs[@]}")
+              recipes+=("${developer_recipes[@]}")
               ;;
             vectras)
               required+=("${runtime_outputs[@]}" "${build_outputs[@]}" "${vectras_outputs[@]}")

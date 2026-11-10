@@ -28,9 +28,13 @@ def build(source, output, signing, url):
     fingerprint=next(l.split(':')[9] for l in result.stdout.splitlines() if l.startswith('fpr:'))
     pub=run(['gpg','--batch','--export',fingerprint],env=env,capture_output=True).stdout
     (output/'rafcodephi-archive-key.gpg').write_bytes(pub)
-    parents={}; counts={}
+    parents={}; counts={}; developer_commits=set(); parent_commits={}
     for arch in ('arm','aarch64'):
         receipt=json.loads((source/arch/'receipt.json').read_text())
+        if receipt.get('schema') != 'rafcodephi.developer-handoff/v1':
+            raise ValueError('developer handoff receipt missing for '+arch)
+        if receipt.get('architecture') != arch or receipt.get('claim_allowed') is not False:
+            raise ValueError('developer handoff boundary mismatch for '+arch)
         dest=output/'pool/main'/arch;dest.mkdir(parents=True)
         count=0
         for name,meta in receipt['files'].items():
@@ -42,6 +46,8 @@ def build(source, output, signing, url):
             shutil.copyfile(p,dest/p.name);count+=1
         if count<1:raise ValueError('no DEBs for '+arch)
         parents[arch]=receipt['input_artifact_sha256'];counts[arch]=count
+        developer_commits.add(receipt['developer_source_commit'])
+        parent_commits[arch]=receipt['parent_source_commit']
         index=output/'dists/stable/main'/('binary-'+arch)/'Packages';index.parent.mkdir(parents=True)
         scan=run(['dpkg-scanpackages','-a',arch,str(Path('pool/main')/arch),'/dev/null'],cwd=output,capture_output=True)
         index.write_bytes(scan.stdout)
@@ -59,10 +65,16 @@ def build(source, output, signing, url):
         run(['gpg','--batch','--yes','--local-user',fingerprint,*args],env=env)
     run(['gpg','--batch','--verify',str(dist/'InRelease')],env=env)
     key_sha=hashlib.sha256(pub).hexdigest()
-    receipt={'schema':'rafcodephi.development-apt-snapshot/v1','source_run':41904631252,
-             'source_commit':'e7f23f46d039d04577c035457c920047f03dc2a1','parent_artifact_sha256':parents,
+    if len(developer_commits) != 1:
+        raise ValueError('developer source commit differs between architectures')
+    receipt={'schema':'rafcodephi.development-apt-snapshot/v2',
+             'source_run':int(os.environ.get('GITHUB_RUN_ID','0')),
+             'source_commit':next(iter(developer_commits)),
+             'parent_source_commit':parent_commits,'parent_artifact_sha256':parents,
              'package_counts':counts,'repository_url':url,'public_key_sha256':key_sha,
              'signing_fingerprint':fingerprint,'signing_mode':'development_snapshot',
+             'profile':'rafcodephi-developer-profile',
+             'install_command':'pkg install rafcodephi-developer-profile',
              'claim_allowed_release':False,'device_runtime':'TOKEN_VAZIO'}
     (output/'snapshot.json').write_text(json.dumps(receipt,indent=2)+'\n')
     (output/'SHA256SUMS').write_text(''.join(hashlib.sha256(p.read_bytes()).hexdigest()+'  '+p.relative_to(output).as_posix()+'\n' for p in sorted(output.rglob('*')) if p.is_file()))

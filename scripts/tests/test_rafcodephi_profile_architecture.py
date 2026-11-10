@@ -25,6 +25,8 @@ class ProfileGateFalsifiers(unittest.TestCase):
             "build": ["rafcodephi-runtime-profile","clang","lld","cmake","make","ninja",
                       "binutils","file","patchelf","rafcodephi-rmr-vector-field",
                       "rafcodephi-rmr-vector-field-static"],
+            "developer": ["nodejs-lts","npm","openjdk-21","android-tools","clang",
+                          "make","ninja","ndk-sysroot"],
             "vectras": ["rafcodephi-build-profile","aria2","tar","pulseaudio","proot","proot-distro"],
             "full": ["rafcodephi-vectras-profile","termux-api"]
         }
@@ -96,7 +98,7 @@ class ProfileGateFalsifiers(unittest.TestCase):
 
     def test_01_valid_source_graph(self):
         d=gate.validate(self.root)
-        self.assertEqual(len(d["profiles"]),5)
+        self.assertEqual(len(d["profiles"]),6)
         self.assertEqual(len(d["federated_bindings"]),3)
         self.assertTrue(any(x["mode"]=="CONDITIONAL_GENERATED_STATIC"
                             for x in d["output_producers"]))
