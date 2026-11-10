@@ -86,6 +86,10 @@ jobs:
                       target.parent.mkdir(exist_ok=True)
                       target.write_bytes(transport.extractfile(member).read())
           PY
+          # The canonical builder runs as its unprivileged builder UID while
+          # this checkout is bind-mounted from the host runner.  It must be
+          # able to replace recovered DEBs when rebuilding the same recipe.
+          chmod -R a+rwX "inputs/$ARCH"
           rm "inputs/$ARCH.zip"
 
       - name: Materialize custom Termux package identity
