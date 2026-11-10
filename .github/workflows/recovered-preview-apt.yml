@@ -111,10 +111,34 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          arch="${{ matrix.arch }}"
+          export RAFCODEPHI_BOOTSTRAP_HOST_OUT_DIR="$PWD/artifacts/developer-$arch"
           bash scripts/run-rafcodephi-bootstrap-docker.sh env \
-            NDK=/home/builder/.termux-build/android-ndk-r29 \
-            bash ./scripts/build-rafcodephi-developer-packages.sh \
-              --architectures "${{ matrix.arch }}" --deb-root inputs
+            ARCH="$arch" NDK=/home/builder/.termux-build/android-ndk-r29 \
+            bash -c '
+              set -euo pipefail
+              work="$RAFCODEPHI_BOOTSTRAP_OUT_DIR/inputs"
+              mkdir -p "$work"
+              cp -a "inputs/$ARCH" "$work/$ARCH"
+              chmod -R u+rwX "$work/$ARCH"
+              bash ./scripts/build-rafcodephi-developer-packages.sh \
+                --architectures "$ARCH" --deb-root "$work"
+              printf "%s\n" \
+                "schema=rafcodephi.developer-container-handoff/v1" \
+                "architecture=$ARCH" \
+                "source_commit=${GITHUB_SHA:-TOKEN_VAZIO}" \
+                > "$RAFCODEPHI_BOOTSTRAP_OUT_DIR/RAFCODEPHI_REAL_BOOTSTRAP_MANIFEST.txt"
+            '
+          python3 - "$arch" "$RAFCODEPHI_BOOTSTRAP_HOST_OUT_DIR" <<'PY'
+          import pathlib, shutil, sys
+          arch, out = sys.argv[1:]
+          source = pathlib.Path(out) / 'inputs' / arch
+          target = pathlib.Path('inputs') / arch
+          if not (source / 'rafcodephi-developer-static-gate.json').is_file():
+              raise SystemExit('developer container handoff is incomplete')
+          shutil.rmtree(target)
+          shutil.copytree(source, target)
+          PY
 
       - name: Seal portable package handoff
         shell: bash
