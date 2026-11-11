@@ -17,6 +17,8 @@ on:
     paths:
       - 'scripts/build-rafcodephi-real-bootstrap.sh'
       - 'scripts/ci/rafcodephi_ndk_preflight.sh'
+      - 'scripts/ci/rafcodephi_android_api_gate.py'
+      - 'scripts/tests/test_rafcodephi_android_api_gate.py'
       - 'scripts/ci/rafcodephi_prepare_ndk29.sh'
       - 'scripts/repair_rafcodephi_bootstrap_symlinks.py'
       - 'scripts/ci/rafcodephi_bootstrap_prefix_gate.py'
@@ -45,7 +47,38 @@ permissions:
   contents: read
 
 jobs:
+  api29-contract:
+    name: "🛡️ API29 · fast source-boundary falsifiers"
+    runs-on: ubuntu-24.04
+    timeout-minutes: 6
+    steps:
+      - name: Checkout exact producer candidate
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+      - name: Python compiler and ELF inspection tool
+        shell: bash
+        run: |
+          set -euo pipefail
+          command -v python3
+          command -v readelf
+          python3 -m py_compile scripts/ci/rafcodephi_android_api_gate.py scripts/tests/test_rafcodephi_android_api_gate.py
+      - name: Run adversarial source-bootstrap API tests
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 scripts/tests/test_rafcodephi_android_api_gate.py -v
+      - name: Android10 scope summary
+        if: always()
+        shell: bash
+        run: |
+          printf '%s\n' '### 🛡️ API29 static source contract' \
+            '' '- Production bootstrap runtime: unverified until the source-build ABI jobs finish' \
+            '- Android10 device E2E: TOKEN_VAZIO' \
+            '- claim_allowed=false' >> "$GITHUB_STEP_SUMMARY"
+
   real-bootstrap-arm:
+    needs: [api29-contract]
     name: Source-build real RAFCODEPHI bootstrap (${{ matrix.arch }})
     runs-on: ubuntu-latest
     timeout-minutes: 240
@@ -58,6 +91,7 @@ jobs:
       CI: 'true'
       TERMUX_DOCKER_USE_SUDO: '1'
       RAFCODEPHI_PACKAGE_NAME: com.termux.rafacodephi
+      TERMUX_PKG_API_LEVEL: '29'
       RAFCODEPHI_FRICTION_LANES: '16'
       TERMUX_BUILDER_IMAGE_NAME: ghcr.io/termux-play-store/package-builder@sha256:09cdbb34db05274dfcdf0e52430de2980e3e58aa34fa122a05c014bf67e24124
 
@@ -152,6 +186,7 @@ jobs:
           set +e
           bash scripts/run-rafcodephi-bootstrap-docker.sh env \
             NDK=/home/builder/.termux-build/android-ndk-r29 \
+            TERMUX_PKG_API_LEVEL=29 \
             ./scripts/build-rafcodephi-real-bootstrap.sh \
             --architectures '${{ steps.arch.outputs.architectures }}' \
             2>&1 | tee build/reports/rafcodephi-real-bootstrap.log
@@ -182,6 +217,216 @@ jobs:
           manifest=artifacts/rafcodephi-bootstrap/RAFCODEPHI_REAL_BOOTSTRAP_MANIFEST.txt
           test -s "$manifest"
           grep -Fx 'schema=rafcodephi.real-bootstrap-sourcebuild/v1' "$manifest"
+          # The source producer must seal a *new* API29 evidence chain.
+          grep -Eq '^android_api_target_(arm|aarch64)=29          grep -Fx 'package_name=com.termux.rafacodephi' "$manifest"
+          grep -Fx 'prefix=/data/data/com.termux.rafacodephi/files/usr' "$manifest"
+          grep -Fx 'bridge_allowed=false' "$manifest"
+          grep -Fx 'legacy_prefix_allowed=false' "$manifest"
+          grep -Fx 'api_package=com.termux.rafacodephi.api' "$manifest"
+          grep -Fx 'api_receiver_component=com.termux.rafacodephi.api/com.termux.api.TermuxApiReceiver' "$manifest"
+          grep -Fx 'api_access_control=SIGNATURE_PERMISSION_NO_SHARED_UID' "$manifest"
+          grep -Fx 'termux_api_cli=EMBEDDED' "$manifest"
+          grep -Fx 'apt_update_guard=RAFCODEPHI_PACKAGE_REPOSITORY_NOT_PUBLISHED' "$manifest"
+          for arch in $(echo '${{ steps.arch.outputs.architectures }}' | tr ',' ' '); do
+            grep -Fx "prefix_gate_state_${arch}=PASS_SCOPED" "$manifest"
+            test -s "artifacts/rafcodephi-bootstrap/rafcodephi-bootstrap-${arch}-prefix-gate.json"
+            grep -Fx "deb_gate_state_${arch}=PASS_SCOPED" "$manifest"
+            test -s "artifacts/rafcodephi-bootstrap/rafcodephi-deb-set-${arch}-prefix-gate.json"
+          done
+          grep -Fx 'claim_allowed_device_runtime=false' "$manifest"
+          grep -Fx 'device_runtime_proof=TOKEN_VAZIO' "$manifest"
+          ! grep -q '^sha256_' "$manifest"
+          cat "$manifest"
+
+      - name: Fingerprint failed source build (no rebuild)
+        if: ${{ failure() }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          input_log=build/reports/rafcodephi-real-bootstrap.log
+          if [[ ! -s "$input_log" && -s build/reports/rafcodephi-ndk-preflight.log ]]; then
+            input_log=build/reports/rafcodephi-ndk-preflight.log
+          fi
+          python3 scripts/ci/rafcodephi_failure_triage.py \
+            --log "$input_log" \
+            --out build/reports/rafcodephi-real-bootstrap-triage.json \
+            --markdown build/reports/rafcodephi-real-bootstrap-triage.md
+          cat build/reports/rafcodephi-real-bootstrap-triage.md >> "$GITHUB_STEP_SUMMARY"
+          # Preserve the exact first failing prerequisite even when the
+          # generic predecessor classifier has not learned this new token.
+          if grep -Fq 'RAFCODEPHI_NDK_PREFLIGHT=BLOCKED reason=NDK_MISSING' "$input_log"; then
+            echo 'Observed builder prerequisite: **NDK_MISSING** (not a successful build).' >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+      # Package original .deb names (including Debian epoch colons) inside TAR:
+      # the upload service rejects ':' in directly uploaded paths.
+      - name: Seal DEB evidence into portable tar
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          root=artifacts/rafcodephi-bootstrap
+          if [[ -d "$root/debs" ]]; then
+            tar -C "$root" -cf "$root/rafcodephi-debs-evidence.tar" debs
+            tar -tf "$root/rafcodephi-debs-evidence.tar" > /dev/null
+            sha256sum "$root/rafcodephi-debs-evidence.tar" > "$root/rafcodephi-debs-evidence.tar.sha256"
+          fi
+
+      - name: Upload real bootstrap artifacts
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          root=artifacts/rafcodephi-bootstrap
+          if [[ ! -d "$root/debs" ]]; then
+            echo 'DEB_EVIDENCE_TRANSPORT=SKIPPED reason=NO_DEB_DIRECTORY'
+            exit 0
+          fi
+          tar -C "$root" -cf "$root/rafcodephi-debs.tar" debs
+          (
+            cd "$root"
+            sha256sum rafcodephi-debs.tar > rafcodephi-debs.tar.sha256
+            sha256sum -c rafcodephi-debs.tar.sha256
+          )
+          tar -tf "$root/rafcodephi-debs.tar" > "$root/rafcodephi-debs.tar.members"
+          grep -Eq '^debs/(arm|aarch64)/[^/]+[.]deb$' "$root/rafcodephi-debs.tar.members"
+          echo 'DEB_EVIDENCE_TRANSPORT=PASS_SCOPED claim_allowed_release=false'
+
+      - name: Upload real bootstrap artifacts
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          source_dir=artifacts/rafcodephi-bootstrap
+          archive=artifacts/rafcodephi-bootstrap-evidence.tar.gz
+          if [[ ! -d "$source_dir" ]]; then
+            echo 'RAFCODEPHI_BOOTSTRAP_EVIDENCE=TOKEN_VAZIO reason=SOURCE_DIR_MISSING'
+            exit 0
+          fi
+          tar -C artifacts -czf "$archive" rafcodephi-bootstrap
+          test -s "$archive"
+          tar -tzf "$archive" >/dev/null
+          sha256sum "$archive" > "$archive.sha256"
+          sha256sum -c "$archive.sha256"
+          echo "RAFCODEPHI_BOOTSTRAP_EVIDENCE=PACKAGED_SHA256 $(cat "$archive.sha256")"
+
+      # Successful payloads are independent by ABI; compressed data is never
+      # recompressed by the GitHub uploader.
+      - name: Upload real bootstrap artifacts
+        if: success()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: rafcodephi-real-bootstrap-${{ github.run_id }}-${{ matrix.arch }}
+          # Sealed TAR and checksum live beside bootstrap/; fan-in requires both.
+          path: |
+            artifacts/rafcodephi-bootstrap/
+            !artifacts/rafcodephi-bootstrap/debs/**
+            artifacts/rafcodephi-bootstrap-evidence.tar.gz
+            artifacts/rafcodephi-bootstrap-evidence.tar.gz.sha256
+            artifacts/rafcodephi-freestanding/
+            build/reports/rafcodephi-real-bootstrap-properties.json
+            build/reports/rafcodephi-real-bootstrap-status.json
+          if-no-files-found: error
+          compression-level: 0
+          retention-days: 30
+
+      # Logs and triage must remain a separate portable module. A payload
+      # upload failure must not suppress diagnostics or force a rebuild.
+      - name: Upload source-build diagnostics
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: rafcodephi-real-bootstrap-diagnostics-${{ matrix.architecture }}-${{ github.event.pull_request.head.sha || github.sha }}
+          path: |
+            build/reports/rafcodephi-ndk29-prepare.log
+            build/reports/rafcodephi-ndk-preflight.log
+            build/reports/rafcodephi-real-bootstrap.log
+            build/reports/rafcodephi-real-bootstrap-status.json
+            build/reports/rafcodephi-real-bootstrap-triage.json
+            build/reports/rafcodephi-real-bootstrap-triage.md
+            artifacts/rafcodephi-bootstrap/rafcodephi-bootstrap-*-android-api.json
+          if-no-files-found: warn
+          retention-days: 30
+          # Already compressed inside tar.gz; preserve CPU for build jobs.
+          compression-level: 0
+
+
+  reconcile:
+    name: Verify sealed ABI evidence and continuity (nonpublishing)
+    needs: [real-bootstrap-arm]
+    if: ${{ always() }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    permissions:
+      actions: read
+      contents: read
+    steps:
+      - name: Fail closed on any requested source-build failure
+        shell: bash
+        env:
+          BUILD_RESULT: ${{ needs.real-bootstrap-arm.result }}
+        run: |
+          set -euo pipefail
+          echo "ARCH_MATRIX_RESULT=$BUILD_RESULT" >> "$GITHUB_STEP_SUMMARY"
+          if [[ "$BUILD_RESULT" != success ]]; then
+            echo 'RECONCILIATION=BLOCKED source_build_failure_or_cancellation' >> "$GITHUB_STEP_SUMMARY"
+            exit 1
+          fi
+
+      - name: Download separately sealed ABI evidence
+        uses: actions/download-artifact@v8
+        with:
+          pattern: rafcodephi-real-bootstrap-${{ github.run_id }}-*
+          path: handoff
+
+      - name: Verify SHA-256, manifest and source identity for every selected ABI
+        shell: bash
+        env:
+          REQUESTED_ARCHITECTURES: ${{ inputs.architectures || 'arm,aarch64' }}
+          SOURCE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: |
+          set -euo pipefail
+          mkdir -p build/reports
+          receipt=build/reports/rafcodephi-bootstrap-matrix-custody.tsv
+          printf 'arch\tsha256\tsource_commit\tclaim_allowed\n' > "$receipt"
+          IFS=',' read -r -a arches <<< "$REQUESTED_ARCHITECTURES"
+          (( ${#arches[@]} >= 1 && ${#arches[@]} <= 2 )) || exit 2
+          for arch in "${arches[@]}"; do
+            case "$arch" in arm|aarch64) ;; *) echo "UNSUPPORTED_ABI=$arch" >&2; exit 2 ;; esac
+            folder="handoff/rafcodephi-real-bootstrap-${GITHUB_RUN_ID}-$arch"
+            test -d "$folder"
+            mapfile -d '' archives < <(find "$folder" -type f -name 'rafcodephi-bootstrap-evidence.tar.gz' -print0)
+            (( ${#archives[@]} == 1 )) || { echo "ARCHIVE_MISSING_OR_DUPLICATE=$arch" >&2; exit 1; }
+            archive="${archives[0]}"
+            test -s "$archive"
+            test -s "$archive.sha256"
+            expected="$(awk 'NR==1 {print $1}' "$archive.sha256")"
+            actual="$(sha256sum "$archive" | awk '{print $1}')"
+            test -n "$expected" && test "$expected" = "$actual"
+            tar -tzf "$archive" >/dev/null
+            manifest="$folder/manifest.checked.txt"
+            tar -xOzf "$archive" rafcodephi-bootstrap/RAFCODEPHI_REAL_BOOTSTRAP_MANIFEST.txt > "$manifest"
+            grep -Fx "prefix_gate_state_${arch}=PASS_SCOPED" "$manifest"
+            grep -Fx "deb_gate_state_${arch}=PASS_SCOPED" "$manifest"
+            grep -Fx 'claim_allowed_device_runtime=false' "$manifest"
+            grep -Fx 'device_runtime_proof=TOKEN_VAZIO' "$manifest"
+            printf '%s\t%s\t%s\tfalse\n' "$arch" "$actual" "$SOURCE_SHA" >> "$receipt"
+          done
+          sha256sum "$receipt" > "$receipt.sha256"
+          sha256sum -c "$receipt.sha256"
+          echo "RECONCILIATION=PASS_SCOPED ABIS=$REQUESTED_ARCHITECTURES RELEASE=BLOCKED DEVICE_RUNTIME=TOKEN_VAZIO" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload matrix custody receipt
+        if: ${{ always() }}
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: rafcodephi-real-bootstrap-${{ github.run_id }}-custody
+          path: |
+            build/reports/rafcodephi-bootstrap-matrix-custody.tsv
+            build/reports/rafcodephi-bootstrap-matrix-custody.tsv.sha256
+          if-no-files-found: warn
+          retention-days: 30
+ "$manifest"
           grep -Fx 'package_name=com.termux.rafacodephi' "$manifest"
           grep -Fx 'prefix=/data/data/com.termux.rafacodephi/files/usr' "$manifest"
           grep -Fx 'bridge_allowed=false' "$manifest"
@@ -308,6 +553,7 @@ jobs:
             build/reports/rafcodephi-real-bootstrap-status.json
             build/reports/rafcodephi-real-bootstrap-triage.json
             build/reports/rafcodephi-real-bootstrap-triage.md
+            artifacts/rafcodephi-bootstrap/rafcodephi-bootstrap-*-android-api.json
           if-no-files-found: warn
           retention-days: 30
           # Already compressed inside tar.gz; preserve CPU for build jobs.
