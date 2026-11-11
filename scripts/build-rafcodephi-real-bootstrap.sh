@@ -487,6 +487,8 @@ PY
     out="$OUT_DIR/rafcodephi-bootstrap-${arch}.zip"
     cp "$zip_path" "$out"
     bytes="$(wc -c < "$out" | tr -d ' ')"
+    bootstrap_sha256="$(sha256sum "$out" | awk '{print $1}')"
+    printf 'sha256_%s=%s\n' "$arch" "$bootstrap_sha256" >> "$manifest"
 
     printf 'artifact_%s=%s\nbytes_%s=%s\ndeb_evidence_%s=%s\ndeb_count_%s=%s\ndeb_set_sha256_%s=%s\n' \
         "$arch" "$out" "$arch" "$bytes" "$arch" "$deb_dir" "$arch" "$deb_count" "$arch" "$deb_set_sha256" >> "$manifest"

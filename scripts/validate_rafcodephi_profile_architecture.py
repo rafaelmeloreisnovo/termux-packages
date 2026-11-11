@@ -12,7 +12,7 @@ MANIFEST = "docs/assurance/rafcodephi-federated-components.v1.json"
 RMR = "docs/assurance/rafcodephi-freestanding-modules.v1.json"
 GENERATOR = "scripts/build/termux_create_debian_subpackages.sh"
 DEFAULTS = "scripts/build/termux_step_setup_variables.sh"
-PROFILES = ("bootstrap", "runtime", "build", "vectras", "full")
+PROFILES = ("bootstrap", "runtime", "build", "developer", "vectras", "full")
 SHA40 = re.compile(r"^[0-9a-f]{40}$")
 PKG = re.compile(r"^[a-z0-9][a-z0-9+.-]*$")
 
@@ -199,7 +199,7 @@ def main():
         p = Path(args.out)
         p.parent.mkdir(parents=True, exist_ok=True)
         p.write_text(json.dumps(doc, indent=2, sort_keys=True) + "\n", encoding="utf-8")
-    print("PASS_SOURCE_PROFILE_ARCHITECTURE profiles=5 edges=" +
+    print("PASS_SOURCE_PROFILE_ARCHITECTURE profiles=6 edges=" +
           str(len(doc["dependency_edges"])) + " outputs=" +
           str(len(doc["output_producers"])) +
           " DEB=NOT_RUN DEVICE=NOT_RUN CLAIM_ALLOWED=false")

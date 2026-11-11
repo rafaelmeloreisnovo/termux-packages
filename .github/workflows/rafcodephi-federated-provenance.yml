@@ -50,6 +50,7 @@ jobs:
             packages/rafcodephi-federation-metadata/build.sh \
             packages/rafcodephi-bootstrap-profile/build.sh \
             packages/rafcodephi-runtime-profile/build.sh \
+            packages/rafcodephi-developer-profile/build.sh \
             packages/rafcodephi-vectras-profile/build.sh \
             packages/rafcodephi-full-profile/build.sh; do
             bash -n "$f"
