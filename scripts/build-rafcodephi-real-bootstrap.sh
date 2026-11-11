@@ -12,6 +12,15 @@ LEGACY_PREFIX="/data/data/com.termux/files/usr"
 TARGET_PREFIX="/data/data/${PACKAGE_NAME}/files/usr"
 API_RECEIVER_COMPONENT="${PACKAGE_NAME}.api/com.termux.api.TermuxApiReceiver"
 
+# RAFCODEPHI runtime targets Android 10/API29. The generic Termux builder
+# defaults to API30; keep its global policy unchanged but pin this producer.
+: "${TERMUX_PKG_API_LEVEL:=29}"
+if [[ "$TERMUX_PKG_API_LEVEL" != "29" ]]; then
+    echo "RAFCODEPHI_BOOTSTRAP_API=BLOCKED target=29 actual=$TERMUX_PKG_API_LEVEL" >&2
+    exit 2
+fi
+export TERMUX_PKG_API_LEVEL
+
 usage() {
     cat <<EOF
 Usage: $0 [--architectures arm|aarch64|arm,aarch64] [--out DIR]
@@ -143,6 +152,15 @@ for arch in "${arch_list[@]}"; do
     [[ "$arch" == "arm" || "$arch" == "aarch64" ]] || { echo "unsupported arch: $arch" >&2; exit 2; }
     zip_path="$GENERATED_BOOTSTRAP_DIR/bootstrap-${arch}.zip"
     [[ -s "$zip_path" ]] || { echo "missing generated $zip_path" >&2; exit 1; }
+
+    # The Android APK NDK version is not the imported bash/apt runtime API.
+    # Audit every generated ELF, not just the command launcher, BEFORE resealing.
+    api_gate_receipt="$OUT_DIR/rafcodephi-bootstrap-${arch}-android-api.json"
+    python3 "$ROOT/scripts/ci/rafcodephi_android_api_gate.py" \
+        --zip "$zip_path" --arch "$arch" \
+        --max-api "$TERMUX_PKG_API_LEVEL" --receipt "$api_gate_receipt"
+    printf 'android_api_target_%s=%s\nandroid_api_gate_receipt_%s=%s\n' \
+        "$arch" "$TERMUX_PKG_API_LEVEL" "$arch" "$api_gate_receipt" >> "$manifest"
 
     # The upstream bootstrap generator may lose link metadata while repacking.
     # Repair only when the exact preserved .deb set proves the required link
@@ -405,6 +423,7 @@ if "bin/sh" not in available:
     raise SystemExit("installed bin/sh is not represented by archive or symlink")
 PY
 
+    # Prefix and source-DEB checks remain independent of Android API verification.
     for elf in bin/apt bin/apt-get bin/dpkg bin/bash bin/busybox bin/proot bin/ninja libexec/termux-api-broadcast; do
         desc="$(file -b "$extract/$elf")"
         case "$desc" in

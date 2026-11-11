@@ -17,6 +17,8 @@ on:
     paths:
       - 'scripts/build-rafcodephi-real-bootstrap.sh'
       - 'scripts/ci/rafcodephi_ndk_preflight.sh'
+      - 'scripts/ci/rafcodephi_android_api_gate.py'
+      - 'scripts/tests/test_rafcodephi_android_api_gate.py'
       - 'scripts/ci/rafcodephi_prepare_ndk29.sh'
       - 'scripts/repair_rafcodephi_bootstrap_symlinks.py'
       - 'scripts/ci/rafcodephi_bootstrap_prefix_gate.py'
@@ -45,7 +47,38 @@ permissions:
   contents: read
 
 jobs:
+  api29-contract:
+    name: "API29 · fast source-boundary falsifiers"
+    runs-on: ubuntu-24.04
+    timeout-minutes: 6
+    steps:
+      - name: Checkout exact producer candidate
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+      - name: Python compiler and ELF inspection tool
+        shell: bash
+        run: |
+          set -euo pipefail
+          command -v python3
+          command -v readelf
+          python3 -m py_compile scripts/ci/rafcodephi_android_api_gate.py scripts/tests/test_rafcodephi_android_api_gate.py
+      - name: Run adversarial source-bootstrap API tests
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 scripts/tests/test_rafcodephi_android_api_gate.py -v
+      - name: Android10 scope summary
+        if: always()
+        shell: bash
+        run: |
+          printf '%s\n' '### API29 static source contract' \
+            '' '- Production bootstrap runtime: UNVERIFIED until source-build ABI jobs pass' \
+            '- Android10 device E2E: TOKEN_VAZIO' \
+            '- claim_allowed=false' >> "$GITHUB_STEP_SUMMARY"
+
   real-bootstrap-arm:
+    needs: [api29-contract]
     name: Source-build real RAFCODEPHI bootstrap (${{ matrix.arch }})
     runs-on: ubuntu-latest
     timeout-minutes: 240
@@ -58,6 +91,7 @@ jobs:
       CI: 'true'
       TERMUX_DOCKER_USE_SUDO: '1'
       RAFCODEPHI_PACKAGE_NAME: com.termux.rafacodephi
+      TERMUX_PKG_API_LEVEL: '29'
       RAFCODEPHI_FRICTION_LANES: '16'
       TERMUX_BUILDER_IMAGE_NAME: ghcr.io/termux-play-store/package-builder@sha256:09cdbb34db05274dfcdf0e52430de2980e3e58aa34fa122a05c014bf67e24124
 
@@ -152,6 +186,7 @@ jobs:
           set +e
           bash scripts/run-rafcodephi-bootstrap-docker.sh env \
             NDK=/home/builder/.termux-build/android-ndk-r29 \
+            TERMUX_PKG_API_LEVEL=29 \
             ./scripts/build-rafcodephi-real-bootstrap.sh \
             --architectures '${{ steps.arch.outputs.architectures }}' \
             2>&1 | tee build/reports/rafcodephi-real-bootstrap.log
@@ -182,6 +217,8 @@ jobs:
           manifest=artifacts/rafcodephi-bootstrap/RAFCODEPHI_REAL_BOOTSTRAP_MANIFEST.txt
           test -s "$manifest"
           grep -Fx 'schema=rafcodephi.real-bootstrap-sourcebuild/v1' "$manifest"
+          # Every source-built ABI must seal an API29 receipt.
+          grep -Eq '^android_api_target_(arm|aarch64)=29$' "$manifest"
           grep -Fx 'package_name=com.termux.rafacodephi' "$manifest"
           grep -Fx 'prefix=/data/data/com.termux.rafacodephi/files/usr' "$manifest"
           grep -Fx 'bridge_allowed=false' "$manifest"
@@ -308,6 +345,7 @@ jobs:
             build/reports/rafcodephi-real-bootstrap-status.json
             build/reports/rafcodephi-real-bootstrap-triage.json
             build/reports/rafcodephi-real-bootstrap-triage.md
+            artifacts/rafcodephi-bootstrap/rafcodephi-bootstrap-*-android-api.json
           if-no-files-found: warn
           retention-days: 30
           # Already compressed inside tar.gz; preserve CPU for build jobs.
