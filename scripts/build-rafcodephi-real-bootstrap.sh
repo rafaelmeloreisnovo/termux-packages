@@ -159,7 +159,7 @@ for arch in "${arch_list[@]}"; do
     python3 "$ROOT/scripts/ci/rafcodephi_android_api_gate.py" \
         --zip "$zip_path" --arch "$arch" \
         --max-api "$TERMUX_PKG_API_LEVEL" --receipt "$api_gate_receipt"
-    printf 'android_api_target_%s=%s\\nandroid_api_gate_receipt_%s=%s\\n' \
+    printf 'android_api_target_%s=%s\nandroid_api_gate_receipt_%s=%s\n' \
         "$arch" "$TERMUX_PKG_API_LEVEL" "$arch" "$api_gate_receipt" >> "$manifest"
 
     # The upstream bootstrap generator may lose link metadata while repacking.
