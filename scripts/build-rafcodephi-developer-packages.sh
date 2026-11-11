@@ -37,12 +37,30 @@ for arch in "${arch_list[@]}"; do
 
 	(
 		export TERMUX_OUTPUT_DIR="$deb_dir"
+		status="$DEB_ROOT/$arch/rafcodephi-developer-build-status.json"
+		write_status() {
+			python3 - "$status" "$arch" "$1" "$2" "$SOURCE_COMMIT" <<'PY'
+import json, pathlib, sys
+path, arch, package, state, commit = sys.argv[1:]
+pathlib.Path(path).write_text(json.dumps({
+    "schema": "rafcodephi.developer-build-status/v1",
+    "architecture": arch,
+    "package": package,
+    "state": state,
+    "source_commit": commit,
+    "physical_android_runtime": "TOKEN_VAZIO",
+    "claim_allowed": False,
+}, indent=2, sort_keys=True) + "\n")
+PY
+		}
 		# Build the executable roots first. ndk-sysroot is deliberately last:
 		# installing it in the build prefix before LLVM is complete breaks LLVM.
-		./build-package.sh -a "$arch" \
-			nodejs-lts npm openjdk-21 android-tools libllvm make ninja \
-			resolv-conf rafcodephi-developer-profile
-		./build-package.sh -a "$arch" ndk-sysroot
+		for package in nodejs-lts npm openjdk-21 android-tools libllvm make ninja \
+			resolv-conf proot proot-distro rafcodephi-developer-profile ndk-sysroot; do
+			write_status "$package" BUILDING
+			./build-package.sh -a "$arch" "$package"
+		done
+		write_status COMPLETE PASS_STATIC_BUILD
 	)
 
 	python3 scripts/verify_rafcodephi_developer_debs.py \

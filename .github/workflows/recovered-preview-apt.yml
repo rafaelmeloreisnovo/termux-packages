@@ -121,8 +121,16 @@ jobs:
               mkdir -p "$work"
               cp -a "inputs/$ARCH" "$work/$ARCH"
               chmod -R u+rwX "$work/$ARCH"
+              set +e
               bash ./scripts/build-rafcodephi-developer-packages.sh \
-                --architectures "$ARCH" --deb-root "$work"
+                --architectures "$ARCH" --deb-root "$work" \
+                2>&1 | tee "$RAFCODEPHI_BOOTSTRAP_OUT_DIR/developer-build.full.log"
+              build_status=${PIPESTATUS[0]}
+              set -e
+              tail -n 4000 "$RAFCODEPHI_BOOTSTRAP_OUT_DIR/developer-build.full.log" \
+                > "$RAFCODEPHI_BOOTSTRAP_OUT_DIR/developer-build.log"
+              rm -f "$RAFCODEPHI_BOOTSTRAP_OUT_DIR/developer-build.full.log"
+              (( build_status == 0 )) || exit "$build_status"
               printf "%s\n" \
                 "schema=rafcodephi.developer-container-handoff/v1" \
                 "architecture=$ARCH" \
@@ -139,6 +147,18 @@ jobs:
           shutil.rmtree(target)
           shutil.copytree(source, target)
           PY
+
+      - name: Upload bounded developer build diagnostics
+        if: always()
+        uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f
+        with:
+          name: rafcodephi-developer-diagnostics-${{ matrix.arch }}-${{ github.sha }}
+          path: |
+            artifacts/developer-${{ matrix.arch }}/developer-build.err
+            artifacts/developer-${{ matrix.arch }}/developer-build.log
+            artifacts/developer-${{ matrix.arch }}/inputs/${{ matrix.arch }}/rafcodephi-developer-build-status.json
+          if-no-files-found: warn
+          retention-days: 14
 
       - name: Seal portable package handoff
         shell: bash

@@ -37,7 +37,7 @@
     },
     "developer": {
       "metapackage": "rafcodephi-developer-profile",
-      "depends": ["nodejs-lts", "npm", "openjdk-21", "android-tools", "clang", "make", "ninja", "ndk-sysroot"]
+      "depends": ["nodejs-lts", "npm", "openjdk-21", "android-tools", "clang", "make", "ninja", "ndk-sysroot", "proot", "proot-distro"]
     },
     "vectras": {
       "metapackage": "rafcodephi-vectras-profile",

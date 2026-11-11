@@ -3,14 +3,14 @@
   "kind": "DERIVED_SOURCE_SNAPSHOT_NOT_BUILD_OR_RUNTIME_EVIDENCE",
   "baseline": {
     "repository": "rafaelmeloreisnovo/termux-packages",
-    "commit": "598551c95677a85eb6f019822f84971daf998ff8",
+    "commit": "461a6836e44393717915ea6f6cc3146d3199e0ee",
     "git_tree": "740513cf552a55e3d5f3533c722d3c560967875c",
-    "generated_date": "2026-11-10",
+    "generated_date": "2026-11-11",
     "authority": "producer_recipe_and_manifest"
   },
   "origin_manifest": {
     "path": "docs/assurance/rafcodephi-federated-components.v1.json",
-    "git_blob": "3dd6725e92c7c4d26512e2a800202005e44d3290",
+    "git_blob": "afccd50235285d45f713bb45bcc970fc9fde9f50",
     "historical_producer": {
       "repository": "rafaelmeloreisnovo/termux-packages",
       "base_commit": "93284c7df537a0f14a148b1839377f06aac2929f",
@@ -18,15 +18,15 @@
     }
   },
   "source_gate": {
-    "exact_head_observed": "598551c95677a85eb6f019822f84971daf998ff8",
-    "run_id": 42926028050,
+    "exact_head_observed": "461a6836e44393717915ea6f6cc3146d3199e0ee",
+    "run_id": 42926982213,
     "scope": "SOURCE_ONLY",
-    "result": "LOCAL_PASS_CI_RERUN_REQUIRED",
+    "result": "FAIL_DEVELOPER_BUILD_DIAGNOSTICS_PENDING",
     "synthetic_falsifiers": 15
   },
   "counts": {
     "profiles": 6,
-    "dependency_edges": 42,
+    "dependency_edges": 44,
     "resolved_outputs": 39,
     "federated_components": 6
   },
@@ -85,7 +85,7 @@
       "id": "developer",
       "metapackage": "rafcodephi-developer-profile",
       "source_path": "packages/rafcodephi-developer-profile/build.sh",
-      "source_blob": "236cb4803427349a3aa19d6bdb40faecd8ef9fad",
+      "source_blob": "c9ea87c75fc8caa728877acdc0d9507614297f75",
       "depends": [
         "nodejs-lts",
         "npm",
@@ -94,7 +94,9 @@
         "clang",
         "make",
         "ninja",
-        "ndk-sysroot"
+        "ndk-sysroot",
+        "proot",
+        "proot-distro"
       ]
     },
     {
@@ -639,6 +641,18 @@
     {
       "source": "rafcodephi-developer-profile",
       "target": "ndk-sysroot",
+      "type": "DEPENDS_ON",
+      "evidence_path": "packages/rafcodephi-developer-profile/build.sh"
+    },
+    {
+      "source": "rafcodephi-developer-profile",
+      "target": "proot",
+      "type": "DEPENDS_ON",
+      "evidence_path": "packages/rafcodephi-developer-profile/build.sh"
+    },
+    {
+      "source": "rafcodephi-developer-profile",
+      "target": "proot-distro",
       "type": "DEPENDS_ON",
       "evidence_path": "packages/rafcodephi-developer-profile/build.sh"
     },

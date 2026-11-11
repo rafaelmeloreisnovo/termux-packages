@@ -22,6 +22,8 @@ REQUIRED_PATHS = {
     "make": ("bin/make",),
     "ninja": ("bin/ninja",),
     "ndk-sysroot": ("include/android/api-level.h",),
+    "proot": ("bin/proot",),
+    "proot-distro": ("bin/proot-distro",),
     "rafcodephi-developer-profile": (
         "bin/rafcodephi-dev-doctor",
         "etc/profile.d/rafcodephi-developer.sh",
@@ -30,7 +32,7 @@ REQUIRED_PATHS = {
 }
 PROFILE_DEPENDENCIES = {
     "nodejs-lts", "npm", "openjdk-21", "android-tools",
-    "clang", "make", "ninja", "ndk-sysroot",
+    "clang", "make", "ninja", "ndk-sysroot", "proot", "proot-distro",
 }
 RECOMMENDED_CLOSURE = {"npm", "ca-certificates-java", "openjdk-21-x", "resolv-conf"}
 

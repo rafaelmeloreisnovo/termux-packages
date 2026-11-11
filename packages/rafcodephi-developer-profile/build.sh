@@ -5,7 +5,7 @@ TERMUX_PKG_MAINTAINER="@rafaelmeloreisnovo"
 TERMUX_PKG_VERSION=1.0.0
 TERMUX_PKG_SKIP_SRC_EXTRACT=true
 TERMUX_PKG_PLATFORM_INDEPENDENT=true
-TERMUX_PKG_DEPENDS="nodejs-lts, npm, openjdk-21, android-tools, clang, make, ninja, ndk-sysroot"
+TERMUX_PKG_DEPENDS="nodejs-lts, npm, openjdk-21, android-tools, clang, make, ninja, ndk-sysroot, proot, proot-distro"
 
 termux_step_make_install() {
 	local profile_dir="$TERMUX_PREFIX/share/rafcodephi/profiles"
@@ -17,6 +17,7 @@ javascript=nodejs-lts+npm
 jdk=openjdk-21
 android_tools=adb+fastboot
 native_toolchain=clang+make+ninja+ndk-sysroot
+container_runtime=proot+proot-distro
 ndk_scope=TERMUX_ON_DEVICE_SYSROOT_NOT_GOOGLE_HOST_NDK
 EOF
 
@@ -49,7 +50,7 @@ check_command() {
 	fi
 }
 
-for command_name in bash node npm java javac adb fastboot clang make ninja; do
+for command_name in bash node npm java javac adb fastboot clang make ninja proot proot-distro; do
 	check_command "\$command_name"
 done
 [[ -f "\$prefix/include/android/api-level.h" ]] || {
@@ -57,6 +58,15 @@ done
 	failed=1
 }
 (( failed == 0 )) || exit 1
+
+[[ "\${JAVA_HOME:-}" == "\$prefix/lib/jvm/java-21-openjdk" ]] || {
+	printf 'RAFCODEPHI_DEV_TOOL=BLOCKED tool=bash-profile reason=JAVA_HOME_NOT_INITIALIZED\n' >&2
+	exit 1
+}
+[[ "\${RAFCODEPHI_NDK_SYSROOT:-}" == "\$prefix" && "\${NDK_SYSROOT:-}" == "\$prefix" ]] || {
+	printf 'RAFCODEPHI_DEV_TOOL=BLOCKED tool=bash-profile reason=NDK_SYSROOT_NOT_INITIALIZED\n' >&2
+	exit 1
+}
 
 node -e 'if (2 + 2 !== 4) process.exit(1); console.log("RAFCODEPHI_NODE=PASS")'
 cat > "\$tmp/RafcodephiSmoke.java" <<'JAVA'
@@ -82,6 +92,8 @@ grep -Fx 'RAFCODEPHI_NINJA=PASS' "\$tmp/ninja.pass"
 
 adb version | sed -n '1p'
 fastboot --version | sed -n '1p'
+proot --version | sed -n '1p'
+proot-distro list >/dev/null
 printf 'RAFCODEPHI_DEVELOPER_PROFILE=PASS scope=ON_DEVICE_COMMAND_STARTUP\n'
 EOF
 	chmod 0755 "$TERMUX_PREFIX/bin/rafcodephi-dev-doctor"

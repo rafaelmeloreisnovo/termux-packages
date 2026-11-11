@@ -52,7 +52,7 @@ jobs:
           snapshot=json.load(open("docs/assurance/rafcodephi-system-graph.snapshot.v1.json"))
           assert snapshot["schema"]=="rafaelia.termux.profile-system-graph/v1"
           assert snapshot["constraints"]["claim_allowed"] is False
-          assert snapshot["counts"] == {"profiles":6,"dependency_edges":42,"resolved_outputs":39,"federated_components":6}
+          assert snapshot["counts"] == {"profiles":6,"dependency_edges":44,"resolved_outputs":39,"federated_components":6}
           assert [(x["metapackage"],x["depends"]) for x in snapshot["profiles"]] == [(x["package"],x["depends"]) for x in d["profiles"]]
           assert [(x["source"],x["target"]) for x in snapshot["dependency_edges"]] == [(x["source"],x["target"]) for x in d["dependency_edges"]]
           a={x["output"]:(x["producer_recipe"],x["mode"]) for x in snapshot["output_producers"]}
