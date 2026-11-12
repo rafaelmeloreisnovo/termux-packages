@@ -63,6 +63,10 @@ share/man/man8/apt-cdrom.8
 "
 
 termux_step_pre_configure() {
+	# API29 Bionic lacks the newer libc memfd_create entrypoint.
+	# Apply source-only compatibility for RAFCODEPHI/aarch64/API29.
+	source "$TERMUX_SCRIPTDIR/scripts/ci/rafcodephi_memfd29_link.sh"
+	rafcodephi_apply_memfd29_link
 	# Certain packages are not safe to build on device because their
 	# build.sh script deletes specific files in $TERMUX_PREFIX.
 	if $TERMUX_ON_DEVICE_BUILD; then
