@@ -18,6 +18,9 @@ on:
       - 'scripts/build-rafcodephi-real-bootstrap.sh'
       - 'scripts/ci/rafcodephi_ndk_preflight.sh'
       - 'scripts/ci/rafcodephi_android_api_gate.py'
+      - 'scripts/ci/rafcodephi_memfd29_compat.c'
+      - 'scripts/ci/rafcodephi_memfd29_link.sh'
+      - 'scripts/tests/test_rafcodephi_memfd29_link.py'
       - 'scripts/tests/test_rafcodephi_android_api_gate.py'
       - 'scripts/ci/rafcodephi_prepare_ndk29.sh'
       - 'scripts/repair_rafcodephi_bootstrap_symlinks.py'
@@ -68,6 +71,8 @@ jobs:
         run: |
           set -euo pipefail
           python3 scripts/tests/test_rafcodephi_android_api_gate.py -v
+          python3 scripts/tests/test_rafcodephi_memfd29_link.py -v
+          bash -n scripts/ci/rafcodephi_memfd29_link.sh
       - name: Android10 scope summary
         if: always()
         shell: bash
@@ -337,7 +342,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
         with:
-          name: rafcodephi-real-bootstrap-diagnostics-${{ matrix.architecture }}-${{ github.event.pull_request.head.sha || github.sha }}
+          name: rafcodephi-real-bootstrap-diagnostics-${{ matrix.arch }}-${{ github.event.pull_request.head.sha || github.sha }}
           path: |
             build/reports/rafcodephi-ndk29-prepare.log
             build/reports/rafcodephi-ndk-preflight.log
