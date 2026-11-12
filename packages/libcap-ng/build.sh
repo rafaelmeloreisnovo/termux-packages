@@ -12,5 +12,9 @@ TERMUX_PKG_EXTRA_CONFIGURE_ARGS="
 "
 
 termux_step_pre_configure() {
+	# API29 Bionic lacks the newer libc memfd_create entrypoint.
+	# Apply source-only compatibility for RAFCODEPHI/aarch64/API29.
+	source "$TERMUX_SCRIPTDIR/scripts/ci/rafcodephi_memfd29_link.sh"
+	rafcodephi_apply_memfd29_link
 	./autogen.sh
 }
