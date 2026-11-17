@@ -467,7 +467,7 @@ jobs:
         with:
           expected-sha: ${{ github.sha }}
       - name: Download same-attempt signed APT preview
-        uses: actions/download-artifact@v7
+        uses: actions/download-artifact@v8
         with:
           name: rafcodephi-apt-preview-${{ github.run_id }}-${{ github.run_attempt }}
           path: build/reports
