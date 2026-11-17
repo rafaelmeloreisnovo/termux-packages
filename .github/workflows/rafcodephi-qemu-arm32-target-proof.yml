@@ -46,7 +46,7 @@ jobs:
           # so -i may use canonical Termux ARM dependencies. It answers only
           # whether this exact recipe can produce the x86_64-softmmu binary on
           # an ARM32/Bionic target. It is NOT RAFCODEPHI custom-prefix evidence.
-          ./scripts/run-docker.sh env NDK=/home/builder/.termux-build/android-ndk-r29 ./build-package.sh -i -C -a arm qemu-system-x86-64-headless
+          ./scripts/run-docker.sh env NDK=/home/builder/.termux-build/android-ndk-r29 RAFCODEPHI_CI_CANONICAL_SDK_VIEW=true ./build-package.sh -i -C -a arm qemu-system-x86-64-headless
 
       - name: Verify canonical-prefix ARM32 target artifact
         shell: bash
