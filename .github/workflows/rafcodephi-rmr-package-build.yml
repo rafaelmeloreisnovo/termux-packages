@@ -30,7 +30,7 @@ jobs:
         arch: [arm, aarch64]
     steps:
       - name: Checkout exact candidate
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
 
       - name: Validate source custody
         run: python3 scripts/validate_rafcodephi_freestanding_module.py

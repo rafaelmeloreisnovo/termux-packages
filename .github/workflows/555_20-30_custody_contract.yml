@@ -35,7 +35,7 @@ jobs:
     timeout-minutes: 10
     steps:
       - name: Checkout exact revision
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
         with:
           fetch-depth: 1
           persist-credentials: false
@@ -93,7 +93,7 @@ jobs:
       ARTIFACT_DIGEST: sha256:5340b3d05a3257138af7f2513493b8adb5fcd68d1afa4e24c683f3685578af14
     steps:
       - name: Checkout verifier (never builder)
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
         with:
           persist-credentials: false
       - name: Verify historical provider authority and expected artifact digest
@@ -118,7 +118,7 @@ jobs:
             and .workflow_run.head_sha == $sha
           ' artifact.json >/dev/null
       - name: Checkout exact historical producer source for recipe git blob identity
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
         with:
           ref: b1d029649351232649f4b1a03eab2084d0fbc4b6
           path: preserved-source

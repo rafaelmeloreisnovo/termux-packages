@@ -21,7 +21,7 @@ jobs:
 
     steps:
       - name: Checkout exact candidate
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
 
       - name: Preserve canonical Termux package identity
         shell: bash

@@ -28,7 +28,7 @@ jobs:
     timeout-minutes: 10
     steps:
       - name: Checkout exact candidate
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
 
       - name: Validate source custody before compiling
         run: python3 scripts/validate_rafcodephi_freestanding_module.py
