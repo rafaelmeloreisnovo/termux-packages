@@ -66,21 +66,35 @@ def normalize_machine(machine: str, system: str) -> str:
     return "unknown"
 
 
-def read_cpu_flags() -> tuple[set[str], str | None]:
-    path = Path("/proc/cpuinfo")
+def read_cpu_flags(path: Path = Path("/proc/cpuinfo")) -> tuple[set[str], str | None]:
     if not path.is_file():
         return set(), None
-    flags: set[str] = set()
+    # Intersection only: a union could select an instruction absent on a core
+    # to which the scheduler later migrates this process. Missing records mean
+    # unknown, not a verified absence of SIMD. This remains observation-only;
+    # native dispatch still needs an OS HWCAP/ABI/permission execution gate.
+    records: list[set[str]] = []
     try:
-        for line in path.read_text(encoding="utf-8", errors="replace").splitlines():
-            if ":" not in line:
-                continue
-            key, value = line.split(":", 1)
-            if key.strip().lower() in {"flags", "features", "isa"}:
-                flags.update(token.lower() for token in value.split())
+        text = path.read_text(encoding="utf-8", errors="replace")
+        for block in text.split("\n\n"):
+            fields = {}
+            for line in block.splitlines():
+                if ":" in line:
+                    key, value = line.split(":", 1)
+                    fields[key.strip().lower()] = value.strip().lower()
+            feature_fields = [fields[k] for k in ("flags", "features", "isa") if k in fields]
+            if fields.get("processor", "").isdigit() and not feature_fields:
+                return set(), None
+            if feature_fields:
+                record = set.intersection(*(set(v.split()) for v in feature_fields))
+                if not record:
+                    return set(), None
+                records.append(record)
     except OSError:
         return set(), None
-    return flags, str(path)
+    if not records:
+        return set(), None
+    return set.intersection(*records), str(path)
 
 
 def probe_page_size() -> dict[str, Any]:
@@ -179,6 +193,8 @@ def build_report() -> dict[str, Any]:
         },
         "device": gap("no physical-device identity/proof is inferred from architecture probing"),
         "scope": {
+            "cpu_feature_aggregation": "intersection_of_observed_cpu_records",
+            "native_dispatch_authorized": False,
             "nominal_arch_matrix_is_runtime_evidence": False,
             "physical_device_verified": False,
             "cross_arch_execution_verified": False,

@@ -1,0 +1,61 @@
+{
+  "schema": "rafcodephi.validation-successor/v1",
+  "event_id": "MU-TERMUXPKG-ELF-20261117-S1",
+  "parent_source_commit": "0a70700697b3a6a0ba2961f51189189e5305903a",
+  "scope": "CROSS_COMPILED_ARM_OBJECTS_AND_SYNTHETIC_CPU_PROBE",
+  "source_repo": "rafaelmeloreisnovo/termux-packages",
+  "target_branch": "review/elf-capability-validation-20261117",
+  "authority": "user-request-20261117; producer-local AGENTS.md",
+  "classification": {
+    "governance": "REVIEW_ONLY",
+    "data": "PUBLIC_SOURCE_SYNTHETIC_TESTS",
+    "privacy": "NO_DEVICE_PERSONAL_DATA",
+    "security": "NO_PROVIDER_OR_SIGNING_CHANGE"
+  },
+  "executions": [
+    "Clang19.1.7: 4 actual Android-ABI ET_REL files, ARM32+ARM64 portable+ISA RBIT",
+    "ELF suite 5 tests exit0; hosted dependency rejected",
+    "CPU probe regression suite 14 tests exit0",
+    "YAML parsed; bash syntax; git diff --check"
+  ],
+  "historical_failures": [],
+  "source_file_sha256": [
+    {
+      "path": ".github/workflows/lowlevel-package-handoff.yml",
+      "sha256": "f33ca281d40ddf15472992313aeef1ff24d555af2b15ad7588f5f34029fc2a30"
+    },
+    {
+      "path": "core/tests/test_arch_runtime_probe.py",
+      "sha256": "634de36d736951b7d193c849c21a55177b64ecd24212b25d6ff9be641a69a779"
+    },
+    {
+      "path": "core/tests/test_pure_elf_object.py",
+      "sha256": "cc5aa4bce29097a735369cc61d5264794afde96488d4121734a0a508f74d4dd3"
+    },
+    {
+      "path": "docs/assurance/LOWLEVEL_ELF_CAPABILITY_V2.md",
+      "sha256": "7aebdf50a22946b7a96178585adfc960fc5f42b88c13b2ff8990dcd325e21286"
+    },
+    {
+      "path": "scripts/arch_runtime_probe.py",
+      "sha256": "d98f5a75d03ef6385742183ace3fddc2d4686d94fca417ec284af7f6153039c3"
+    },
+    {
+      "path": "scripts/verify-lowlevel-objects.sh",
+      "sha256": "a56a307b6c3586f53c0cc78b67956d5d3e918ada14afb0eb35202148c16d7d19"
+    },
+    {
+      "path": "scripts/verify_pure_elf_object.py",
+      "sha256": "3872756cd0338cb20d8795d09b5b8848d401d760ac58379d87e0d031e9c6f05a"
+    }
+  ],
+  "gaps": [
+    "TOKEN_VAZIO_PHYSICAL_EVIDENCE_MISSING",
+    "TOKEN_VAZIO_PERFORMANCE_UNMEASURED",
+    "TOKEN_VAZIO_GOVERNANCE_BLOCKED",
+    "new_exact_head_CI_NOT_OBSERVED"
+  ],
+  "rollback": "scoped revert successor; no history deletion",
+  "claim_allowed": false,
+  "observed_at": "2026-11-17T11:54:46.118Z"
+}

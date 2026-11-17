@@ -6,6 +6,13 @@ on:
       - 'docs/assurance/lowlevel-selection.v1.json'
       - 'docs/assurance/RAFCODEPHI_STUDY_RESEARCH_LICENSE.md'
       - 'scripts/verify-lowlevel-handoff.sh'
+      - 'scripts/verify-lowlevel-objects.sh'
+      - 'scripts/verify_pure_elf_object.py'
+      - 'scripts/arch_runtime_probe.py'
+      - 'core/tests/test_arch_runtime_probe.py'
+      - 'core/tests/test_pure_elf_object.py'
+      - 'raf_microasm/v2/**'
+      - '.github/workflows/lowlevel-package-handoff.yml'
   push:
     branches: [main]
     paths:
@@ -24,7 +31,14 @@ jobs:
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          persist-credentials: false
       - run: bash scripts/verify-lowlevel-handoff.sh "$GITHUB_WORKSPACE"
+      - name: Compile and inspect pure ARM32 and ARM64 primitives
+        run: bash scripts/verify-lowlevel-objects.sh . "$RUNNER_TEMP/lowlevel-objects"
+      - name: Falsify unsafe hardware aggregation
+        run: python3 core/tests/test_arch_runtime_probe.py
       - name: Emit producer receipt
         run: |
           mkdir -p artifacts/receipts
@@ -33,7 +47,12 @@ jobs:
           printf '%s\n' 'handoff_scope=producer_contract_only' >> artifacts/receipts/package-lowlevel-handoff.sha256
           printf '%s\n' 'consumer_runtime=TOKEN_VAZIO_DEVICE_RUNTIME' >> artifacts/receipts/package-lowlevel-handoff.sha256
           printf '%s\n' 'claim_allowed=false' >> artifacts/receipts/package-lowlevel-handoff.sha256
+          printf 'source_commit=%s\nrun_id=%s\n' "$(git rev-parse HEAD)" "$GITHUB_RUN_ID" >> artifacts/receipts/package-lowlevel-handoff.sha256
       - uses: actions/upload-artifact@v4
         with:
           name: package-lowlevel-handoff-receipt
-          path: artifacts/receipts/package-lowlevel-handoff.sha256
+          path: |
+            artifacts/receipts/package-lowlevel-handoff.sha256
+            ${{ runner.temp }}/lowlevel-objects/*.json
+            ${{ runner.temp }}/lowlevel-objects/sha256.txt
+            ${{ runner.temp }}/lowlevel-objects/compiler.txt

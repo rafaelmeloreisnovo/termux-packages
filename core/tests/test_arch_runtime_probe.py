@@ -4,6 +4,7 @@ from __future__ import annotations
 import importlib.util
 import shutil
 import unittest
+import tempfile
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -16,6 +17,38 @@ spec.loader.exec_module(mod)
 
 
 class ArchRuntimeProbeTests(unittest.TestCase):
+    def flags_fixture(self, text):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "cpuinfo"
+            path.write_text(text)
+            flags, source = mod.read_cpu_flags(path)
+            return flags, source
+
+    def test_heterogeneous_cores_use_intersection(self):
+        flags, source = self.flags_fixture("processor : 0\nFeatures : neon aes\n\nprocessor : 1\nFeatures : neon\n")
+        self.assertEqual(flags, {"neon"})
+        self.assertIsNotNone(source)
+
+    def test_missing_core_flags_are_unknown(self):
+        self.assertEqual(self.flags_fixture("processor : 0\nFeatures : neon\n\nprocessor : 1\nmodel name : absent\n"), (set(), None))
+
+    def test_empty_and_missing_feature_sources_are_unknown(self):
+        for text in ("", "Hardware : example\n", "processor : 0\nFeatures :\n"):
+            self.assertEqual(self.flags_fixture(text), (set(), None))
+
+    def test_disjoint_feature_records_do_not_invent_simd(self):
+        flags, source = self.flags_fixture("processor : 0\nflags : sse2\n\nprocessor : 1\nflags : avx2\n")
+        self.assertEqual(flags, set())
+        self.assertIsNotNone(source)
+
+    def test_hardware_summary_is_not_an_extra_cpu(self):
+        flags, source = self.flags_fixture("processor : 0\nFeatures : neon\n\nProcessor : ARMv7 Processor rev 4\nHardware : example\n")
+        self.assertEqual(flags, {"neon"})
+        self.assertIsNotNone(source)
+
+    def test_observation_never_authorizes_native_dispatch(self):
+        self.assertFalse(mod.build_report()["scope"]["native_dispatch_authorized"])
+
     def test_report_scope_never_promotes_device_or_cross_arch(self) -> None:
         report = mod.build_report()
         self.assertEqual(report["schema"], "arch_runtime_probe/1.0.0")
