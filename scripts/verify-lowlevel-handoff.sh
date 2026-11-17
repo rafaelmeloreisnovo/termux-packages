@@ -9,5 +9,5 @@ grep -q '"claim_allowed": false' "$manifest"
 grep -q '"PURE_CORE"' "$manifest"
 grep -q '"PLATFORM_GATE"' "$manifest"
 grep -q '"HOSTED_BOUNDARY"' "$manifest"
-grep -q 'producer' "$manifest"
+grep -q '"status": "PRODUCER_CONTRACT_ONLY_PENDING_BUILD"' "$manifest"
 printf '%s\n' 'PACKAGE_LOWLEVEL_HANDOFF_STATIC_PASS'
