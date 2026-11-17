@@ -35,10 +35,16 @@ jobs:
           grep -Fq 'QEMU_TARGETS+="x86_64-softmmu,"' "$recipe"
           grep -Fq 'ARM32 QEMU build did not produce bin/qemu-system-x86_64' "$recipe"
 
+      - name: Provision SHA256-pinned NDK29 in canonical builder
+        shell: bash
+        run: |
+          set -euo pipefail
+          ./scripts/run-docker.sh bash scripts/ci/rafcodephi_prepare_ndk29.sh
+
       - name: Build QEMU producing recipe for ARM32
         run: |
           set -euo pipefail
-          ./scripts/run-docker.sh ./build-package.sh -C -a arm qemu-system-x86-64-headless
+          ./scripts/run-docker.sh env NDK=/home/builder/.termux-build/android-ndk-r29 ./build-package.sh -C -a arm qemu-system-x86-64-headless
 
       - name: Verify ARM package contains qemu-system-x86_64
         shell: bash
