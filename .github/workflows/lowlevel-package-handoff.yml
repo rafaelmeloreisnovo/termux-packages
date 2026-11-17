@@ -1,0 +1,38 @@
+name: lowlevel package handoff gates
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'docs/assurance/lowlevel-selection.v1.json'
+      - 'docs/assurance/RAFCODEPHI_STUDY_RESEARCH_LICENSE.md'
+      - 'scripts/verify-lowlevel-handoff.sh'
+  push:
+    branches: [main]
+    paths:
+      - 'docs/assurance/lowlevel-selection.v1.json'
+      - 'docs/assurance/RAFCODEPHI_STUDY_RESEARCH_LICENSE.md'
+      - 'scripts/verify-lowlevel-handoff.sh'
+permissions:
+  contents: read
+  pull-requests: read
+concurrency:
+  group: package-lowlevel-handoff-${{ github.ref }}
+  cancel-in-progress: false
+jobs:
+  handoff-contract:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: bash scripts/verify-lowlevel-handoff.sh "$GITHUB_WORKSPACE"
+      - name: Emit producer receipt
+        run: |
+          mkdir -p artifacts/receipts
+          sha256sum docs/assurance/lowlevel-selection.v1.json \
+            docs/assurance/RAFCODEPHI_STUDY_RESEARCH_LICENSE.md > artifacts/receipts/package-lowlevel-handoff.sha256
+          printf '%s\n' 'handoff_scope=producer_contract_only' >> artifacts/receipts/package-lowlevel-handoff.sha256
+          printf '%s\n' 'consumer_runtime=TOKEN_VAZIO_DEVICE_RUNTIME' >> artifacts/receipts/package-lowlevel-handoff.sha256
+          printf '%s\n' 'claim_allowed=false' >> artifacts/receipts/package-lowlevel-handoff.sha256
+      - uses: actions/upload-artifact@v4
+        with:
+          name: package-lowlevel-handoff-receipt
+          path: artifacts/receipts/package-lowlevel-handoff.sha256
