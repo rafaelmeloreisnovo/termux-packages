@@ -4,6 +4,7 @@ on:
   pull_request:
     paths:
       - 'packages/qemu-system-x86-64-headless/**'
+      - 'scripts/ci/rafcodephi_qemu_arm32_host_width_gate.sh'
       - 'packages/rafcodephi-vectras-profile/**'
       - '.github/workflows/rafcodephi-qemu-arm32-x86_64.yml'
   workflow_dispatch:
@@ -23,6 +24,8 @@ jobs:
     steps:
       - name: Checkout exact candidate
         uses: actions/checkout@v6
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
 
       - name: Configure RAFCODEPHI package prefix
         run: bash scripts/rafcodephi-configure-package-name.sh
@@ -34,6 +37,11 @@ jobs:
           grep -Fq '"$TERMUX_ARCH" == "arm"' "$recipe"
           grep -Fq 'QEMU_TARGETS+="x86_64-softmmu,"' "$recipe"
           grep -Fq 'ARM32 QEMU build did not produce bin/qemu-system-x86_64' "$recipe"
+
+      - name: Fail closed on QEMU 10.2.1 ARM32 to x86_64 upstream constraint
+        shell: bash
+        run: |
+          bash scripts/ci/rafcodephi_qemu_arm32_host_width_gate.sh rafcodephi-qemu-arm32-evidence com.termux.rafacodephi
 
       - name: Provision SHA256-pinned NDK29 in canonical builder
         shell: bash
@@ -94,6 +102,6 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v6
         with:
-          name: rafcodephi-qemu-arm32-x86_64-${{ github.sha }}
+          name: rafcodephi-qemu-arm32-x86_64-${{ github.event.pull_request.head.sha || github.sha }}
           path: rafcodephi-qemu-arm32-evidence/
           if-no-files-found: error
