@@ -29,13 +29,13 @@ termux_step_make() {
 	export ANDROID_HOME
 	export GRADLE_OPTS="-Dorg.gradle.daemon=false -Xmx1536m -Dorg.gradle.java.home=$TERMUX_JAVA_HOME"
 
-	# The package-builder AppArmor profile intentionally keeps /home/builder/lib
-	# immutable. TermuxAm v0.8.0 needs compileSdk 33 while the current builder
-	# image does not preinstall platforms;android-33/build-tools;34.0.0, so Gradle
-	# cannot auto-provision them in the canonical SDK root. For RAFCODEPHI only,
-	# assemble a writable SDK view under TERMUX_PKG_TMPDIR: reuse the immutable
-	# toolchain via symlinks and install only the two missing SDK components there.
-	if [[ "$TERMUX_APP_PACKAGE" == "com.termux.rafacodephi" ]]; then
+	# AppArmor keeps /home/builder/lib immutable. TermuxAm v0.8.0 needs
+	# platforms;android-33 and build-tools;34.0.0 that the image lacks.
+	# Keep the original RAFCODEPHI behavior, and opt in canonical com.termux
+	# only for the scoped QEMU CI target proof. Neither lane relaxes AppArmor.
+	# Install the missing components in a writable, per-package SDK view.
+	if [[ "$TERMUX_APP_PACKAGE" == "com.termux.rafacodephi" ||
+		( "$TERMUX_APP_PACKAGE" == "com.termux" && "${RAFCODEPHI_CI_CANONICAL_SDK_VIEW:-false}" == "true" ) ]]; then
 		local source_sdk="$ANDROID_HOME"
 		local writable_sdk="$TERMUX_PKG_TMPDIR/android-sdk"
 		local entry name sdkmanager sdkmanager_status
