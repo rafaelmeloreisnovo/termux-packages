@@ -84,8 +84,10 @@ jobs:
           claim_allowed=false
           EOF
 
+      # A failed or incomplete build must not emit an empty proof artifact.
+      # The primary build failure remains the authoritative diagnostic.
       - name: Upload target proof
-        if: always()
+        if: success()
         uses: actions/upload-artifact@v6
         with:
           name: rafcodephi-qemu-arm32-target-proof-${{ github.sha }}
