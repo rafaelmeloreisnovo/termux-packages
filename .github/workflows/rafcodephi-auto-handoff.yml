@@ -66,6 +66,10 @@ jobs:
 
   produce:
     name: Build + attest ARM/ARM64 producer
+    permissions:
+      contents: read
+      id-token: write
+      attestations: write
     outputs:
       artifact_id: ${{ steps.producer_artifact.outputs.artifact-id }}
       artifact_digest: ${{ steps.producer_artifact.outputs.artifact-digest }}
@@ -217,6 +221,47 @@ jobs:
             --output build/reports/rafcodephi-producer-evidence.zip
           (cd build/reports && sha256sum -c rafcodephi-producer-evidence.zip.sha256)
 
+      # Signed Sigstore/SLSA provenance of the exact multi-ABI producer bytes.
+      # The checkout is tied to GITHUB_SHA; offline bundle verification is
+      # mandatory before publishing producer evidence or downstream dispatch.
+      - name: Attest exact ARM ARM64 and ZIPRAF bytes (SLSA)
+        id: rafaelia_attest
+        uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4 pinned commit
+        with:
+          subject-path: |
+            artifacts/rafcodephi-bootstrap/RAFCODEPHI_REAL_BOOTSTRAP_MANIFEST.txt
+            artifacts/rafcodephi-bootstrap/rafcodephi-bootstrap-arm.zip
+            artifacts/rafcodephi-bootstrap/rafcodephi-bootstrap-aarch64.zip
+            build/reports/rafcodephi-producer-evidence.zip
+
+      - name: Verify signed producer attestation before handoff
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          ATTESTATION_BUNDLE: ${{ steps.rafaelia_attest.outputs.bundle-path }}
+        run: |
+          set -euo pipefail
+          test -s "$ATTESTATION_BUNDLE"
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          signer="$GITHUB_REPOSITORY/.github/workflows/rafcodephi-auto-handoff.yml"
+          for f in \
+            artifacts/rafcodephi-bootstrap/RAFCODEPHI_REAL_BOOTSTRAP_MANIFEST.txt \
+            artifacts/rafcodephi-bootstrap/rafcodephi-bootstrap-arm.zip \
+            artifacts/rafcodephi-bootstrap/rafcodephi-bootstrap-aarch64.zip \
+            build/reports/rafcodephi-producer-evidence.zip; do
+            test -s "$f"
+            gh attestation verify "$f" --repo "$GITHUB_REPOSITORY" \
+              --bundle "$ATTESTATION_BUNDLE" \
+              --signer-workflow "$signer" \
+              --source-digest "$GITHUB_SHA" \
+              --format json > /dev/null
+          done
+          cp "$ATTESTATION_BUNDLE" build/reports/rafcodephi-signed-provenance.bundle.json
+          sha256sum build/reports/rafcodephi-signed-provenance.bundle.json > build/reports/rafcodephi-signed-provenance.bundle.json.sha256
+          echo "SIGNED_PROVENANCE=VERIFIED_SCOPED"
+          echo "ANDROID_DEVICE=NOT_RUN"
+          echo "CLAIM_ALLOWED=false"
+
       - name: Upload consolidated non-APK ZIPRAF (portable)
         uses: actions/upload-artifact@v7
         with:
@@ -224,6 +269,8 @@ jobs:
           path: |
             build/reports/rafcodephi-producer-evidence.zip
             build/reports/rafcodephi-producer-evidence.zip.sha256
+            build/reports/rafcodephi-signed-provenance.bundle.json
+            build/reports/rafcodephi-signed-provenance.bundle.json.sha256
           if-no-files-found: error
           retention-days: 30
 
