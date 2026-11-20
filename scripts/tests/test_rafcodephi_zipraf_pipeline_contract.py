@@ -30,6 +30,24 @@ assert "rafcodephi-producer-evidence.zip" in workflow
 assert "rafcodephi-producer-zipraf-${{ github.sha }}" in workflow
 assert consumer_contract in workflow
 assert "    name: Build + attest ARM/ARM64 producer" in workflow
+# The job must mint a real Sigstore/SLSA attestation, then verify the
+# actual source-bound ARM/ARM64/ZIPRAF bytes before the original handoff.
+assert "actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6" in workflow
+assert "      id-token: write" in workflow
+assert "      attestations: write" in workflow
+assert "id: rafaelia_attest" in workflow
+assert 'gh attestation verify "$f"' in workflow
+assert '--source-digest "$GITHUB_SHA"' in workflow
+assert '--signer-workflow "$signer"' in workflow
+assert 'test "$(git rev-parse HEAD)" = "$GITHUB_SHA"' in workflow
+assert "rafcodephi-signed-provenance.bundle.json" in workflow
+assert (
+    workflow.index("Bundle immutable non-APK producer evidence as ZIPRAF")
+    < workflow.index("Attest exact ARM ARM64 and ZIPRAF bytes (SLSA)")
+    < workflow.index("Verify signed producer attestation before handoff")
+    < workflow.index("Upload consolidated non-APK ZIPRAF (portable)")
+    < workflow.index("Upload immutable producer artifact")
+)
 for name in [
     "RAFCODEPHI_REAL_BOOTSTRAP_MANIFEST.txt",
     "rafcodephi-bootstrap-arm.zip",
