@@ -17,6 +17,13 @@ TERMUX_PKG_PROVIDES="qemu-system-x86_64-headless"
 TERMUX_PKG_BUILD_IN_SRC=true
 
 termux_step_pre_configure() {
+	# QEMU >= 10.0 rejects 64-bit system guests on 32-bit build hosts.
+	# This package promises qemu-system-x86_64: fail before the expensive build
+	# rather than publishing a misleading or incomplete ARM32 package.
+	if [[ "$TERMUX_ARCH" == "arm" ]]; then
+		termux_error_exit "QEMU >=10.0 x86_64-softmmu requires a 64-bit host; ARM32 package blocked"
+	fi
+
 	# Workaround for https://github.com/termux/termux-packages/issues/12261.
 	if [ $TERMUX_ARCH = "aarch64" ]; then
 		rm -f $TERMUX_PKG_BUILDDIR/_lib
@@ -64,12 +71,9 @@ termux_step_configure() {
 		QEMU_TARGETS+="riscv64-softmmu,"
 	fi
 
-	# The qemu-system-x86-64-headless parent package is published for ARM32,
-	# but upstream Termux currently omits x86_64-softmmu when the host package
-	# ABI is 32-bit. That leaves the ARM package without qemu-system-x86_64.
-	# RAFCODEPHI enables only the missing system target on arm; other 32-bit
-	# hosts remain unchanged until independently evidenced.
-	if [[ "$TERMUX_ARCH_BITS" == "64" || "$TERMUX_ARCH" == "arm" ]]; then
+	# QEMU >= 10.0 does not configure 64-bit guests on 32-bit hosts.
+	# Keep x86_64-softmmu on verified 64-bit ABI paths only.
+	if [[ "$TERMUX_ARCH_BITS" == "64" ]]; then
 		QEMU_TARGETS+="x86_64-softmmu,"
 	fi
 
