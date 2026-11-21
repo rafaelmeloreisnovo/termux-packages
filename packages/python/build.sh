@@ -159,8 +159,12 @@ termux_step_post_massage() {
 	# Fail closed on real staged ARM libraries before producing a .deb.
 	# Host Python/readelf are build-time tooling, not Android runtime deps.
 	if [[ "$TERMUX_ARCH" == "arm" || "$TERMUX_ARCH" == "aarch64" ]]; then
-		python3 "$TERMUX_PKG_BUILDER_DIR/../../scripts/guard_rafcodephi_python_api29.py" \
-			--library "$TERMUX_PREFIX/lib/libpython${_MAJOR_VERSION}.so" \
+		# build-package.sh runs this hook inside the massaged package root.
+		# Inspect libpython actually destined for the .deb, not the build sysroot.
+		[[ "$PWD" == "$TERMUX_PKG_MASSAGEDIR/$TERMUX_PREFIX_CLASSICAL" ]] \
+			|| termux_error_exit "Python ELF gate not in staged package root"
+		python3 "$TERMUX_SCRIPTDIR/scripts/guard_rafcodephi_python_api29.py" \
+			--library "lib/libpython${_MAJOR_VERSION}.so" \
 			--arch "$TERMUX_ARCH" --max-api 29 \
 			|| termux_error_exit "Python API29 ELF import gate failed"
 	fi
