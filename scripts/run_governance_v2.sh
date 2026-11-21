@@ -50,6 +50,7 @@ python3 scripts/emit_rafcodephi_bootstrap_source_manifest.py --self-test
 echo "[3/16] RAFCODEPHI source-to-DEB delivery preflight"
 python3 -m unittest core/tests/test_rafcodephi_delivery_gate.py
 python3 scripts/rafcodephi_delivery_gate.py source --repo . >/dev/null
+python3 -m unittest discover -s tests -p 'test_rafcodephi_python_api29.py'
 
 echo "[4/16] Governed core product install surface"
 python3 -m unittest core/tests/test_product_surface.py
