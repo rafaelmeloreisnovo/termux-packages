@@ -159,9 +159,14 @@ termux_step_post_massage() {
 	# Fail closed on real staged ARM libraries before producing a .deb.
 	# Host Python/readelf are build-time tooling, not Android runtime deps.
 	if [[ "$TERMUX_ARCH" == "arm" || "$TERMUX_ARCH" == "aarch64" ]]; then
-		# build-package.sh runs this hook inside the massaged package root.
-		# Inspect libpython actually destined for the .deb, not the build sysroot.
-		[[ "$PWD" == "$TERMUX_PKG_MASSAGEDIR/$TERMUX_PREFIX_CLASSICAL" ]] \
+		# Compare physical directories: the absolute prefix may introduce //.
+		# Keep the check fail-closed; never inspect the live prefix instead.
+		local staged_root current_root
+		staged_root=$(cd -- "$TERMUX_PKG_MASSAGEDIR/$TERMUX_PREFIX_CLASSICAL" && pwd -P) \
+			|| termux_error_exit "Python ELF gate staged package root unavailable"
+		current_root=$(pwd -P) \
+			|| termux_error_exit "Python ELF gate current directory unavailable"
+		[[ "$current_root" == "$staged_root" ]] \
 			|| termux_error_exit "Python ELF gate not in staged package root"
 		python3 "$TERMUX_SCRIPTDIR/scripts/guard_rafcodephi_python_api29.py" \
 			--library "lib/libpython${_MAJOR_VERSION}.so" \
