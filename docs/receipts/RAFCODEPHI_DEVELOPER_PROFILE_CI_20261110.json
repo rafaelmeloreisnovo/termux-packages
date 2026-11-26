@@ -1,0 +1,46 @@
+{
+  "schema": "rafcodephi.developer-profile-ci-plan/v1",
+  "recorded_at": "2026-11-10T23:45:00Z",
+  "producer_repository": "rafaelmeloreisnovo/termux-packages",
+  "producer_branch": "fix/recover-real-pkg-handoff-20261109",
+  "base_commit": "affe71a12c903daf70ac46dcc83ffad7d49a870a",
+  "consumer_repository": "rafaelmeloreisnovo/termux-app-rafacodephi",
+  "consumer_ci_commit": "6fde151f437f98deba13a6f80202ad7551384a4e",
+  "profile_package": "rafcodephi-developer-profile",
+  "architectures": ["arm", "aarch64"],
+  "package_roots": [
+    "nodejs-lts",
+    "npm",
+    "openjdk-21",
+    "android-tools",
+    "clang",
+    "make",
+    "ninja",
+    "ndk-sysroot"
+  ],
+  "shell_initialization": "etc/profile.d/rafcodephi-developer.sh",
+  "device_gate_command": "rafcodephi-dev-doctor",
+  "ndk_scope": "TERMUX_ON_DEVICE_SYSROOT_NOT_GOOGLE_HOST_NDK",
+  "workflow": ".github/workflows/recovered-preview-apt.yml",
+  "workflow_state": "IMPLEMENTED_LOCAL_CONTRACTS_PASS_CI_NOT_RUN",
+  "local_evidence": {
+    "developer_deb_fixture": "PASS_STATIC",
+    "profile_architecture_tests": "15_PASS",
+    "federated_provenance": "PASS",
+    "signed_apt_contract": "PASS_HOST_SYNTHETIC",
+    "yaml_parse": "PASS"
+  },
+  "service_classification": {
+    "governance": "PRODUCER_BRANCH_DRAFT_PR",
+    "data": "PUBLIC_PACKAGE_SOURCE_AND_HASH_RECEIPTS",
+    "privacy": "NO_USER_DATA_OR_CREDENTIALS",
+    "security": "SIGNED_IMMUTABLE_APT_SUCCESSOR_FAIL_CLOSED"
+  },
+  "falsifier": "Any missing required DEB, payload path, dependency, signed APT resolution, per-file Git bound, or architecture mismatch fails the workflow before publication.",
+  "rollback": "Revert the successor commit; existing immutable APT snapshot branch remains unchanged.",
+  "F_ok": "Source contracts and synthetic DEB content gate pass locally.",
+  "F_gap": "Exact-head ARM/ARM64 source build, successor snapshot publication, consumer APK rebind, and physical Android execution are not yet observed.",
+  "F_next": "Run GitHub Actions on the exact producer commit; bind the successful immutable snapshot into the consumer bootstrap and rebuild the APK.",
+  "physical_android_runtime": "TOKEN_VAZIO",
+  "claim_allowed": false
+}

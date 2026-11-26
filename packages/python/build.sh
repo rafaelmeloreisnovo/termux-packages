@@ -5,7 +5,7 @@ TERMUX_PKG_LICENSE="custom"
 TERMUX_PKG_LICENSE_FILE="LICENSE"
 TERMUX_PKG_MAINTAINER="Yaksh Bariya <thunder-coding@termux.dev>"
 TERMUX_PKG_VERSION="3.13.13"
-TERMUX_PKG_REVISION=1
+TERMUX_PKG_REVISION=2
 _DEBPYTHON_COMMIT=f358ab52bf2932ad55b1a72a29c9762169e6ac47
 TERMUX_PKG_SRCURL=(
 	https://www.python.org/ftp/python/${TERMUX_PKG_VERSION}/Python-${TERMUX_PKG_VERSION}.tar.xz
@@ -104,9 +104,11 @@ termux_step_pre_configure() {
 		TERMUX_PKG_EXTRA_CONFIGURE_ARGS+=" ac_cv_func_getloadavg=no"
 	fi
 
-	if [[ "$TERMUX_PKG_API_LEVEL" -lt 30 ]]; then
-		TERMUX_PKG_EXTRA_CONFIGURE_ARGS+=" ac_cv_func_sem_clockwait=no"
-	fi
+	# RAFCODEPHI supports Android 10/API 29. Even when a newer
+	# toolchain is selected, do not import Bionic API30 clockwait symbols.
+	# The ELF gate below checks the produced library, not just this recipe.
+	TERMUX_PKG_EXTRA_CONFIGURE_ARGS+=" ac_cv_func_sem_clockwait=no"
+	TERMUX_PKG_EXTRA_CONFIGURE_ARGS+=" ac_cv_func_pthread_cond_clockwait=no"
 
 	if [[ "$TERMUX_PKG_API_LEVEL" -lt 33 ]]; then
 		TERMUX_PKG_EXTRA_CONFIGURE_ARGS+=" ac_cv_func_preadv2=no"
@@ -154,6 +156,23 @@ termux_step_post_massage() {
 			termux_error_exit "Python module library $module not built"
 		fi
 	done
+	# Fail closed on real staged ARM libraries before producing a .deb.
+	# Host Python/readelf are build-time tooling, not Android runtime deps.
+	if [[ "$TERMUX_ARCH" == "arm" || "$TERMUX_ARCH" == "aarch64" ]]; then
+		# Compare physical directories: the absolute prefix may introduce //.
+		# Keep the check fail-closed; never inspect the live prefix instead.
+		local staged_root current_root
+		staged_root=$(cd -- "$TERMUX_PKG_MASSAGEDIR/$TERMUX_PREFIX_CLASSICAL" && pwd -P) \
+			|| termux_error_exit "Python ELF gate staged package root unavailable"
+		current_root=$(pwd -P) \
+			|| termux_error_exit "Python ELF gate current directory unavailable"
+		[[ "$current_root" == "$staged_root" ]] \
+			|| termux_error_exit "Python ELF gate not in staged package root"
+		python3 "$TERMUX_SCRIPTDIR/scripts/guard_rafcodephi_python_api29.py" \
+			--library "lib/libpython${_MAJOR_VERSION}.so" \
+			--arch "$TERMUX_ARCH" --max-api 29 \
+			|| termux_error_exit "Python API29 ELF import gate failed"
+	fi
 }
 
 termux_step_create_debscripts() {

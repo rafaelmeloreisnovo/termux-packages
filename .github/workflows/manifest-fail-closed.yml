@@ -9,6 +9,8 @@ on:
       - 'repo.json'
       - 'packages/bash/build.sh'
       - 'packages/termux-tools/build.sh'
+      - 'packages/python/build.sh'
+      - 'tests/test_rafcodephi_python_api29.py'
       - '.github/workflows/manifest-fail-closed.yml'
   push:
     branches:
@@ -20,6 +22,8 @@ on:
       - 'repo.json'
       - 'packages/bash/build.sh'
       - 'packages/termux-tools/build.sh'
+      - 'packages/python/build.sh'
+      - 'tests/test_rafcodephi_python_api29.py'
       - '.github/workflows/manifest-fail-closed.yml'
   workflow_dispatch:
 
@@ -36,7 +40,7 @@ jobs:
     timeout-minutes: 5
     steps:
       - name: Checkout pinned revision
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: Record toolchain
         run: |

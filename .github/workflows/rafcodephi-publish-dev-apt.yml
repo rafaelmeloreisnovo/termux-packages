@@ -84,10 +84,20 @@ jobs:
           python3 scripts/tests/test_rafcodephi_prefix_gate.py
           python3 scripts/tests/test_rafcodephi_proot_prefix_patch.py
           python3 scripts/tests/test_rafcodephi_deb_set_gate.py
+          bash scripts/tests/test_rafcodephi_signed_apt_fixture.sh
           echo 'SIGNED_APT_CONTRACT=PASS_SOURCE_ONLY'
           echo 'DUAL_ARCH_DEB=NOT_RUN'
           echo 'SIGNED_REPOSITORY=NOT_RUN'
           echo 'CLAIM_ALLOWED=false'
+
+      - name: Preserve isolated signed APT fixture receipts
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: rafcodephi-host-signed-apt-${{ github.event.pull_request.head.sha || github.sha }}
+          path: build/reports/rafcodephi-signed-apt-fixture*
+          if-no-files-found: warn
+          retention-days: 14
 
   dual-arch-repository:
     # Explicit dispatch OR a same-repository PR proof without publication.
@@ -494,7 +504,10 @@ jobs:
 
             set +e
             (
-              apt-get "${apt_options[@]}" update
+              # The parent captures PIPESTATUS with errexit off. Re-enable it
+              # here so a later metadata/hash success cannot mask APT failure.
+              set -euo pipefail
+              apt-get "${apt_options[@]}" -o APT::Update::Error-Mode=any update
               apt-cache "${apt_options[@]}" show "$package_name"
               apt-get "${apt_options[@]}" -y --download-only --no-install-recommends install "$package_name"
 

@@ -35,6 +35,10 @@
       "metapackage": "rafcodephi-build-profile",
       "depends": ["rafcodephi-runtime-profile", "clang", "lld", "cmake", "make", "ninja", "binutils", "file", "patchelf", "rafcodephi-rmr-vector-field", "rafcodephi-rmr-vector-field-static"]
     },
+    "developer": {
+      "metapackage": "rafcodephi-developer-profile",
+      "depends": ["nodejs-lts", "npm", "openjdk-21", "android-tools", "clang", "make", "ninja", "ndk-sysroot"]
+    },
     "vectras": {
       "metapackage": "rafcodephi-vectras-profile",
       "depends": ["rafcodephi-build-profile", "aria2", "tar", "pulseaudio", "proot", "proot-distro"]

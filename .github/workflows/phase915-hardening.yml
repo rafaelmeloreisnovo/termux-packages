@@ -11,10 +11,14 @@ on:
   pull_request:
     branches: [main]
 
+permissions:
+  contents: read
+
 jobs:
   build-and-test:
     name: Build & Test Production Hardening
     runs-on: ubuntu-latest
+    timeout-minutes: 60
     strategy:
       matrix:
         include:
@@ -25,7 +29,7 @@ jobs:
 
     steps:
       - name: Checkout code
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: Set up build environment
         run: |
@@ -122,15 +126,16 @@ jobs:
   coherence-tracking:
     name: Track Coherence Metrics
     runs-on: ubuntu-latest
+    timeout-minutes: 60
     needs: build-and-test
     if: always()
 
     steps:
       - name: Checkout code
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: Download test artifacts
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8
         with:
           name: hardening-results-gcc
           path: artifacts/
@@ -232,10 +237,11 @@ jobs:
   source-contract:
     name: Source Code Contract
     runs-on: ubuntu-latest
+    timeout-minutes: 60
 
     steps:
       - name: Checkout code
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: Verify source contract
         run: |
@@ -291,10 +297,11 @@ jobs:
   structural-gate:
     name: Structural Validation
     runs-on: ubuntu-latest
+    timeout-minutes: 60
 
     steps:
       - name: Checkout code
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: Validate directory structure
         run: |

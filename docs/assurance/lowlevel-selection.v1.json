@@ -1,0 +1,46 @@
+{
+  "schema": "rafcodephi.lowlevel-selection/v1",
+  "status": "PRODUCER_CONTRACT_ONLY_PENDING_BUILD",
+  "owner": "rafaelmeloreisnovo/termux-packages",
+  "selection": {
+    "default": "AUTO_FAIL_CLOSED",
+    "allowed": ["PURE_CORE", "PLATFORM_GATE", "HOSTED_BOUNDARY"],
+    "critical_language_order": ["RUST", "C", "ASM"],
+    "hosted_language": "JAVA"
+  },
+  "boundaries": {
+    "PURE_CORE": {
+      "purpose": "authorial deterministic routines",
+      "languages": ["RUST", "C", "ASM"],
+      "forbidden": ["libc", "libm", "heap", "GC", "JNI", "Android API", "syscalls", "network"],
+      "required": ["-ffreestanding", "-fno-builtin", "-fno-stack-protector", "zero_undefined_symbols"]
+    },
+    "PLATFORM_GATE": {
+      "purpose": "ELF entry, ABI and explicitly audited OS boundary",
+      "languages": ["C", "ASM", "RUST"],
+      "required": ["target_abi", "entry_contract", "symbol_audit", "artifact_sha256"]
+    },
+    "HOSTED_BOUNDARY": {
+      "purpose": "Android lifecycle, UI, IPC and compatibility adapter",
+      "languages": ["JAVA"],
+      "artifact": "DEX",
+      "rule": "never label as freestanding; delegate critical routines to a validated native artifact"
+    }
+  },
+  "unified_directory": {
+    "layout": "artifacts/rafcodephi-lowlevel/<version>/<abi>/",
+    "required_files": ["selection.json", "LICENSE-RAFCODEPHI-STUDY-RESEARCH.md", "source-manifest.json", "java/classes.dex", "native/librafcodephi.so OR native/*.elf", "receipts/sha256.json"],
+    "abi_allowlist": ["armeabi-v7a", "arm64-v8a"],
+    "atomic_publish": true,
+    "reject_partial": true
+  },
+  "gates": {
+    "source_provenance": "required",
+    "license_provenance": "required",
+    "java_dex_consistency": "required",
+    "elf_abi_and_undefined_symbols": "required",
+    "arm32_and_arm64_compile": "required",
+    "device_install_runtime": "TOKEN_VAZIO_DEVICE_RUNTIME"
+  },
+  "claim_allowed": false
+}

@@ -198,6 +198,7 @@ jobs:
     needs: [execution-excellence]
     if: always()
     runs-on: ubuntu-24.04
+    timeout-minutes: 45
     steps:
       - name: Fail closed if any compiler path is red
         shell: bash

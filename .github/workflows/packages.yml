@@ -38,13 +38,14 @@ jobs:
     permissions:
       contents: read # actions/upload-artifact doesn't need contents: write
     runs-on: ubuntu-24.04
+    timeout-minutes: 300
     strategy:
       matrix:
         target_arch: [aarch64, x86_64]
       fail-fast: false
     steps:
     - name: Clone repository
-      uses: actions/checkout@v7
+      uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       with:
         fetch-depth: 1000
 
@@ -66,9 +67,10 @@ jobs:
     permissions:
       contents: read
     runs-on: ubuntu-slim
+    timeout-minutes: 15
     steps:
     - name: Clone repository
-      uses: actions/checkout@v7
+      uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
     - name: Randomise buildorder.py test
       run: ./scripts/bin/test-buildorder-random
     - name: Randomise buildorder.py test (aarch64)

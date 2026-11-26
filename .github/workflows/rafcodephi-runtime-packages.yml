@@ -12,6 +12,7 @@ on:
           - bootstrap
           - runtime
           - build
+          - developer
           - vectras
           - full
       target_arch:
@@ -43,7 +44,7 @@ jobs:
     timeout-minutes: 180
     steps:
       - name: Checkout pinned source tree
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: Configure custom Termux package identity
         run: bash scripts/rafcodephi-configure-package-name.sh
@@ -67,6 +68,9 @@ jobs:
           build_outputs=(clang lld cmake make ninja binutils file patchelf rafcodephi-rmr-vector-field rafcodephi-rmr-vector-field-static rafcodephi-build-profile)
           build_recipes=(libllvm libllvm cmake make ninja binutils file patchelf rafcodephi-rmr-vector-field rafcodephi-rmr-vector-field rafcodephi-build-profile)
 
+          developer_outputs=(nodejs-lts npm openjdk-21 openjdk-21-runtime-image openjdk-21-x android-tools clang make ninja ndk-sysroot rafcodephi-developer-profile)
+          developer_recipes=(nodejs-lts npm openjdk-21 openjdk-21 openjdk-21 android-tools libllvm make ninja ndk-sysroot rafcodephi-developer-profile)
+
           vectras_outputs=(aria2 tar pulseaudio proot proot-distro rafcodephi-vectras-profile)
           vectras_recipes=(aria2 tar pulseaudio proot proot-distro rafcodephi-vectras-profile)
 
@@ -84,6 +88,10 @@ jobs:
             build)
               required+=("${runtime_outputs[@]}" "${build_outputs[@]}")
               recipes+=("${runtime_recipes[@]}" "${build_recipes[@]}")
+              ;;
+            developer)
+              required+=("${developer_outputs[@]}")
+              recipes+=("${developer_recipes[@]}")
               ;;
             vectras)
               required+=("${runtime_outputs[@]}" "${build_outputs[@]}" "${vectras_outputs[@]}")
@@ -187,10 +195,35 @@ jobs:
              rafcodephi-package-custody.json rafcodephi-package-custody.json.sha256 \
              rafcodephi-package-build.receipt rafcodephi-artifacts/
 
+      # GitHub artifact paths cannot contain Debian epoch colons. Preserve
+      # original .deb basenames in a tar, alongside the existing custody files.
+      - name: Seal portable runtime DEB evidence
+        if: ${{ always() }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ ! -d rafcodephi-artifacts ]]; then
+            echo 'RUNTIME_DEBS=TOKEN_VAZIO reason=ARTIFACT_DIR_MISSING'
+            exit 0
+          fi
+          if compgen -G 'rafcodephi-artifacts/*.deb' >/dev/null; then
+            (
+              cd rafcodephi-artifacts
+              tar -cf debs.tar -- ./*.deb
+            )
+            tar -tf rafcodephi-artifacts/debs.tar >/dev/null
+            sha256sum rafcodephi-artifacts/debs.tar > rafcodephi-artifacts/debs.tar.sha256
+            sha256sum -c rafcodephi-artifacts/debs.tar.sha256
+          else
+            echo 'RUNTIME_DEBS=TOKEN_VAZIO reason=NO_DEB_OUTPUT' > rafcodephi-artifacts/debs.state
+          fi
+
       - name: Upload immutable build evidence
         if: always()
         uses: actions/upload-artifact@v6
         with:
           name: rafcodephi-${{ env.RAFCODEPHI_PROFILE }}-${{ env.RAFCODEPHI_ARCH }}-${{ github.sha }}
-          path: rafcodephi-artifacts/
+          path: |
+            rafcodephi-artifacts/
+            !rafcodephi-artifacts/*.deb
           if-no-files-found: error
