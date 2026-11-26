@@ -7,6 +7,7 @@ on:
       - 'docs/assurance/RAFCODEPHI_PROFILE_GRAPH_AUDIT_V1.md'
       - 'docs/assurance/RAFCODEPHI_PROFILE_SYSTEM_ARCHITECTURE_V1.md'
       - 'docs/assurance/rafcodephi-system-graph.snapshot.v1.json'
+      - 'docs/assurance/rafcodephi-system-graph.snapshot.v2.json'
       - 'docs/assurance/rafcodephi-federated-components.v1.json'
       - 'docs/assurance/rafcodephi-freestanding-modules.v1.json'
       - 'packages/rafcodephi-*/**'
@@ -49,7 +50,7 @@ jobs:
           assert all(x["artifact"]=="TOKEN_VAZIO_DEB" for x in d["output_producers"])
           from pathlib import Path
           from importlib.util import spec_from_file_location, module_from_spec
-          snapshot=json.load(open("docs/assurance/rafcodephi-system-graph.snapshot.v1.json"))
+          snapshot=json.load(open("docs/assurance/rafcodephi-system-graph.snapshot.v2.json"))
           assert snapshot["schema"]=="rafaelia.termux.profile-system-graph/v1"
           assert snapshot["constraints"]["claim_allowed"] is False
           assert snapshot["counts"] == {"profiles":6,"dependency_edges":42,"resolved_outputs":39,"federated_components":6}
