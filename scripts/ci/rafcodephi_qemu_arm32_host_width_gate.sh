@@ -10,13 +10,10 @@ fi
 
 evidence_dir="$1"
 package_identity="$2"
-case "$evidence_dir" in
-  rafcodephi-qemu-arm32-target-proof|rafcodephi-qemu-arm32-evidence) ;;
-  *) echo 'refusing unexpected evidence directory' >&2; exit 64 ;;
-esac
-case "$package_identity" in
-  com.termux|com.termux.rafacodephi) ;;
-  *) echo 'refusing unexpected package identity' >&2; exit 64 ;;
+# Canonical and custom-prefix evidence must never be relabeled across lanes.
+case "$evidence_dir:$package_identity" in
+  rafcodephi-qemu-arm32-target-proof:com.termux|rafcodephi-qemu-arm32-evidence:com.termux.rafacodephi) ;;
+  *) echo 'refusing unexpected evidence directory/package identity pair' >&2; exit 64 ;;
 esac
 
 recipe=packages/qemu-system-x86-64-headless/build.sh
