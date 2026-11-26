@@ -149,7 +149,7 @@ jobs:
 
       - name: Download exact previously uploaded artifact
         if: ${{ inputs.origin == 'artifact-run' }}
-        uses: actions/download-artifact@v8
+        uses: actions/download-artifact@v8.0.2
         with:
           name: ${{ inputs.artifact_name }}
           run-id: ${{ inputs.producer_run_id }}

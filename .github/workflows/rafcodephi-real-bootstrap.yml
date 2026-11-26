@@ -380,7 +380,7 @@ jobs:
           fi
 
       - name: Download separately sealed ABI evidence
-        uses: actions/download-artifact@v8
+        uses: actions/download-artifact@v8.0.2
         with:
           pattern: rafcodephi-real-bootstrap-${{ github.run_id }}-*
           path: handoff
