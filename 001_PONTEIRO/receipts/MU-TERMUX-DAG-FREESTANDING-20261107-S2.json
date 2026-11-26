@@ -1,0 +1,60 @@
+{
+  "schema": "rafaelia.muwrite.dag-freestanding/v1",
+  "mu_id": "MU-TERMUX-DAG-FREESTANDING-20261107-S2",
+  "parent": "MU-TERMUX-DAG-FREESTANDING-20261107-S1",
+  "date": "2026-11-07",
+  "producer": "rafaelmeloreisnovo/termux-packages",
+  "source_head_sha": "2fc3c36f9c6acfa65a20e5f982ef8ee93cc66c04",
+  "branch": "fix/raf-dag-csr-freestanding-20261107",
+  "pull_request": "https://github.com/rafaelmeloreisnovo/termux-packages/pull/185",
+  "kind": "MEMORY_REUSE_PROPERTY_TEST_PROFILE_GATE",
+  "delta_summary": "Reused CSR scatter cursor in indegree buffer (4114-byte workspace reduction, 3.86% on tested model); validated CSR bounds before traversal; added 512 deterministic independent-oracle property cases; legacy overflow preflight avoids partial layer publication; opt-in Clang -Oz compact profile versus -O2 balanced.",
+  "source_diff_paths": [
+    "core/raf_dag/raf_dag.h",
+    "core/raf_dag/raf_dag.c",
+    "core/raf_dag/test_properties.c",
+    "core/raf_dag/Makefile",
+    "core/dep_resolver_freestanding.c",
+    "core/tests/test_raf_dag_legacy.c",
+    ".github/workflows/rafcodephi-dag-freestanding.yml",
+    "core/raf_dag/README.md"
+  ],
+  "evidence": {
+    "provider_workflow_run": "https://github.com/rafaelmeloreisnovo/termux-packages/actions/runs/42408629608",
+    "job_id": 128511712010,
+    "result": "COMPLETED_SUCCESS_SCOPED",
+    "gates": [
+      "balanced_profile_hosted_test=PASS",
+      "compact_profile_hosted_test_and_text_size_gate=PASS",
+      "legacy_ASan_UBSan=PASS",
+      "ARM32_ARM64_freestanding_objects_no_undefined_symbols=PASS"
+    ],
+    "local_x86_64_clang_object_text_bytes": {
+      "-O2": 1776,
+      "-Oz": 870
+    },
+    "measurements_scope": "local x86_64 relocatable object text section; not linked executable or runtime performance"
+  },
+  "routes_L9": [
+    "P:GitHub producer exact SHA",
+    "E:hosted and ABI evidence",
+    "I:001_PONTEIRO receipt",
+    "R:Termux app consumer pending"
+  ],
+  "claims": {
+    "producer_core_freestanding_object": "PASS_SCOPED",
+    "full_Termux_freestanding": false,
+    "device_runtime_verified": false,
+    "release_allowed": false
+  },
+  "gaps": [
+    "Motorola_E7_device_runtime=TOKEN_VAZIO",
+    "complete_bootstrap_rebuild=TOKEN_VAZIO",
+    "APT_signed_repo_and_pkg_update=TOKEN_VAZIO",
+    "linked_final_ELF_size=TOKEN_VAZIO",
+    "latency_and_energy_benchmarks=TOKEN_VAZIO",
+    "global_PR_checks=NOT_GATED_BY_THIS_RECEIPT"
+  ],
+  "rollback": "Review-only PR; revert commits to this delta without deleting inherited sources, artifacts or receipts.",
+  "next": "Review full PR checks; compare linked ELF bytes and time/RAM on target device; retain opt-in size profile."
+}

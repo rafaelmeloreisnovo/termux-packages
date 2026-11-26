@@ -1,0 +1,71 @@
+name: Recover existing RAFCODEPHI real-pkg payload
+on:
+  workflow_dispatch:
+  push:
+    branches: [fix/recover-real-pkg-handoff-20261109]
+    paths:
+      - .github/workflows/recover-real-pkg-handoff.yml
+permissions:
+  contents: read
+  actions: read
+concurrency:
+  group: recover-real-pkg-${{ github.ref }}
+  cancel-in-progress: false
+jobs:
+  recover:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: arm
+            artifact: '13364243636'
+            sha256: '3254ecb6b3416bbe4ce5faf5bbc32c1894d2be438ed3ad6c4e9933730ca0811c'
+          - arch: aarch64
+            artifact: '13364044578'
+            sha256: 'd45d1a5f6c60193483c45c58234da3e2e5a2aedccf26ef5a0adee95f5151548f'
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+      - name: Verify recovery falsifiers
+        run: python3 scripts/test_recover_real_pkg_payload.py
+      - name: Recover exact historical artifact without rebuilding packages
+        env:
+          GH_TOKEN: ${{ github.token }}
+          ARTIFACT_ID: ${{ matrix.artifact }}
+          ARTIFACT_SHA256: ${{ matrix.sha256 }}
+          ARCH: ${{ matrix.arch }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          gh api "repos/rafaelmeloreisnovo/termux-packages/actions/artifacts/$ARTIFACT_ID/zip" > "$RUNNER_TEMP/payload.zip"
+          python3 scripts/recover_real_pkg_payload.py \
+            --archive "$RUNNER_TEMP/payload.zip" --destination recovered \
+            --arch "$ARCH" --sha256 "$ARTIFACT_SHA256"
+          rm "$RUNNER_TEMP/payload.zip"
+          tar -C recovered -czf recovered/debs.tar.gz debs
+          sha256sum recovered/debs.tar.gz > recovered/debs.tar.gz.sha256
+          echo 'RECOVERY=PASS_SCOPED SOURCE_RUN=41904631252 RUNTIME=TOKEN_VAZIO APT_ENABLED=false' >> "$GITHUB_STEP_SUMMARY"
+      - name: Upload compact bootstrap and source custody
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: recovered-real-bootstrap-${{ matrix.arch }}
+          path: |
+            recovered/bootstrap/
+            recovered/receipt.json
+          compression-level: 0
+          if-no-files-found: error
+          retention-days: 14
+      - name: Upload package binaries separately
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: recovered-real-debs-${{ matrix.arch }}
+          path: |
+            recovered/debs.tar.gz
+            recovered/debs.tar.gz.sha256
+            recovered/receipt.json
+          compression-level: 0
+          if-no-files-found: error
+          retention-days: 14

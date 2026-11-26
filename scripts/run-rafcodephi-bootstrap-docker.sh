@@ -23,6 +23,19 @@ if [[ -n "${TERMUX_DOCKER_USE_SUDO:-}" ]]; then
     docker_cmd=(sudo docker)
 fi
 
+# The app's real-bootstrap consumers enter here without the producer workflow's
+# NDK preparation step. Bind one verified, writable container toolchain before
+# touching output directories. A missing/mismatched NDK fails closed.
+NDK_ROOT="/home/builder/.termux-build/android-ndk-r29"
+[[ -f scripts/ci/rafcodephi_prepare_ndk29.sh ]] || {
+    echo "RAFCODEPHI_NDK29=BLOCKED reason=missing_pinned_provisioner" >&2
+    exit 2
+}
+./scripts/run-docker.sh bash scripts/ci/rafcodephi_prepare_ndk29.sh || {
+    echo "RAFCODEPHI_NDK29=BLOCKED reason=builder_preflight_failed" >&2
+    exit 2
+}
+
 rm -rf "$HOST_OUT"
 mkdir -p "$HOST_OUT"
 
@@ -31,6 +44,7 @@ mkdir -p "$HOST_OUT"
 
 set +e
 ./scripts/run-docker.sh env \
+    NDK="$NDK_ROOT" \
     RAFCODEPHI_BOOTSTRAP_OUT_DIR="$CONTAINER_OUT" \
     "$@"
 build_status=$?

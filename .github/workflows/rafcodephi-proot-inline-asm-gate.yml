@@ -1,0 +1,36 @@
+name: RAFCODEPHI PRoot raw ptrace inline-ASM ABI gate
+on:
+  pull_request:
+    paths:
+      - 'scripts/rafcodephi-freestanding/raf_proot_rawptrace.c'
+      - 'scripts/ci/check_proot_asm_abi.sh'
+      - '.github/workflows/rafcodephi-proot-inline-asm-gate.yml'
+      - '001_PONTEIRO/PROOT_INLINE_ASM_LINKER_V1.md'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  linker-abi-source-only:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    env:
+      EXPECTED_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+    steps:
+      - name: Fetch exact SHA without third-party actions
+        shell: bash
+        run: |
+          set -euo pipefail
+          git init -q .
+          git remote add origin "https://github.com/$GITHUB_REPOSITORY.git"
+          git -c protocol.version=2 fetch -q --no-tags --depth=1 origin "$EXPECTED_SHA"
+          git checkout -q --detach FETCH_HEAD
+          test "$(git rev-parse HEAD)" = "$EXPECTED_SHA"
+      - name: Compile ARM32/AArch64 and verify linker/encoding
+        shell: bash
+        run: |
+          set -euo pipefail
+          bash scripts/ci/check_proot_asm_abi.sh
+          echo "SOURCE_ONLY=PASS_SCOPED" >> "$GITHUB_STEP_SUMMARY"
+          echo "PROOT_PACKAGE=UNCHANGED" >> "$GITHUB_STEP_SUMMARY"
+          echo "ANDROID_PTRACE_RUNTIME=NOT_RUN" >> "$GITHUB_STEP_SUMMARY"
+          echo "claim_allowed=false" >> "$GITHUB_STEP_SUMMARY"

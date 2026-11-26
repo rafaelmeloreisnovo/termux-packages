@@ -121,6 +121,7 @@ expected_profile_metapackages = {
     "bootstrap": "rafcodephi-bootstrap-profile",
     "runtime": "rafcodephi-runtime-profile",
     "build": "rafcodephi-build-profile",
+    "developer": "rafcodephi-developer-profile",
     "vectras": "rafcodephi-vectras-profile",
     "full": "rafcodephi-full-profile",
 }

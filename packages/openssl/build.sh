@@ -11,6 +11,13 @@ TERMUX_PKG_CONFFILES="etc/tls/openssl.cnf"
 TERMUX_PKG_RM_AFTER_INSTALL="bin/c_rehash etc/ssl/misc"
 TERMUX_PKG_BUILD_IN_SRC=true
 
+termux_step_pre_configure() {
+	# API29 Bionic lacks the newer libc memfd_create entrypoint.
+	# Apply source-only compatibility for RAFCODEPHI/aarch64/API29.
+	source "$TERMUX_SCRIPTDIR/scripts/ci/rafcodephi_memfd29_link.sh"
+	rafcodephi_apply_memfd29_link
+}
+
 termux_step_configure() {
 	# Certain packages are not safe to build on device because their
 	# build.sh script deletes specific files in $TERMUX_PREFIX.

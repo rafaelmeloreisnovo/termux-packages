@@ -326,6 +326,7 @@ jobs:
   d3-transit:
     name: D3 invariant — both architectures must pass
     runs-on: ubuntu-24.04
+    timeout-minutes: 45
     needs: [d3-real]
     # Draft PR has no D3 runtime proof; do not create a fake failed receipt
     # from an intentionally skipped matrix. Ready PR/main still fail closed.

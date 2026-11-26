@@ -1,0 +1,43 @@
+{
+  "schema": "rafaelia.muwrite.dag-freestanding/v1",
+  "mu_id": "MU-TERMUX-DAG-FREESTANDING-20261107-S1",
+  "observed_date": "2026-11-07",
+  "source": {
+    "repository": "rafaelmeloreisnovo/termux-packages",
+    "base_sha": "5fc7d7c58c5b45dd7a092597e0dfffaf72591c91",
+    "validated_head_sha": "d97cf94782ca49df6b80c7d2759fb97bda9f6139",
+    "branch": "fix/raf-dag-csr-freestanding-20261107",
+    "pr": 185
+  },
+  "kind": "SOURCE_PATCH_AND_HOSTED_ABI_GATE",
+  "summary": "CSR stable build repaired; new header-only-dependency C11 freestanding DAG; widened indegree; cycle and capacity guards; legacy layer overflow fail-closed",
+  "routes": [
+    "P:source",
+    "E:scoped_CI",
+    "R:Termux_packages_core",
+    "I:001_PONTEIRO"
+  ],
+  "evidence": {
+    "workflow_run_url": "https://github.com/rafaelmeloreisnovo/termux-packages/actions/runs/42407683597",
+    "workflow_run_id": 42407683597,
+    "job_id": 128508820214,
+    "result": "COMPLETED_SUCCESS_SCOPED",
+    "steps": [
+      "authorial-core-hosted-test=PASS",
+      "legacy-ASAN-UBSAN=PASS",
+      "armv7a-aarch64-cross-object-nm-u-empty=PASS"
+    ]
+  },
+  "gaps": [
+    "device_runtime=TOKEN_VAZIO",
+    "apt_publish=TOKEN_VAZIO",
+    "full_termux_freestanding=NOT_IMPLEMENTED",
+    "app_bootstrap=NOT_TESTED",
+    "performance_delta=TOKEN_VAZIO"
+  ],
+  "notes": "Standalone core no libc/heap/syscalls. Legacy adapter uses compile-time hosted stdint header and one global workspace. No benchmark or Android install claim.",
+  "claim_allowed_device_runtime": false,
+  "release_allowed": false,
+  "next": "Review draft PR, inspect full checks, compare executable outputs and verify physical Android separately",
+  "rollback": "Revert PR branch commits; upstream unchanged"
+}

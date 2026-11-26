@@ -1,0 +1,57 @@
+name: RAFCODEPHI DAG — freestanding objects and scoped tests
+on:
+  pull_request:
+    paths:
+      - 'core/raf_dag/**'
+      - 'core/dep_resolver_freestanding.c'
+      - 'core/tests/test_raf_dag_legacy.c'
+      - '.github/workflows/rafcodephi-dag-freestanding.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  dag:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+      - name: Verify balanced profile and preserve object
+        run: |
+          make -C core/raf_dag verify CC=clang PROFILE=balanced
+          cp core/raf_dag/raf_dag.o /tmp/raf-dag-balanced.o
+      - name: Verify compact profile and compare emitted object sizes
+        run: |
+          set -euo pipefail
+          make -C core/raf_dag verify CC=clang PROFILE=compact
+          cp core/raf_dag/raf_dag.o /tmp/raf-dag-compact.o
+          balanced="$(size /tmp/raf-dag-balanced.o | awk 'NR==2 {print $1}')"
+          compact="$(size /tmp/raf-dag-compact.o | awk 'NR==2 {print $1}')"
+          echo "DAG_TEXT_BALANCED=$balanced bytes"
+          echo "DAG_TEXT_COMPACT=$compact bytes"
+          test "$compact" -le "$balanced" || {
+            echo "BLOCKED_COMPACT_PROFILE_LARGER"
+            exit 1
+          }
+      - name: Verify corrected legacy adapter using ASan and UBSan
+        run: |
+          clang -std=c11 -O2 -Wall -Wextra -Wconversion -Wshadow -Werror \
+            -fsanitize=address,undefined -Icore \
+            core/tests/test_raf_dag_legacy.c core/dep_resolver_freestanding.c -o /tmp/raf-legacy
+          /tmp/raf-legacy
+      - name: Compile both implementations for ARM32 and AArch64 without undefined symbols
+        run: |
+          set -euo pipefail
+          for arch in armv7a-linux-androideabi21 aarch64-linux-android21; do
+            for src in core/raf_dag/raf_dag.c core/dep_resolver_freestanding.c; do
+              out="/tmp/raf-$(basename "$src")-$arch.o"
+              clang --target="$arch" -std=c11 -O2 -ffreestanding \
+                -fno-builtin -fno-stack-protector -fno-unwind-tables \
+                -fno-asynchronous-unwind-tables -ffunction-sections -fdata-sections \
+                -fvisibility=hidden -Wall -Wextra -Werror \
+                -c "$src" -o "$out"
+              if test -n "$(nm -u "$out")"; then nm -u "$out"; exit 1; fi
+              readelf -h "$out" | grep -E 'Class:|Machine:'
+            done
+          done
