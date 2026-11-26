@@ -62,7 +62,7 @@ jobs:
       run: ./scripts/bin/validation ${{ matrix.target_arch }} golang ${{ matrix.batch }} || exit 1
     - name: Upload report artifact
       if: always()
-      uses: actions/upload-artifact@v6
+      uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
       with:
         name: report-${{ matrix.target_arch }}-${{ matrix.batch }}
         path: /tmp/golang-validation-report.txt

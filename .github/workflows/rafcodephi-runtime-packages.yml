@@ -220,7 +220,7 @@ jobs:
 
       - name: Upload immutable build evidence
         if: always()
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
         with:
           name: rafcodephi-${{ env.RAFCODEPHI_PROFILE }}-${{ env.RAFCODEPHI_ARCH }}-${{ github.sha }}
           path: |
