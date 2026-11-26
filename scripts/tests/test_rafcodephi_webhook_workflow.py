@@ -42,7 +42,15 @@ class WorkflowBoundaryTests(unittest.TestCase):
         publisher = (ROOT / ".github/workflows/rafcodephi-publish-dev-apt.yml").read_text()
         for trigger in ("repository_dispatch:", "workflow_run:", "workflow_call:"):
             self.assertNotIn(trigger, publisher)
-        self.assertIn("production_signing_root=TOKEN_VAZIO", publisher)
+        # Inspect the actual fail-closed signing boundary, not a historical
+        # informational marker that could remain present after removal of the gate.
+        self.assertIn("publish_requested=false", publisher)
+        self.assertIn('if [[ "$publish_requested" == true ]]; then', publisher)
+        self.assertIn("PROD_KEY_B64:", publisher)
+        self.assertIn("PROD_FINGERPRINT:", publisher)
+        self.assertIn('[[ -n "${PROD_KEY_B64:-}" && -n "${PROD_FINGERPRINT:-}" ]]', publisher)
+        self.assertIn('[[ "$FPR" == "$PROD_FINGERPRINT" ]]', publisher)
+        self.assertIn("if: github.event_name == 'workflow_dispatch' && inputs.publish == true", publisher)
         self.assertIn("claim_allowed_release=false", publisher)
 
 
