@@ -41,6 +41,7 @@ jobs:
   fleet-audit:
     name: Whole recipe fleet
     runs-on: ubuntu-24.04
+    timeout-minutes: 60
     steps:
       - name: Checkout repository
         uses: actions/checkout@v6
@@ -77,7 +78,7 @@ jobs:
 
       - name: Upload fleet evidence
         if: always()
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
         with:
           name: rafcodephi-package-fleet-audit-${{ github.run_id }}
           path: artifacts/package-fleet-audit/

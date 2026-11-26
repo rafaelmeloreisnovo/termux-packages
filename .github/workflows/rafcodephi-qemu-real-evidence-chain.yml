@@ -332,6 +332,7 @@ jobs:
   evidence-transit-gate:
     name: Evidence transit invariant — QEMU REAL + delivery preflight
     runs-on: ubuntu-24.04
+    timeout-minutes: 45
     needs: [qemu-real-chain, native-delivery-preflight]
     if: always()
     steps:

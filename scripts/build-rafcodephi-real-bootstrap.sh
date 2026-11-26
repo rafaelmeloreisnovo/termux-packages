@@ -12,6 +12,15 @@ LEGACY_PREFIX="/data/data/com.termux/files/usr"
 TARGET_PREFIX="/data/data/${PACKAGE_NAME}/files/usr"
 API_RECEIVER_COMPONENT="${PACKAGE_NAME}.api/com.termux.api.TermuxApiReceiver"
 
+# RAFCODEPHI runtime targets Android 10/API29. The generic Termux builder
+# defaults to API30; keep its global policy unchanged but pin this producer.
+: "${TERMUX_PKG_API_LEVEL:=29}"
+if [[ "$TERMUX_PKG_API_LEVEL" != "29" ]]; then
+    echo "RAFCODEPHI_BOOTSTRAP_API=BLOCKED target=29 actual=$TERMUX_PKG_API_LEVEL" >&2
+    exit 2
+fi
+export TERMUX_PKG_API_LEVEL
+
 usage() {
     cat <<EOF
 Usage: $0 [--architectures arm|aarch64|arm,aarch64] [--out DIR]
@@ -120,7 +129,7 @@ mkdir -p "$RAFCODEPHI_BOOTSTRAP_PACKAGE_EVIDENCE_DIR"
 ./scripts/generate-bootstraps.sh \
     --build \
     --architectures "$ARCHITECTURES" \
-    --add busybox,proot,ca-certificates,termux-api
+    --add busybox,proot,ca-certificates,termux-api,ninja
 
 mkdir -p "$OUT_DIR"
 manifest="$OUT_DIR/RAFCODEPHI_REAL_BOOTSTRAP_MANIFEST.txt"
@@ -134,6 +143,7 @@ printf 'api_access_control=SIGNATURE_PERMISSION_NO_SHARED_UID\n' >> "$manifest"
 printf 'builder=termux-packages/scripts/generate-bootstraps.sh --build\n' >> "$manifest"
 printf 'bridge_allowed=false\nlegacy_prefix_allowed=false\n' >> "$manifest"
 printf 'termux_api_cli=EMBEDDED\n' >> "$manifest"
+printf 'build_tools_contract=rafcodephi.apt-bootstrap-ninja/v1\nbootstrap_ninja=EMBEDDED\n' >> "$manifest"
 printf 'package_repo_runtime_state=BLOCKED_CUSTOM_REPOSITORY_NOT_PUBLISHED\n' >> "$manifest"
 printf 'apt_update_guard=RAFCODEPHI_PACKAGE_REPOSITORY_NOT_PUBLISHED\n' >> "$manifest"
 
@@ -142,6 +152,15 @@ for arch in "${arch_list[@]}"; do
     [[ "$arch" == "arm" || "$arch" == "aarch64" ]] || { echo "unsupported arch: $arch" >&2; exit 2; }
     zip_path="$GENERATED_BOOTSTRAP_DIR/bootstrap-${arch}.zip"
     [[ -s "$zip_path" ]] || { echo "missing generated $zip_path" >&2; exit 1; }
+
+    # The Android APK NDK version is not the imported bash/apt runtime API.
+    # Audit every generated ELF, not just the command launcher, BEFORE resealing.
+    api_gate_receipt="$OUT_DIR/rafcodephi-bootstrap-${arch}-android-api.json"
+    python3 "$ROOT/scripts/ci/rafcodephi_android_api_gate.py" \
+        --zip "$zip_path" --arch "$arch" \
+        --max-api "$TERMUX_PKG_API_LEVEL" --receipt "$api_gate_receipt"
+    printf 'android_api_target_%s=%s\nandroid_api_gate_receipt_%s=%s\n' \
+        "$arch" "$TERMUX_PKG_API_LEVEL" "$arch" "$api_gate_receipt" >> "$manifest"
 
     # The upstream bootstrap generator may lose link metadata while repacking.
     # Repair only when the exact preserved .deb set proves the required link
@@ -179,6 +198,7 @@ required = [
     "bin/bash",
     "bin/busybox",
     "bin/proot",
+    "bin/ninja",
     "bin/termux-battery-status",
     "bin/termux-sensor",
     "libexec/termux-api",
@@ -245,6 +265,7 @@ profile = {
     "api_receiver_component": api_receiver_component,
     "api_access_control": "SIGNATURE_PERMISSION_NO_SHARED_UID",
     "required_entries": required,
+    "build_tools_contract": "rafcodephi.apt-bootstrap-ninja/v1",
     "legacy_prefix_forbidden": True,
     "bridge_markers_forbidden": True,
     "runtime_materialized": False,
@@ -267,6 +288,7 @@ bootstrap_info = {
     "BOOTSTRAP_PKG_REAL": "1",
     "BOOTSTRAP_APT_REAL": "1",
     "BOOTSTRAP_DPKG_REAL": "1",
+    "RAFCODEPHI_BUILD_TOOLS_CONTRACT": "rafcodephi.apt-bootstrap-ninja/v1",
     "BOOTSTRAP_TERMUX_API_CLI": "1",
     "RAFCODEPHI_API_PACKAGE": package_name + ".api",
     "RAFCODEPHI_API_RECEIVER_COMPONENT": api_receiver_component,
@@ -304,13 +326,21 @@ PY
     mkdir -p "$extract"
     unzip -q "$zip_path" -d "$extract"
 
-    for required in BOOTSTRAP_INFO BOOTSTRAP_PROFILE.json SYMLINKS.txt bin/apt bin/apt-get bin/dpkg bin/bash bin/pkg bin/busybox bin/proot bin/termux-battery-status bin/termux-sensor libexec/termux-api-broadcast etc/apt/sources.list.d/termux.sources etc/apt/apt.conf.d/00rafcodephi-repository-block var/lib/dpkg/status; do
+    for required in BOOTSTRAP_INFO BOOTSTRAP_PROFILE.json SYMLINKS.txt bin/apt bin/apt-get bin/dpkg bin/bash bin/pkg bin/busybox bin/proot bin/ninja bin/termux-battery-status bin/termux-sensor libexec/termux-api-broadcast etc/apt/sources.list.d/termux.sources etc/apt/apt.conf.d/00rafcodephi-repository-block var/lib/dpkg/status; do
         [[ -f "$extract/$required" ]] || { echo "$arch missing real bootstrap archive target: $required" >&2; exit 1; }
     done
     grep -Eq '^Package: termux-api$' "$extract/var/lib/dpkg/status" || {
         echo "$arch dpkg status does not contain the embedded termux-api package" >&2
         exit 1
     }
+    python3 - "$extract/var/lib/dpkg/status" <<'PY'
+from pathlib import Path
+import sys
+stanzas = Path(sys.argv[1]).read_text(encoding="utf-8").split("\n\n")
+if not any("Package: ninja" in s.splitlines() and
+           "Status: install ok installed" in s.splitlines() for s in stanzas):
+    raise SystemExit("ninja is not installed in bootstrap dpkg status")
+PY
 
     python3 - "$extract/BOOTSTRAP_PROFILE.json" "$extract/BOOTSTRAP_INFO" "$PACKAGE_NAME" "$TARGET_PREFIX" "$arch" "$API_RECEIVER_COMPONENT" "$zip_path" <<'PY'
 import json
@@ -325,6 +355,7 @@ for line in Path(sys.argv[2]).read_text(encoding="utf-8").splitlines():
         info[key] = value
 expected = {
     "schema": "rafcodephi-bootstrap-profile/v1",
+    "build_tools_contract": "rafcodephi.apt-bootstrap-ninja/v1",
     "profile": "real-pkg",
     "package_layer": "real-pkg",
     "package_name": sys.argv[3],
@@ -356,6 +387,7 @@ for key, value in {
     "BOOTSTRAP_PKG_REAL": "1",
     "BOOTSTRAP_APT_REAL": "1",
     "BOOTSTRAP_DPKG_REAL": "1",
+    "RAFCODEPHI_BUILD_TOOLS_CONTRACT": "rafcodephi.apt-bootstrap-ninja/v1",
     "BOOTSTRAP_TERMUX_API_CLI": "1",
     "RAFCODEPHI_API_PACKAGE": sys.argv[3] + ".api",
     "RAFCODEPHI_API_RECEIVER_COMPONENT": sys.argv[6],
@@ -391,7 +423,8 @@ if "bin/sh" not in available:
     raise SystemExit("installed bin/sh is not represented by archive or symlink")
 PY
 
-    for elf in bin/apt bin/apt-get bin/dpkg bin/bash bin/busybox bin/proot libexec/termux-api-broadcast; do
+    # Prefix and source-DEB checks remain independent of Android API verification.
+    for elf in bin/apt bin/apt-get bin/dpkg bin/bash bin/busybox bin/proot bin/ninja libexec/termux-api-broadcast; do
         desc="$(file -b "$extract/$elf")"
         case "$desc" in
             *ELF*) ;;
@@ -473,6 +506,8 @@ PY
     out="$OUT_DIR/rafcodephi-bootstrap-${arch}.zip"
     cp "$zip_path" "$out"
     bytes="$(wc -c < "$out" | tr -d ' ')"
+    bootstrap_sha256="$(sha256sum "$out" | awk '{print $1}')"
+    printf 'sha256_%s=%s\n' "$arch" "$bootstrap_sha256" >> "$manifest"
 
     printf 'artifact_%s=%s\nbytes_%s=%s\ndeb_evidence_%s=%s\ndeb_count_%s=%s\ndeb_set_sha256_%s=%s\n' \
         "$arch" "$out" "$arch" "$bytes" "$arch" "$deb_dir" "$arch" "$deb_count" "$arch" "$deb_set_sha256" >> "$manifest"

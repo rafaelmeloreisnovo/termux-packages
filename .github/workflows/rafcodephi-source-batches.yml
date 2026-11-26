@@ -7,6 +7,7 @@ on:
       - 'scripts/ci/rafcodephi_batch_manifest.py'
       - 'scripts/ci/rafcodephi_deb_set_gate.py'
       - 'scripts/tests/test_rafcodephi_batch_manifest.py'
+      - 'scripts/tests/test_rafcodephi_source_batch_transport.py'
       - 'scripts/tests/test_rafcodephi_deb_set_gate.py'
   workflow_dispatch:
     inputs:
@@ -44,6 +45,7 @@ jobs:
           bash -n scripts/run-rafcodephi-bootstrap-docker.sh
           python3 scripts/tests/test_rafcodephi_deb_set_gate.py
           python3 scripts/tests/test_rafcodephi_batch_manifest.py
+          python3 scripts/tests/test_rafcodephi_source_batch_transport.py
           python3 scripts/tests/test_rafcodephi_publish_dev_apt_workflow_contract.py
           echo 'CONTRACT=PASS_SOURCE_ONLY DEB=NOT_RUN APT=NOT_RUN CLAIM_ALLOWED=false'
   build:
@@ -123,12 +125,33 @@ jobs:
             --arch "$arch" --lot "$LOT_DIR" --source-commit "$SOURCE_SHA" \
             --out "$LOT_DIR/custody.json"
           echo "SOURCE_LOT=$arch PASS_SCOPED (NOT_SIGNED_APT)" >> "$GITHUB_STEP_SUMMARY"
-      - name: Upload lot even on failure
+      # Debian package epochs use ':' in filenames. Upload only portable tar files;
+      # never rename .deb files, because dpkg and SHA256SUMS rely on exact paths.
+      - name: Seal portable source lot after build
         if: ${{ always() }}
-        uses: actions/upload-artifact@v7
+        shell: bash
+        run: |
+          set -euo pipefail
+          arch='${{ matrix.arch }}'
+          lot="build/rafcodephi-lots/$arch"
+          archive="build/rafcodephi-lots/${arch}.tar"
+          test -s "$lot/build.state"
+          tar -C "$lot" -cf "$archive" .
+          tar -tf "$archive" >/dev/null
+          (
+            cd build/rafcodephi-lots
+            sha256sum "${arch}.tar" > "${arch}.tar.sha256"
+            sha256sum -c "${arch}.tar.sha256"
+          )
+          echo "RAFCODEPHI_BATCH_LOT_ARCHIVE=PASS_SCOPED arch=$arch" >> "$GITHUB_STEP_SUMMARY"
+      - name: Upload sealed lot even on failure
+        if: ${{ always() }}
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
         with:
           name: rafcodephi-source-${{ github.run_id }}-${{ matrix.arch }}
-          path: build/rafcodephi-lots/${{ matrix.arch }}/
+          path: |
+            build/rafcodephi-lots/${{ matrix.arch }}.tar
+            build/rafcodephi-lots/${{ matrix.arch }}.tar.sha256
           if-no-files-found: error
           retention-days: 30
           compression-level: 0
@@ -156,6 +179,26 @@ jobs:
         with:
           name: rafcodephi-source-${{ github.run_id }}-aarch64
           path: handoff/aarch64
+      - name: Verify and materialize both sealed lots
+        shell: bash
+        run: |
+          set -euo pipefail
+          for arch in arm aarch64; do
+            (
+              cd "handoff/$arch"
+              test -s "$arch.tar"
+              test -s "$arch.tar.sha256"
+              sha256sum -c "${arch}.tar.sha256"
+              tar -tf "$arch.tar" >/dev/null
+              tar -xf "$arch.tar"
+              test -s build.state
+              test -s custody.json
+              grep -Fx "arch=$arch" build.state
+              grep -Fx "source_commit=$SOURCE_SHA" build.state
+              grep -Fx 'source_step=success' build.state
+              grep -Fx 'claim_allowed=false' build.state
+            )
+          done
       - name: Validate separate lots and aggregate hashes
         shell: bash
         run: |

@@ -14,6 +14,66 @@ def require(condition: bool, token: str) -> None:
         raise SystemExit(f"RAFCODEPHI_REAL_BOOTSTRAP_WORKFLOW=BLOCKED reason={token}")
 
 
+def exercise_ninja_sealer(builder: str) -> None:
+    """Run the actual source sealer, including missing-tool falsifiers."""
+    import ast
+    import json
+    import subprocess
+    import sys
+    import tempfile
+    import zipfile
+
+    marker = '''python3 - "$zip_path" "$PACKAGE_NAME" "$TARGET_PREFIX" "$arch" "$API_RECEIVER_COMPONENT" <<'PY'\n'''
+    require(builder.count(marker) == 1, "SOURCE_SEALER_UNRESOLVED")
+    script = builder.split(marker, 1)[1].split("\nPY\n", 1)[0]
+    required = next(ast.literal_eval(n.value) for n in ast.parse(script).body
+                    if isinstance(n, ast.Assign) and any(
+                        isinstance(t, ast.Name) and t.id == "required" for t in n.targets))
+    require("bin/ninja" in required, "NINJA_NOT_A_REQUIRED_INSTALLED_ENTRY")
+    require("--add busybox,proot,ca-certificates,termux-api,ninja" in builder,
+            "NINJA_SOURCE_PACKAGE_NOT_REQUESTED")
+    with tempfile.TemporaryDirectory(prefix="raf-ninja-sealer-") as temp:
+        for arch, missing in (("arm", False), ("aarch64", False), ("arm", True)):
+            archive = Path(temp) / f"{arch}-{missing}.zip"
+            with zipfile.ZipFile(archive, "w") as zf:
+                for name in required:
+                    if name in ("BOOTSTRAP_INFO", "bin/sh", "etc/apt/apt.conf.d/00rafcodephi-repository-block"):
+                        continue
+                    if name == "bin/ninja" and missing:
+                        continue
+                    zf.writestr(name, "dash←bin/sh\n" if name == "SYMLINKS.txt" else "synthetic-not-runtime")
+            proc = subprocess.run([sys.executable, "-", str(archive), "com.termux.rafacodephi",
+                "/data/data/com.termux.rafacodephi/files/usr", arch,
+                "com.termux.rafacodephi.api/com.termux.api.TermuxApiReceiver"],
+                input=script, text=True, capture_output=True)
+            if missing:
+                require(proc.returncode != 0 and "bin/ninja" in proc.stderr,
+                        "MISSING_NINJA_SEALED_AS_SUCCESS")
+            else:
+                require(proc.returncode == 0, f"NINJA_SEALER_FAILED:{proc.stderr[-200:]}")
+                with zipfile.ZipFile(archive) as zf:
+                    profile = json.loads(zf.read("BOOTSTRAP_PROFILE.json"))
+                    require(profile["build_tools_contract"] == "rafcodephi.apt-bootstrap-ninja/v1",
+                            "NINJA_CONTRACT_NOT_SEALED")
+                    require(b"RAFCODEPHI_BUILD_TOOLS_CONTRACT=rafcodephi.apt-bootstrap-ninja/v1\n"
+                            in zf.read("BOOTSTRAP_INFO"), "NINJA_INFO_NOT_SEALED")
+    print("RAFCODEPHI_NINJA_SEALER=PASS cases=3 scope=HOST_SYNTHETIC")
+
+
+def sealed_transport_complete(text: str) -> bool:
+    """The handoff must actually upload the exact TAR and its independent digest."""
+    marker = "      - name: Upload real bootstrap artifacts\n        if: success()"
+    if text.count(marker) != 1:
+        return False
+    block = text.split(marker, 1)[1].split("      - name: Upload source-build diagnostics", 1)[0]
+    if block.count("          path: |\n") != 1:
+        return False
+    paths = block.split("          path: |\n", 1)[1].split("\n          if-no-files-found:", 1)[0]
+    named = {line.strip() for line in paths.splitlines() if line.strip() and not line.lstrip().startswith("#")}
+    return {"artifacts/rafcodephi-bootstrap-evidence.tar.gz",
+            "artifacts/rafcodephi-bootstrap-evidence.tar.gz.sha256"}.issubset(named)
+
+
 def main() -> int:
     text = WORKFLOW.read_text(encoding="utf-8")
     require("scripts/apply-rafcodephi-build-properties.py" in text, "CANONICAL_PROPERTIES_OVERLAY_MISSING")
@@ -45,7 +105,25 @@ def main() -> int:
             "BUILDER_IMAGE_DIGEST_NOT_PINNED")
     require("- name: Upload real bootstrap artifacts\n        if: always()" in text,
             "FAILURE_ARTIFACT_NOT_ALWAYS_UPLOADED")
+    require("- name: Seal DEB evidence into portable tar" in text,
+            "PORTABLE_DEB_EVIDENCE_PACKAGING_MISSING")
+    require('tar -C "$root" -cf "$root/rafcodephi-debs-evidence.tar" debs' in text,
+            "ORIGINAL_DEB_FILENAMES_NOT_PRESERVED_IN_TAR")
+    require('sha256sum "$root/rafcodephi-debs-evidence.tar"' in text,
+            "PORTABLE_DEB_ARCHIVE_DIGEST_MISSING")
+    require("!artifacts/rafcodephi-bootstrap/debs/**" in text,
+            "RAW_EPOCH_DEBS_STILL_EXPOSED_TO_UPLOAD")
+    require(sealed_transport_complete(text), "SEALED_ABI_EVIDENCE_NOT_UPLOADED_WITH_DIGEST")
+    for missing in ("artifacts/rafcodephi-bootstrap-evidence.tar.gz",
+                    "artifacts/rafcodephi-bootstrap-evidence.tar.gz.sha256"):
+        mutated = text.replace("            " + missing + "\n", "", 1)
+        require(mutated != text and not sealed_transport_complete(mutated),
+                "SEALED_TRANSPORT_MISSING_FILE_FALSIFIER_FAILED:" + missing)
+    # Prevent upload YAML from being spliced inside the shell grep.
+    require("""grep -Eq '^debs/(arm|aarch64)/[^/]+[.]deb$' "$root/rafcodephi-debs.tar.members" """ .strip() in text,
+            "DEB_MEMBER_GREP_BROKEN_OR_UNBOUNDED")
     builder = (ROOT / "scripts/build-rafcodephi-real-bootstrap.sh").read_text(encoding="utf-8")
+    exercise_ninja_sealer(builder)
     generator = (ROOT / "scripts/generate-bootstraps.sh").read_text(encoding="utf-8")
     docker_wrapper = (ROOT / "scripts/run-rafcodephi-bootstrap-docker.sh").read_text(encoding="utf-8")
     require('"runtime_materialized": False' in builder,

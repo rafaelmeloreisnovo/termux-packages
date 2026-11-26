@@ -11,6 +11,7 @@ jobs:
   check-repository-health:
     if: github.repository == 'termux/termux-packages'
     runs-on: ubuntu-slim
+    timeout-minutes: 15
     steps:
       - name: Clone repository
         uses: actions/checkout@v6

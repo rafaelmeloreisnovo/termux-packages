@@ -9,6 +9,8 @@ on:
       - 'repo.json'
       - 'packages/bash/build.sh'
       - 'packages/termux-tools/build.sh'
+      - 'packages/python/build.sh'
+      - 'tests/test_rafcodephi_python_api29.py'
       - '.github/workflows/manifest-fail-closed.yml'
   push:
     branches:
@@ -20,6 +22,8 @@ on:
       - 'repo.json'
       - 'packages/bash/build.sh'
       - 'packages/termux-tools/build.sh'
+      - 'packages/python/build.sh'
+      - 'tests/test_rafcodephi_python_api29.py'
       - '.github/workflows/manifest-fail-closed.yml'
   workflow_dispatch:
 

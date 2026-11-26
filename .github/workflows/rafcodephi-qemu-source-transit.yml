@@ -188,6 +188,7 @@ jobs:
   transit-gate:
     name: Transit invariant — all emulated architectures must be green
     runs-on: ubuntu-24.04
+    timeout-minutes: 45
     needs: [emulated-source]
     if: always()
     steps:

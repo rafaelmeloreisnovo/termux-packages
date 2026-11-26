@@ -131,8 +131,59 @@ def exercise_live_apt_guard(live: str) -> None:
     print("RAFCODEPHI_LIVE_APT_GUARD_FIXTURE=PASS arm=true aarch64=true falsifier=true")
 
 
+def exercise_isolated_apt_exit_status(text: str) -> None:
+    """Execute the actual workflow subshell; each failing stage must survive."""
+    import os
+    import subprocess
+    import tempfile
+    import textwrap
+
+    marker = "            set +e\n            (\n"
+    require(text.count(marker) == 1, "APT_SUBSHELL_UNRESOLVED")
+    body = text.split(marker, 1)[1].split("\n            ) 2>&1 | tee", 1)[0]
+    body = textwrap.dedent(body)
+    require("APT::Update::Error-Mode=any" in body, "APT_UPDATE_PARTIAL_FAILURE_ALLOWED")
+    with tempfile.TemporaryDirectory(prefix="raf-apt-exit-") as temp:
+        root = Path(temp)
+        (root / "bin").mkdir()
+        for tool, stub in {
+            "apt-get": 'case " $* " in *" update "*) stage=update;; *) stage=download;; esac\n'
+                       'echo "$stage" >> "$TRACE"\n'
+                       '[ "$FAIL_STAGE" != "$stage" ] || exit 41\n',
+            "apt-cache": 'echo show >> "$TRACE"\n[ "$FAIL_STAGE" != show ] || exit 42\n',
+            "dpkg-deb": 'echo metadata >> "$TRACE"\n[ "$FAIL_STAGE" != metadata ] || exit 43\n'
+                        'case "$3" in Package) echo fixture;; Architecture) echo arm;; esac\n',
+        }.items():
+            path = root / "bin" / tool
+            path.write_text("#!/bin/sh\nset -eu\n" + stub)
+            path.chmod(0o755)
+        (root / "fixture.deb").write_bytes(b"synthetic-not-an-Android-package")
+        (root / "Packages").write_text("Package: fixture\nFilename: fixture.deb\n\n")
+        (root / "build/reports").mkdir(parents=True)
+        harness = ('set +e\napt_options=()\narch=arm\npackage_name=fixture\n'
+                   'repo="$PWD"\npackages_file="$PWD/Packages"\n(\n' + body + '\n)\nexit $?\n')
+        env = dict(os.environ, PATH=str(root / "bin") + os.pathsep + os.environ["PATH"],
+                   TRACE=str(root / "trace"))
+        for stage in ("none", "update", "show", "download", "metadata"):
+            (root / "trace").unlink(missing_ok=True)
+            report = root / "build/reports/rafcodephi-isolated-apt-arm-resolved-deb.sha256"
+            report.unlink(missing_ok=True)
+            proc = subprocess.run(["bash"], input=harness, text=True, cwd=root,
+                                  env=dict(env, FAIL_STAGE=stage), capture_output=True)
+            require((proc.returncode == 0) == (stage == "none"),
+                    f"APT_STAGE_ERROR_MASKED:{stage}:{proc.returncode}:{proc.stderr[-200:]}")
+            require(report.exists() == (stage == "none"), f"APT_FALSE_HASH_RECEIPT:{stage}")
+        # Historical falsifier: removing the child errexit masks update failure.
+        mutant = harness.replace("set -euo pipefail", "set +e", 1)
+        proc = subprocess.run(["bash"], input=mutant, text=True, cwd=root,
+                              env=dict(env, FAIL_STAGE="update"), capture_output=True)
+        require(proc.returncode == 0, "APT_MASKED_FAILURE_FALSIFIER_NOT_REPRODUCED")
+    print("RAFCODEPHI_APT_EXIT=PASS cases=5 historical_falsifier=true scope=HOST_SYNTHETIC")
+
+
 def main() -> int:
     text = WORKFLOW.read_text(encoding="utf-8")
+    exercise_isolated_apt_exit_status(text)
     live = LIVE.read_text(encoding="utf-8")
     generator = GENERATOR.read_text(encoding="utf-8")
 

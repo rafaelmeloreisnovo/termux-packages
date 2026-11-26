@@ -1,0 +1,25 @@
+name: RAFAELIA MicroASM v2 per-file build
+on:
+  pull_request:
+    paths:
+      - 'raf_microasm/v2/**'
+      - '.github/workflows/raf-microasm-v2.yml'
+      - '001_PONTEIRO/MICROASM_V2_CURRENT.md'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  bounded-48-object-matrix:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          persist-credentials: false
+      - name: Assert exact tested commit
+        shell: bash
+        run: test "$(git rev-parse HEAD)" = "${{ github.event.pull_request.head.sha || github.sha }}"
+      - name: Compile micro-modules with per-file flags and adversarial gate
+        shell: bash
+        run: sh raf_microasm/v2/tooling/build_v2.sh "$RUNNER_TEMP/raf_microasm_v2"

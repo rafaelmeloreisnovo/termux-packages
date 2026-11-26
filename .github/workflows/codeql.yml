@@ -5,9 +5,9 @@ permissions:
 
 on:
   push:
-    branches: [ "master", "android-5" ]
+    branches: [ "main", "master", "android-5" ]
   pull_request:
-    branches: [ "master", "android-5" ]
+    branches: [ "main", "master", "android-5" ]
   schedule:
     # 9:44pm, every Sunday.
     - cron: '44 21 * * 0'
@@ -21,6 +21,7 @@ jobs:
     #   - https://gh.io/using-larger-runners (GitHub.com only)
     # Consider using larger runners or machines with greater resources for possible analysis time improvements.
     runs-on: ${{ (matrix.language == 'swift' && 'macos-latest') || 'ubuntu-latest' }}
+    timeout-minutes: 120
     permissions:
       # required for all workflows
       security-events: write

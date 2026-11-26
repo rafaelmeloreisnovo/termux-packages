@@ -2,15 +2,15 @@
   "schema": "rafaelia.termux.profile-system-graph/v1",
   "kind": "DERIVED_SOURCE_SNAPSHOT_NOT_BUILD_OR_RUNTIME_EVIDENCE",
   "baseline": {
-    "repository": "rafaelmeloreisnovo/termux-packagesMy",
-    "commit": "ee11ed7327ca9c9d91ccd6ee7327ce0827975782",
-    "git_tree": "c4b9a05541b7d5e13c319fa2b3b5333416cfa5c4",
-    "generated_date": "2026-11-01",
+    "repository": "rafaelmeloreisnovo/termux-packages",
+    "commit": "598551c95677a85eb6f019822f84971daf998ff8",
+    "git_tree": "740513cf552a55e3d5f3533c722d3c560967875c",
+    "generated_date": "2026-11-10",
     "authority": "producer_recipe_and_manifest"
   },
   "origin_manifest": {
     "path": "docs/assurance/rafcodephi-federated-components.v1.json",
-    "git_blob": "cf3f8f0a2780c21d53bc5040682038bed062abc1",
+    "git_blob": "3dd6725e92c7c4d26512e2a800202005e44d3290",
     "historical_producer": {
       "repository": "rafaelmeloreisnovo/termux-packages",
       "base_commit": "93284c7df537a0f14a148b1839377f06aac2929f",
@@ -18,16 +18,16 @@
     }
   },
   "source_gate": {
-    "exact_head_observed": "ce793a8abfac811f1aa4eab602a3132d39d13433",
-    "run_id": 41276957806,
+    "exact_head_observed": "598551c95677a85eb6f019822f84971daf998ff8",
+    "run_id": 42926028050,
     "scope": "SOURCE_ONLY",
-    "result": "PASS",
+    "result": "LOCAL_PASS_CI_RERUN_REQUIRED",
     "synthetic_falsifiers": 15
   },
   "counts": {
-    "profiles": 5,
-    "dependency_edges": 34,
-    "resolved_outputs": 34,
+    "profiles": 6,
+    "dependency_edges": 42,
+    "resolved_outputs": 39,
     "federated_components": 6
   },
   "profiles": [
@@ -82,6 +82,22 @@
       ]
     },
     {
+      "id": "developer",
+      "metapackage": "rafcodephi-developer-profile",
+      "source_path": "packages/rafcodephi-developer-profile/build.sh",
+      "source_blob": "236cb4803427349a3aa19d6bdb40faecd8ef9fad",
+      "depends": [
+        "nodejs-lts",
+        "npm",
+        "openjdk-21",
+        "android-tools",
+        "clang",
+        "make",
+        "ninja",
+        "ndk-sysroot"
+      ]
+    },
+    {
       "id": "vectras",
       "metapackage": "rafcodephi-vectras-profile",
       "source_path": "packages/rafcodephi-vectras-profile/build.sh",
@@ -107,6 +123,14 @@
     }
   ],
   "output_producers": [
+    {
+      "output": "android-tools",
+      "source_path": "packages/android-tools/build.sh",
+      "producer_recipe": "android-tools",
+      "mode": "DIRECT_RECIPE",
+      "source_blob": "7ad183f483bc0962e088ae4ee3d75be5d39146b4",
+      "artifact_state": "TOKEN_VAZIO_DEB"
+    },
     {
       "output": "apt",
       "source_path": "packages/apt/build.sh",
@@ -236,11 +260,43 @@
       "artifact_state": "TOKEN_VAZIO_DEB"
     },
     {
+      "output": "ndk-sysroot",
+      "source_path": "packages/ndk-sysroot/build.sh",
+      "producer_recipe": "ndk-sysroot",
+      "mode": "DIRECT_RECIPE",
+      "source_blob": "8dad867887f612b0c776b9025ea3e5f5cba3ddaf",
+      "artifact_state": "TOKEN_VAZIO_DEB"
+    },
+    {
       "output": "ninja",
       "source_path": "packages/ninja/build.sh",
       "producer_recipe": "ninja",
       "mode": "DIRECT_RECIPE",
       "source_blob": "400f6db9b662576185fc080bd6419c15b05b3e7c",
+      "artifact_state": "TOKEN_VAZIO_DEB"
+    },
+    {
+      "output": "nodejs-lts",
+      "source_path": "packages/nodejs-lts/build.sh",
+      "producer_recipe": "nodejs-lts",
+      "mode": "DIRECT_RECIPE",
+      "source_blob": "4c7574e64a477195eab54e4817e52847f5490eb0",
+      "artifact_state": "TOKEN_VAZIO_DEB"
+    },
+    {
+      "output": "npm",
+      "source_path": "packages/npm/build.sh",
+      "producer_recipe": "npm",
+      "mode": "DIRECT_RECIPE",
+      "source_blob": "1e837aea99e2e7962ca2c446021ce62acacf262e",
+      "artifact_state": "TOKEN_VAZIO_DEB"
+    },
+    {
+      "output": "openjdk-21",
+      "source_path": "packages/openjdk-21/build.sh",
+      "producer_recipe": "openjdk-21",
+      "mode": "DIRECT_RECIPE",
+      "source_blob": "1c01fb75b37e20d2d5afaf281308a7036d1527b1",
       "artifact_state": "TOKEN_VAZIO_DEB"
     },
     {
@@ -336,11 +392,9 @@
       "source_path": "packages/rafcodephi-rmr-vector-field/build.sh",
       "producer_recipe": "rafcodephi-rmr-vector-field",
       "mode": "CONDITIONAL_GENERATED_STATIC",
-      "generator_path": "scripts/build/termux_create_debian_subpackages.sh",
-      "generator_blob": "47e1c2d49fc99b282e7b18764d37cb3488309c5d",
-      "precondition": "staged .a + TERMUX_PKG_NO_STATICSPLIT=false",
       "source_blob": "ec9c77bcf5e490a255e9ea410cd7c7592392cdf9",
-      "artifact_state": "TOKEN_VAZIO_DEB"
+      "artifact_state": "TOKEN_VAZIO_DEB",
+      "precondition": "staged .a and enabled split"
     },
     {
       "output": "rafcodephi-runtime-profile",
@@ -539,6 +593,54 @@
       "target": "rafcodephi-rmr-vector-field-static",
       "type": "DEPENDS_ON",
       "evidence_path": "packages/rafcodephi-build-profile/build.sh"
+    },
+    {
+      "source": "rafcodephi-developer-profile",
+      "target": "nodejs-lts",
+      "type": "DEPENDS_ON",
+      "evidence_path": "packages/rafcodephi-developer-profile/build.sh"
+    },
+    {
+      "source": "rafcodephi-developer-profile",
+      "target": "npm",
+      "type": "DEPENDS_ON",
+      "evidence_path": "packages/rafcodephi-developer-profile/build.sh"
+    },
+    {
+      "source": "rafcodephi-developer-profile",
+      "target": "openjdk-21",
+      "type": "DEPENDS_ON",
+      "evidence_path": "packages/rafcodephi-developer-profile/build.sh"
+    },
+    {
+      "source": "rafcodephi-developer-profile",
+      "target": "android-tools",
+      "type": "DEPENDS_ON",
+      "evidence_path": "packages/rafcodephi-developer-profile/build.sh"
+    },
+    {
+      "source": "rafcodephi-developer-profile",
+      "target": "clang",
+      "type": "DEPENDS_ON",
+      "evidence_path": "packages/rafcodephi-developer-profile/build.sh"
+    },
+    {
+      "source": "rafcodephi-developer-profile",
+      "target": "make",
+      "type": "DEPENDS_ON",
+      "evidence_path": "packages/rafcodephi-developer-profile/build.sh"
+    },
+    {
+      "source": "rafcodephi-developer-profile",
+      "target": "ninja",
+      "type": "DEPENDS_ON",
+      "evidence_path": "packages/rafcodephi-developer-profile/build.sh"
+    },
+    {
+      "source": "rafcodephi-developer-profile",
+      "target": "ndk-sysroot",
+      "type": "DEPENDS_ON",
+      "evidence_path": "packages/rafcodephi-developer-profile/build.sh"
     },
     {
       "source": "rafcodephi-vectras-profile",
