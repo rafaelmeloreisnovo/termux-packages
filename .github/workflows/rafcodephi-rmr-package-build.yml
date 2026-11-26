@@ -30,7 +30,7 @@ jobs:
         arch: [arm, aarch64]
     steps:
       - name: Checkout exact candidate
-        uses: actions/checkout@v6
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: Validate source custody
         run: python3 scripts/validate_rafcodephi_freestanding_module.py
@@ -38,12 +38,18 @@ jobs:
       - name: Configure RAFCODEPHI package prefix
         run: bash scripts/rafcodephi-configure-package-name.sh
 
+      - name: Provision SHA256-pinned NDK29 in canonical builder
+        shell: bash
+        run: |
+          set -euo pipefail
+          ./scripts/run-docker.sh bash scripts/ci/rafcodephi_prepare_ndk29.sh
+
       - name: Build source package without official-binary mixing
         env:
           ARCH: ${{ matrix.arch }}
         run: |
           set -euo pipefail
-          ./scripts/run-docker.sh ./build-package.sh -C -a "$ARCH" rafcodephi-rmr-vector-field
+          ./scripts/run-docker.sh env NDK=/home/builder/.termux-build/android-ndk-r29 ./build-package.sh -C -a "$ARCH" rafcodephi-rmr-vector-field
 
       - name: Verify base and static deb payloads
         shell: bash
