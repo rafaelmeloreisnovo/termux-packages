@@ -170,12 +170,12 @@ jobs:
         with:
           expected-sha: ${{ env.SOURCE_SHA }}
       - name: Download ARM evidence
-        uses: actions/download-artifact@v8
+        uses: actions/download-artifact@v8.0.2
         with:
           name: rafcodephi-source-${{ github.run_id }}-arm
           path: handoff/arm
       - name: Download AArch64 evidence
-        uses: actions/download-artifact@v8
+        uses: actions/download-artifact@v8.0.2
         with:
           name: rafcodephi-source-${{ github.run_id }}-aarch64
           path: handoff/aarch64

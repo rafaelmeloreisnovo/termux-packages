@@ -125,7 +125,7 @@ jobs:
           fetch-depth: 1
           persist-credentials: false
       - name: Download only the exact preserved source artifact
-        uses: actions/download-artifact@v8
+        uses: actions/download-artifact@v8.0.2
         with:
           name: rafcodephi-dualarch-source-build-b1d029649351232649f4b1a03eab2084d0fbc4b6
           run-id: 37696663078
